@@ -27,7 +27,7 @@ beforeEach(() => {
     setItem: (k: string, v: string) => void store.set(k, v),
     removeItem: (k: string) => void store.delete(k),
   })
-  tokens.set('stari', 'refresh-1')
+  void tokens.set('stari', null)
 })
 
 afterEach(() => vi.unstubAllGlobals())
@@ -65,7 +65,7 @@ describe('osvežavanje prijave', () => {
     finish({ status: 200, data: { access: 'late', refresh: 'late-refresh' } })
     await expect(request).rejects.toBeTruthy()
     expect(tokens.access()).toBeNull()
-    expect(tokens.refresh()).toBeNull()
+    expect(await tokens.refresh()).toBeNull()
   })
 
   it('paralelni zahtevi sa starim access tokenom koriste istu rotaciju', async () => {
@@ -94,16 +94,16 @@ describe('osvežavanje prijave', () => {
     finishLate401()
     await expect(second).resolves.toMatchObject({ data: { ok: true } })
     expect(refreshCalls).toBe(1)
-    expect(tokens.refresh()).toBe('refresh-2')
+    expect(await tokens.refresh()).toBeNull()
   })
 
-  it('promena refresh tokena ne invalidira isti login, dok ga logout i novi login invalidiraju', () => {
+  it('rotacija ne invalidira isti login, dok ga logout i novi login invalidiraju', async () => {
     const old = tokens.session()
-    expect(tokens.rotate('novi', 'refresh-2', old, 'refresh-1')).toBe(true)
+    expect(await tokens.rotate('novi', null, old, null)).toBe(true)
     expect(tokens.isCurrent(old)).toBe(true)
     tokens.clear()
     expect(tokens.isCurrent(old)).toBe(false)
-    tokens.set('pristup-drugog', 'refresh-drugog')
+    await tokens.set('pristup-drugog', null)
     expect(tokens.isCurrent(old)).toBe(false)
   })
 
@@ -115,7 +115,7 @@ describe('osvežavanje prijave', () => {
         lockCalls += 1
         // Simulates another tab winning the lock, publishing its fresh tokens,
         // then releasing the lock for the waiting tab.
-        expect(tokens.rotate('access-iz-drugog-taba', 'refresh-2', tokens.session(), 'refresh-1')).toBe(true)
+        expect(await tokens.rotate('access-iz-drugog-taba', null, tokens.session(), null)).toBe(true)
         return callback()
       },
     } })
@@ -133,6 +133,47 @@ describe('osvežavanje prijave', () => {
     expect(lockCalls).toBe(1)
     expect(refreshCalls).toBe(0)
     expect(tokens.access()).toBe('access-iz-drugog-taba')
+  })
+
+  it('web access/refresh JWTs nikada nisu zapisani u localStorage', async () => {
+    await tokens.set('access-jwt', null)
+    expect(tokens.access()).toBe('access-jwt')
+    expect(localStorage.getItem('pomak.access')).toBeNull()
+    expect(localStorage.getItem('pomak.refresh')).toBeNull()
+    expect(tokens.hasSession()).toBe(true)
+    await tokens.rotate('rotated-access', null, tokens.session(), null)
+    expect(localStorage.getItem('pomak.access')).toBeNull()
+    expect(localStorage.getItem('pomak.refresh')).toBeNull()
+  })
+
+  it('offline start zadržava session marker i keširan profil bez access JWT-a', async () => {
+    tokens.setCachedMe({ id: 'cached-owner' })
+    expect(tokens.hasSession()).toBe(true)
+    // A fresh page has no access token, but still knows the cached identity.
+    await tokens.rotate('online-access', null, tokens.session(), null)
+    expect(tokens.cachedMe<{ id: string }>()?.id).toBe('cached-owner')
+    expect(localStorage.getItem('pomak.session-id')).not.toBeNull()
+  })
+
+  it('migrira stari web refresh jednim pozivom i uklanja oba legacy JWT-a', async () => {
+    localStorage.setItem('pomak.access', 'legacy-access')
+    localStorage.setItem('pomak.refresh', 'legacy-refresh')
+    let saw: unknown
+    fakeServer((config) => {
+      if (config.url?.endsWith('/auth/refresh/')) {
+        saw = config.data
+        expect(config.headers['X-Pomak-Client']).toBe('web')
+        return { status: 200, data: { access: 'migrated-access' } }
+      }
+      return { status: 200, data: { ok: true } }
+    })
+    await tokens.rotate('reset', null, tokens.session(), 'legacy-refresh').catch(() => undefined)
+    // Legacy refresh must remain until the real migration response arrives.
+    localStorage.setItem('pomak.refresh', 'legacy-refresh')
+    await api.get('/auth/me/')
+    expect(saw).toContain('legacy-refresh')
+    expect(localStorage.getItem('pomak.access')).toBeNull()
+    expect(localStorage.getItem('pomak.refresh')).toBeNull()
   })
 
   it('neuspela prijava (pogrešna lozinka) se ne ponavlja i ne osvežava', async () => {
