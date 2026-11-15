@@ -63,16 +63,21 @@ class PasswordResetThrottle(DatabaseAuthThrottle):
     """
 
     def _daily_limit(self, kind, identity, limit, now):
-        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Daily buckets are keyed by the NEXT midnight (their expiry), not the
+        # current midnight. The shared maintenance job prunes rows older than
+        # two hours by window_start; storing the start of today would make its
+        # 04:00 UTC run erase today's quotas. Expiry-based timestamps preserve
+        # daily budgets until tomorrow without extending minute-bucket storage.
+        day_end = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
         key = hashlib.sha256(f'reset-day:{kind}:{identity}'.encode('utf-8')).hexdigest()
         with transaction.atomic():
             bucket, _ = AuthThrottleBucket.objects.get_or_create(
-                key=key, window_start=day_start, defaults={'attempts': 0},
+                key=key, window_start=day_end, defaults={'attempts': 0},
             )
             AuthThrottleBucket.objects.filter(pk=bucket.pk).update(attempts=F('attempts') + 1)
             bucket.refresh_from_db(fields=['attempts'])
             if bucket.attempts > limit:
-                self.remaining = max(1, int((day_start + timedelta(days=1) - now).total_seconds()))
+                self.remaining = max(1, int((day_end - now).total_seconds()))
                 return False
         return True
 
