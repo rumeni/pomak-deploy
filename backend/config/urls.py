@@ -1,11 +1,12 @@
 from django.contrib import admin
 from django.urls import include, path
 
-from core.health import health, ready
+from core.health import health, ready, staging_ip_identity
 from accounts.cron import cleanup_auth_throttle_cron
 
 urlpatterns = [
     path('api/health/', health, name='health'),
+    path('api/__qa/ip/', staging_ip_identity, name='staging-ip-diagnostic'),
     path('api/internal/cleanup-auth-throttle/', cleanup_auth_throttle_cron, name='cleanup-auth-throttle'),
     path('api/ready/', ready, name='ready'),
     path('admin/', admin.site.urls),
