@@ -31,7 +31,7 @@ from rest_framework.views import APIView
 from .email_security import VERIFICATION_SALT, send_reset_email, send_verification_email_safe
 from .models import User
 from .password_security import replace_password_and_revoke_sessions
-from .throttles import DatabaseAccountDeletionThrottle, DatabaseAuthThrottle
+from .throttles import DatabaseAccountDeletionThrottle, DatabaseAuthThrottle, PasswordResetThrottle
 from .token_transport import clear_refresh_cookie, web_request
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ class PasswordResetRequestView(APIView):
     # Do not authenticate from an old access token on a forgotten-password page.
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
+    throttle_classes = [PasswordResetThrottle, AnonRateThrottle, ScopedRateThrottle]
     throttle_scope = 'auth'
 
     def post(self, request):
