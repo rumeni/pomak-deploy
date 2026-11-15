@@ -58,6 +58,16 @@ export function LoginPage() {
         {verificationRequired && sitekey && (
           <LoginChallenge key={challengeEpoch} sitekey={sitekey} onToken={setVerificationToken} />
         )}
+        {verificationRequired && (
+          <button type="button" className="text-sm font-semibold text-brand-dark underline" onClick={() => {
+            setVerificationRequired(false)
+            setVerificationToken(null)
+            setError(null)
+            setChallengeEpoch((value) => value + 1)
+          }}>
+            {t('auth.verificationTryNormal')}
+          </button>
+        )}
         <Button type="submit" disabled={formState.isSubmitting || (verificationRequired && !!sitekey && !verificationToken)}>
           {formState.isSubmitting ? t('auth.loggingIn') : t('auth.login')}
         </Button>
