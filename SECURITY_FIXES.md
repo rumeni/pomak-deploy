@@ -31,7 +31,7 @@ Local Python compilation can run without dependencies, but full Django/Vitest te
 
 ## Follow-up hardening (15 November 2026)
 
-- Updated djangorestframework 3.18.1 → 3.18.2 for CVE-2026-114136/114137/114138.
+- Updated djangorestframework 3.18.1 → 3.18.3 (includes 3.18.2 security fixes plus upstream compatibility bugfix) for CVE-2026-114136/114137/114138.
 - Configured DRF NUM_PROXIES=1 only on Vercel, where the platform overwrites X-Forwarded-For; local/direct Django defaults to 0. Change this setting if deploying behind a different trusted proxy chain. PostgreSQL auth throttles now use the same DRF client identity.
 - Added database-backed five account-deletion password attempts per hour, shared by all Vercel functions.
 - Added HSTS (31536000 seconds, no includeSubDomains/preload) and Django HTTPS redirects when Vercel is detected; non-Vercel local HTTP remains usable. This assumes SECURE_PROXY_SSL_HEADER is set to Vercel's trusted x-forwarded-proto value.
