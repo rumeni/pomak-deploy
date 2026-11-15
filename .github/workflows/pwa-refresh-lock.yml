@@ -1,0 +1,51 @@
+name: POMAK scoped Workbox lockfile refresh (temporary)
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/pwa-audit-workbox-2026-11-15'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Regenerate lockfile with one Workbox-scoped override
+        working-directory: frontend
+        run: |
+          npm pkg set 'overrides.workbox-build.glob=14.0.3'
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --no-fund --no-audit
+          npm test
+          npm run lint -- --deny-warnings
+          npm run build
+          test -s dist/sw.js
+          test -s dist/manifest.webmanifest
+          npm audit --json > /tmp/pwa-audit.json || true
+          node - <<'NODE'
+          const audit = require('/tmp/pwa-audit.json')
+          const v = audit.metadata.vulnerabilities
+          if (v.high || v.critical || v.moderate || v.low > 4) throw Error('Audit did not improve as expected: ' + JSON.stringify(v))
+          console.log('Validated candidate audit: ' + JSON.stringify(v))
+          NODE
+      - name: Commit only validated package and lockfile to PR branch
+        run: |
+          if git diff --quiet -- frontend/package.json frontend/package-lock.json; then
+            echo 'No dependency changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/package.json frontend/package-lock.json
+          git commit -m 'Scope patched glob 14.0.3 to Workbox build-only dependencies'
+          git push origin HEAD:refs/heads/fix/pwa-audit-workbox-2026-11-15
