@@ -23,10 +23,20 @@ export function LoginChallenge({ sitekey, onToken }: { sitekey: string; onToken:
   const { t } = useTranslation()
   const container = useRef<HTMLDivElement>(null)
   const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let active = true
     let widgetId: string | null = null
+    let script = document.querySelector<HTMLScriptElement>('script[data-pomak-turnstile]')
+    const fail = () => {
+      if (!active) return
+      onToken(null)
+      setFailed(true)
+      // A failed external script element won't fire "load" again after the
+      // network returns; discard it so the retry can fetch a fresh copy.
+      if (!window.turnstile) script?.remove()
+    }
     const render = () => {
       if (!active || !container.current || !window.turnstile || widgetId !== null) return
       try {
@@ -35,14 +45,16 @@ export function LoginChallenge({ sitekey, onToken }: { sitekey: string; onToken:
           action: 'pomak_login_recovery',
           callback: (token) => { if (active) onToken(token) },
           'expired-callback': () => { if (active) onToken(null) },
-          'error-callback': () => { if (active) { onToken(null); setFailed(true) } },
+          'error-callback': fail,
         })
       } catch {
-        if (active) setFailed(true)
+        fail()
       }
     }
-    const fail = () => { if (active) setFailed(true) }
-    let script = document.querySelector<HTMLScriptElement>('script[data-pomak-turnstile]')
+    const onLoad = () => {
+      if (!window.turnstile) fail()
+      else render()
+    }
     if (!script) {
       script = document.createElement('script')
       script.src = SCRIPT_URL
@@ -50,21 +62,32 @@ export function LoginChallenge({ sitekey, onToken }: { sitekey: string; onToken:
       script.dataset.pomakTurnstile = 'true'
       document.head.appendChild(script)
     }
-    script.addEventListener('load', render)
+    script.addEventListener('load', onLoad)
     script.addEventListener('error', fail)
     render()
     return () => {
       active = false
-      script?.removeEventListener('load', render)
+      script?.removeEventListener('load', onLoad)
       script?.removeEventListener('error', fail)
       if (widgetId !== null) window.turnstile?.remove(widgetId)
     }
-  }, [sitekey, onToken])
+  }, [sitekey, onToken, attempt])
 
   return (
     <div className="flex flex-col gap-2">
       <div ref={container} aria-label={t('auth.verificationLabel')} />
-      {failed && <p role="alert" className="text-sm text-danger">{t('auth.verificationUnavailable')}</p>}
+      {failed && (
+        <>
+          <p role="alert" className="text-sm text-danger">{t('auth.verificationUnavailable')}</p>
+          <button type="button" className="text-sm font-semibold text-brand-dark underline" onClick={() => {
+            onToken(null)
+            setFailed(false)
+            setAttempt((value) => value + 1)
+          }}>
+            {t('auth.verificationRetry')}
+          </button>
+        </>
+      )}
     </div>
   )
 }
