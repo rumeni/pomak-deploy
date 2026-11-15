@@ -76,6 +76,26 @@ class AuthCookieTransportTests(APITestCase):
             'refresh': login.cookies['pomak.refresh'].value,
         }, format='json').status_code, 401)
 
+    def test_web_logout_needs_no_access_after_page_reload(self):
+        login = self.login(**WEB)
+        self.client.cookies['pomak.refresh'] = login.cookies['pomak.refresh'].value
+        logout = self.client.post('/api/auth/logout/', {}, format='json', **WEB)
+        self.assertEqual(logout.status_code, 204)
+        self.assertEqual(logout.cookies['pomak.refresh']['max-age'], 0)
+        self.assertEqual(self.client.post('/api/auth/refresh/', {
+            'refresh': login.cookies['pomak.refresh'].value,
+        }, format='json').status_code, 401)
+
+    def test_unauthenticated_legacy_logout_still_denied(self):
+        login = self.login()
+        response = self.client.post('/api/auth/logout/', {
+            'refresh': login.data['refresh'],
+        }, format='json')
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(self.client.post('/api/auth/refresh/', {
+            'refresh': login.data['refresh'],
+        }, format='json').status_code, 200)
+
     def test_legacy_logout_has_no_cookie_side_effect(self):
         login = self.login()
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
