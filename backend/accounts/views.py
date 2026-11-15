@@ -152,8 +152,9 @@ class ExportView(APIView):
 
 
 class DeleteAccountView(APIView):
-    allow_unverified_email = True  # Users must be able to delete accounts before confirming email.
     """POST {password}: trajno briše nalog i sve lične podatke (treninge, dnevnik, merenja, recepte...)."""
+
+    allow_unverified_email = True  # Allow deletion before email confirmation.
     throttle_classes = [DatabaseAccountDeletionThrottle, UserRateThrottle]
 
     def post(self, request):
