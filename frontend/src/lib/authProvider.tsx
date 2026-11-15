@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import i18n, { changeLanguage, fromServerLanguage, toServerLanguage, type Language } from '../i18n'
-import { api } from './api'
+import { api, webHeaders } from './api'
 import { AuthContext, type RegisterData } from './authContext'
 import { setCurrentUserId } from './currentUser'
 import { tokens } from './tokens'
@@ -11,10 +11,7 @@ import type { Me } from './types'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
-  const [hasToken, setHasToken] = useState(() => {
-    tokens.session() // Upgrade an existing login to a persistent cross-tab identity.
-    return !!tokens.access()
-  })
+  const [hasToken, setHasToken] = useState(() => tokens.hasSession())
 
   const { data: me, isLoading, isError, refetch } = useQuery({
     queryKey: ['me'],
@@ -46,26 +43,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       // Token rotation is not a login/logout: do not discard the query cache.
-      if (event.key !== 'pomak.session-id' && !(event.key === 'pomak.access' && event.newValue === null)) return
+      if (event.key !== 'pomak.session-id') return
       queryClient.clear()
-      setHasToken(!!tokens.access())
+      setHasToken(tokens.hasSession())
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [queryClient])
 
   const logout = useCallback(() => {
-    const refresh = tokens.refresh()
+    const pendingRefresh = tokens.refresh()
     const access = tokens.access()
-    // Revoke on the server if online; local logout must not wait for the network.
-    if (access && refresh) {
-      void axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh }, {
-        headers: { Authorization: `Bearer ${access}` }, timeout: 5000,
-      }).catch(() => undefined)
-    }
-    tokens.clear()
+    void tokens.clear() // Clear local account identity immediately, even offline.
     setHasToken(false)
     queryClient.clear()
+    void pendingRefresh.then(async (refresh) => {
+      if (!access && !refresh && !tokens.hasSession()) {
+        // On the web the HttpOnly cookie is still readable by the server.
+        await axios.post(`${api.defaults.baseURL}/auth/logout/`, {}, { headers: webHeaders(), timeout: 5000 })
+        return
+      }
+      if (access) {
+        await axios.post(`${api.defaults.baseURL}/auth/logout/`, refresh ? { refresh } : {}, {
+          headers: { ...webHeaders(), Authorization: `Bearer ${access}` }, timeout: 5000,
+        })
+      } else if (refresh) {
+        const { data } = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, { refresh }, { timeout: 5000 })
+        await axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh: data.refresh ?? refresh }, {
+          headers: { Authorization: `Bearer ${data.access}` }, timeout: 5000,
+        })
+      }
+    }).catch(() => undefined)
   }, [queryClient])
 
   useEffect(() => {
@@ -76,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string, turnstileToken?: string) => {
       const { data } = await api.post('/auth/login/', { email, password, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) })
-      tokens.set(data.access, data.refresh)
+      await tokens.set(data.access, data.refresh ?? null)
       setHasToken(true)
     },
     [],
@@ -91,7 +99,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         account_type: accountType,
         language: toServerLanguage(i18n.language as Language),
       })
-      tokens.set(data.access, data.refresh)
+      if (Object.keys(webHeaders()).length) {
+        // /register is intentionally legacy for older APKs. Immediately
+        // exchange its one-time JSON refresh for a web-only HttpOnly cookie.
+        const migrated = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {
+          refresh: data.refresh,
+        }, { headers: webHeaders() })
+        await tokens.set(migrated.data.access, null)
+      } else {
+        await tokens.set(data.access, data.refresh)
+      }
       setHasToken(true)
     },
     [],
