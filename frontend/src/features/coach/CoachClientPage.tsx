@@ -48,7 +48,7 @@ export function CoachClientPage() {
               {w.exercises.map((item, index) => (
                 <div key={`${item.name}-${index}`} className="mt-1 text-sm">
                   <span>{item.name}: </span>
-                  <span className="text-muted">{item.sets.map((set) => [set.weight_kg ? `${set.weight_kg} kg` : '', set.reps != null ? `${set.reps} ${t('coach.reps')}` : '', set.duration_seconds ? `${set.duration_seconds} s` : '', set.distance_m ? `${set.distance_m} m` : ''].filter(Boolean).join(' × ')).join(', ')}</span>
+                  <span className="text-muted">{item.sets.map((set) => [set.set_type === 'warmup' ? `${t('routine.warmupShort')}:` : '', set.weight_kg ? `${set.weight_kg} kg` : '', set.reps != null ? `${set.reps} ${t('coach.reps')}` : '', set.duration_seconds ? `${set.duration_seconds} s` : '', set.distance_m ? `${set.distance_m} m` : ''].filter(Boolean).join(' × ')).join(', ')}</span>
                 </div>
               ))}
               {w.notes && <p className="mt-1 whitespace-pre-wrap text-sm">{w.notes}</p>}
