@@ -15,10 +15,17 @@ export function scopeIsCurrent(scope: AuthScope): boolean {
 
 export const webHeaders = () => Capacitor.isNativePlatform() ? {} : { 'X-Pomak-Client': 'web' }
 
+// Web Locks coordinate tabs. Without them, serialize at least every
+// cookie-changing operation in this tab (including reconnect logout retries).
+let fallbackAuthQueue: Promise<void> = Promise.resolve()
+
 export function withAuthLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (Capacitor.isNativePlatform()) return fn()
   const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
-  return !Capacitor.isNativePlatform() && locks?.request
-    ? locks.request('pomak:jwt-refresh', fn) : fn()
+  if (locks?.request) return locks.request('pomak:jwt-refresh', fn)
+  const operation = fallbackAuthQueue.then(fn)
+  fallbackAuthQueue = operation.then(() => undefined, () => undefined)
+  return operation
 }
 
 /** Call under withAuthLock: no JWT is persisted while offline logout is pending. */
