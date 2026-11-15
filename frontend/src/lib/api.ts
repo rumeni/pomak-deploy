@@ -87,10 +87,19 @@ async function refreshAccess(session: TokenSession, rejectedAccess: string | nul
         const noLocks = !Capacitor.isNativePlatform() && !(typeof navigator !== 'undefined' && navigator.locks?.request)
         if (noLocks) {
           await new Promise((resolve) => setTimeout(resolve, 150))
-          if (tokens.rotationEpoch() !== epoch) {
+          // An independently rotated cookie succeeds here; a truly expired
+          // cookie rejects twice. Never clear the session on network failure.
+          try {
             const retry = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {}, { headers: webHeaders() })
             if (tokens.isCurrent(session) && await tokens.rotate(retry.data.access, null, session, null)) {
               return retry.data.access
+            }
+          } catch (retryError) {
+            const retryStatus = axios.isAxiosError(retryError) ? retryError.response?.status : undefined
+            if ([400, 401, 403].includes(retryStatus ?? 0)
+              && tokens.rotationEpoch() === epoch && tokens.isCurrent(session)) {
+              void tokens.clear()
+              if (typeof window !== 'undefined') window.dispatchEvent(new Event('pomak:logout'))
             }
           }
         } else {
