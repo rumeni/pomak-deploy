@@ -2,7 +2,7 @@ import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import { CoachPage } from '../features/coach/CoachPage'
 import { CoachClientPage } from '../features/coach/CoachClientPage'
@@ -40,6 +40,7 @@ import { AppLayout } from './AppLayout'
 
 export function App() {
   const { me, loading, unreachable, retry } = useAuth()
+  const location = useLocation()
   const { t } = useTranslation()
   useOutboxSync(me?.id)
 
@@ -49,14 +50,17 @@ export function App() {
 
   if (unreachable) return <UnreachableScreen onRetry={retry} />
 
+  // Recovery links must work even when the browser still has an old session
+  // or is paused in onboarding.
+  if (location.pathname === '/lozinka/reset') return <ResetPasswordPage />
+  if (location.pathname === '/potvrda-emaila') return <VerifyEmailPage />
+
   if (!me) {
     return (
       <Routes>
         <Route path="/prijava" element={<LoginPage />} />
         <Route path="/registracija" element={<RegisterPage />} />
         <Route path="/lozinka/zaboravljena" element={<ForgotPasswordPage />} />
-        <Route path="/lozinka/reset" element={<ResetPasswordPage />} />
-        <Route path="/potvrda-emaila" element={<VerifyEmailPage />} />
         <Route path="*" element={<Navigate to="/prijava" replace />} />
       </Routes>
     )
@@ -64,7 +68,6 @@ export function App() {
 
   if (me.email_verification_required && !me.email_verified) {
     return <Routes>
-      <Route path="/potvrda-emaila" element={<VerifyEmailPage />} />
       <Route path="*" element={<EmailVerificationPendingPage />} />
     </Routes>
   }
