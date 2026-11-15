@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { CoachPage } from '../features/coach/CoachPage'
+import { CoachClientPage } from '../features/coach/CoachClientPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { DeleteAccountPage } from '../features/auth/DeleteAccountPage'
 import { ProfilePage } from '../features/auth/ProfilePage'
@@ -69,6 +70,7 @@ export function App() {
         <Route path="/napredak" element={<ProgressPage />} />
         <Route path="/trener" element={<CoachPage />} />
       </Route>
+      <Route path="/trener/klijenti/:id" element={<CoachClientPage />} />
       <Route path="/trening/aktivan" element={<ActiveWorkoutPage />} />
       <Route path="/trening/istorija/:id" element={<SessionDetailPage />} />
       <Route path="/profil" element={<ProfilePage />} />
