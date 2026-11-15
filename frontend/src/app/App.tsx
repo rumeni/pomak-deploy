@@ -7,6 +7,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { CoachPage } from '../features/coach/CoachPage'
 import { CoachClientPage } from '../features/coach/CoachClientPage'
 import { LoginPage } from '../features/auth/LoginPage'
+import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage, EmailVerificationPendingPage } from '../features/auth/AccountEmailPages'
+import { ChangePasswordPage } from '../features/auth/ChangePasswordPage'
 import { DeleteAccountPage } from '../features/auth/DeleteAccountPage'
 import { ProfilePage } from '../features/auth/ProfilePage'
 import { RegisterPage } from '../features/auth/RegisterPage'
@@ -52,9 +54,19 @@ export function App() {
       <Routes>
         <Route path="/prijava" element={<LoginPage />} />
         <Route path="/registracija" element={<RegisterPage />} />
+        <Route path="/lozinka/zaboravljena" element={<ForgotPasswordPage />} />
+        <Route path="/lozinka/reset" element={<ResetPasswordPage />} />
+        <Route path="/potvrda-emaila" element={<VerifyEmailPage />} />
         <Route path="*" element={<Navigate to="/prijava" replace />} />
       </Routes>
     )
+  }
+
+  if (me.email_verification_required && !me.email_verified) {
+    return <Routes>
+      <Route path="/potvrda-emaila" element={<VerifyEmailPage />} />
+      <Route path="*" element={<EmailVerificationPendingPage />} />
+    </Routes>
   }
 
   if (!me.profile.onboarding_completed_at) {
@@ -74,6 +86,7 @@ export function App() {
       <Route path="/trening/aktivan" element={<ActiveWorkoutPage />} />
       <Route path="/trening/istorija/:id" element={<SessionDetailPage />} />
       <Route path="/profil" element={<ProfilePage />} />
+      <Route path="/profil/lozinka" element={<ChangePasswordPage />} />
       <Route path="/profil/obroci" element={<MealSettingsPage />} />
       <Route path="/profil/obrisi-nalog" element={<DeleteAccountPage />} />
       <Route path="/ishrana/dodaj" element={<AddEntryPage />} />
