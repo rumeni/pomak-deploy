@@ -1,6 +1,13 @@
 """Password recovery and email ownership confirmation endpoints."""
 
+import base64
+import hashlib
+import hmac
+import json
 import logging
+from urllib.request import Request, urlopen
+
+import jwt
 
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
@@ -8,6 +15,9 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
@@ -40,6 +50,84 @@ def require_email_configured():
         raise EmailNotConfigured()
 
 
+def _queue_configured():
+    return all((
+        settings.ACCOUNT_EMAIL_WORKER_URL,
+        settings.QSTASH_TOKEN,
+        settings.QSTASH_CURRENT_SIGNING_KEY,
+        settings.QSTASH_NEXT_SIGNING_KEY,
+    ))
+
+
+def _publish_reset_request(email):
+    """Publish for EVERY syntactically valid email, without an account lookup.
+
+    SMTP and account existence checks happen in the signed queue worker only.
+    The request body is redacted in QStash logs and duplicates deduped for 10m.
+    """
+    body = json.dumps({'email': email}, separators=(',', ':')).encode('utf-8')
+    req = Request(
+        'https://qstash.upstash.io/v2/publish/' + settings.ACCOUNT_EMAIL_WORKER_URL,
+        data=body,
+        headers={
+            'Authorization': 'Bearer ' + settings.QSTASH_TOKEN,
+            'Content-Type': 'application/json',
+            'Upstash-Content-Based-Deduplication': 'true',
+            'Upstash-Redact-Fields': 'body',
+            'Upstash-Retries': '3',
+        },
+        method='POST',
+    )
+    with urlopen(req, timeout=4) as delivery:
+        if not 200 <= delivery.status < 300:
+            raise RuntimeError('Email queue publish rejected')
+
+
+def _valid_qstash_signature(signature, raw_body):
+    if not signature or len(signature) > 4096 or not _queue_configured():
+        return False
+    for key in (settings.QSTASH_CURRENT_SIGNING_KEY, settings.QSTASH_NEXT_SIGNING_KEY):
+        try:
+            payload = jwt.decode(
+                signature, key, algorithms=['HS256'], issuer='Upstash',
+                options={'require': ['iss', 'sub', 'nbf', 'exp', 'body']},
+            )
+            expected = base64.urlsafe_b64encode(hashlib.sha256(raw_body).digest()).decode('ascii').rstrip('=')
+            actual = payload.get('body', '')
+            if (payload.get('sub') == settings.ACCOUNT_EMAIL_WORKER_URL
+                    and isinstance(actual, str) and hmac.compare_digest(expected, actual.rstrip('='))):
+                return True
+        except jwt.InvalidTokenError:
+            continue
+    return False
+
+
+@csrf_exempt
+@require_POST
+def password_reset_email_worker(request):
+    """Publicly reachable only to QStash-signed messages, not browser clients."""
+    if not settings.ACCOUNT_EMAIL_ENABLED:
+        return HttpResponse(status=503)
+    if not _valid_qstash_signature(request.headers.get('Upstash-Signature', ''), request.body):
+        return HttpResponse(status=403)
+    try:
+        data = json.loads(request.body)
+        email = data.get('email') if isinstance(data, dict) else None
+        if not isinstance(email, str) or not email or len(email) > 254:
+            return HttpResponse(status=400)
+    except (UnicodeDecodeError, ValueError, TypeError):
+        return HttpResponse(status=400)
+    user = User.objects.filter(email=email, is_active=True).first()
+    if user:
+        try:
+            send_reset_email(user)
+        except Exception:
+            # A non-2xx response lets QStash retry. Never log addresses or tokens.
+            logger.error('POMAK reset delivery failed; queue will retry.')
+            return HttpResponse(status=503)
+    return HttpResponse(status=204)
+
+
 def password_validated(user, new_password):
     if not isinstance(new_password, str) or len(new_password) > 4096:
         raise ValidationError({'new_password': 'Enter a valid password.'})
@@ -62,13 +150,14 @@ class PasswordResetRequestView(APIView):
         require_email_configured()
         from rest_framework.fields import EmailField
         email = EmailField().run_validation(request.data.get('email', '')).strip().lower()
-        user = User.objects.filter(email=email, is_active=True).first()
-        if user:
-            try:
-                send_reset_email(user)
-            except Exception:
-                logger.exception('POMAK password reset email delivery failed (token omitted).')
-        # Identical response, including SMTP failures, for known/unknown email.
+        if not _queue_configured():
+            raise EmailNotConfigured()
+        try:
+            _publish_reset_request(email)
+        except Exception:
+            # Fail closed for ALL addresses, without exposing the address or token.
+            logger.error('POMAK password reset queue unavailable.')
+            raise EmailNotConfigured() from None
         return Response(GENERIC_SENT, status=status.HTTP_202_ACCEPTED)
 
 
