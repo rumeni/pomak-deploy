@@ -6,14 +6,15 @@ import { LanguageMenu } from '../../components/LanguageMenu'
 export function AuthLayout({ title, children }: { title: string; children: ReactNode }) {
   const { t } = useTranslation()
   return (
-    <div className="pt-safe pb-safe flex min-h-full">
-      <main className="relative mx-auto flex w-full max-w-md flex-col justify-center px-5 py-10">
-        <div className="absolute right-5 top-4">
-          <LanguageMenu />
+    <div className="auth-stage pt-safe pb-safe">
+      <main className="auth-panel relative">
+        <div className="absolute right-6 top-6"><LanguageMenu /></div>
+        <div className="auth-mark">
+          <span className="auth-mark-icon" aria-hidden>P</span>
+          <span className="text-2xl font-extrabold tracking-[-0.06em] text-ink">POMAK</span>
         </div>
-        <p className="text-4xl font-extrabold tracking-tight text-brand">POMAK</p>
-        <p className="mt-1 text-muted">{t('common.tagline')}</p>
-        <h1 className="mb-5 mt-8 text-2xl font-bold">{title}</h1>
+        <p className="mt-5 max-w-xs text-sm leading-relaxed text-muted">{t('common.tagline')}</p>
+        <h1 className="mb-6 mt-9 text-3xl font-extrabold tracking-[-0.045em]">{title}</h1>
         {children}
       </main>
     </div>
