@@ -38,3 +38,10 @@ Local Python compilation can run without dependencies, but full Django/Vitest te
 - Known limitation: the email-account pre-auth rate limit can deny legitimate login after deliberate false attempts by another party. A future redesign needs a mechanism that still slows distributed password guessing without hard-locking a valid user.
 - Known limitation: authentication tokens are still stored in localStorage for the PWA/offline use case. Moving to HttpOnly cookies requires coordinated API, CSRF, PWA and mobile changes.
 - Six npm dev dependency advisories were previously reported and are not resolved by this backend PR.
+
+
+## Targeted login lockout follow-up
+
+- A correct account password is now accepted even after someone else exhausts its email throttle bucket. The exception is restricted to the login endpoint; wrong passwords and registration remain limited. Verified credentials are checked only after the shared PostgreSQL counter transaction has released its lock.
+- Source/IP quotas (PostgreSQL + DRF anonymous limit) still apply, and the global per-email quota still returns HTTP 429 for invalid credentials. However, **no password-only mechanism can both guarantee unhindered correct login and eliminate all distributed online guessing** without additional client verification. More comprehensive bot defense (edge challenge, device binding, MFA or passkeys) remains recommended for scale.
+- Frontend oxlint is now included in CI to make remaining cosmetic warnings visible.
