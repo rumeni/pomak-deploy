@@ -4,7 +4,7 @@ import re
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Sum
+from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError

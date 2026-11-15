@@ -23,7 +23,7 @@ class IdempotentCreateMixin:
             try:
                 existing = model.objects.filter(pk=record_id).first()
             except (ValueError, TypeError, DjangoValidationError):
-                raise ValidationError({'id': _('Invalid ID.')})
+                raise ValidationError({'id': _('Invalid ID.')}) from None
             if existing is not None:
                 if getattr(existing, f'{self.owner_field}_id') != request.user.pk:
                     raise ValidationError({'id': _('This ID is already taken.')})

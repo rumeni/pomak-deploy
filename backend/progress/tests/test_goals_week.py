@@ -6,7 +6,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from nutrition.models import MealEntry, NutritionDay, NutritionTarget
-from progress.models import Goal, Measurement
+from progress.models import Measurement
 from training.models import WorkoutSession
 
 TODAY = timezone.localdate

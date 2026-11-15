@@ -117,3 +117,45 @@ class DatabaseAuthThrottleTests(APITestCase):
         req = Request(factory.post('/api/auth/login/', {'email': 'target@example.com'}, format='json', REMOTE_ADDR='192.0.2.50'), parsers=[JSONParser()])
         self.assertFalse(DatabaseAuthThrottle().allow_request(req, None))
         self.assertEqual(AuthThrottleBucket.objects.filter(attempts__gte=10).count(), 1)
+
+
+class AccountDeletionThrottleTests(APITestCase):
+    def test_repeated_wrong_passwords_are_limited_per_account_across_ips(self):
+        user = User.objects.create_user('delete-limit@primer.rs', 'jaka-lozinka-123')
+        self.client.force_authenticate(user)
+        for i in range(5):
+            response = self.client.post('/api/auth/delete-account/', {'password': 'not-the-password'},
+                                        format='json', REMOTE_ADDR=f'192.0.2.{i + 10}')
+            self.assertEqual(response.status_code, 400, response.data)
+        blocked = self.client.post('/api/auth/delete-account/', {'password': 'not-the-password'},
+                                   format='json', REMOTE_ADDR='203.0.113.250')
+        self.assertEqual(blocked.status_code, 429, blocked.data)
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())
+
+
+class ForwardedIpSettingsTests(APITestCase):
+    def test_untrusted_forwarded_for_is_ignored_in_direct_development(self):
+        from django.conf import settings
+        from django.test import override_settings
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+        from rest_framework.throttling import BaseThrottle
+
+        request = Request(APIRequestFactory().post('/api/auth/login/', {}, format='json',
+                                                  REMOTE_ADDR='192.0.2.42',
+                                                  HTTP_X_FORWARDED_FOR='1.1.1.1, 2.2.2.2'))
+        with override_settings(REST_FRAMEWORK={**settings.REST_FRAMEWORK, 'NUM_PROXIES': 0}):
+            self.assertEqual(BaseThrottle().get_ident(request), '192.0.2.42')
+
+    def test_vercel_proxy_count_selects_the_last_forwarded_address(self):
+        from django.conf import settings
+        from django.test import override_settings
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+        from rest_framework.throttling import BaseThrottle
+
+        request = Request(APIRequestFactory().post('/api/auth/login/', {}, format='json',
+                                                  REMOTE_ADDR='10.0.0.12',
+                                                  HTTP_X_FORWARDED_FOR='198.51.100.8, 203.0.113.9'))
+        with override_settings(REST_FRAMEWORK={**settings.REST_FRAMEWORK, 'NUM_PROXIES': 1}):
+            self.assertEqual(BaseThrottle().get_ident(request), '203.0.113.9')
