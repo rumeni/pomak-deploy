@@ -25,6 +25,11 @@ class RegisterView(generics.CreateAPIView):
     throttle_scope = 'auth'
     throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
 
+    def create(self, request, *args, **kwargs):
+        # New web registrations get an HttpOnly refresh cookie directly;
+        # older Android clients still receive the legacy refresh JSON body.
+        return output_tokens(request, super().create(request, *args, **kwargs))
+
 
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
