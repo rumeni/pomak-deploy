@@ -119,6 +119,20 @@ class EmailConfirmationTests(APITestCase):
         self.assertTrue(me.data['email_verification_required'])
         self.assertFalse(me.data['email_verified'])
         self.assertEqual(self.client.get('/api/nutrition/foods/').status_code, 403)
+        # A client cannot disable its own email-verification requirement.
+        bypass = self.client.patch('/api/auth/me/', {
+            'email_verification_required': False,
+        }, format='json')
+        self.assertEqual(bypass.status_code, 200, bypass.data)
+        self.assertTrue(bypass.data['email_verification_required'])
+        self.assertTrue(User.objects.get(email='verify@example.com').email_verification_required)
+
+        # Operators can disable enforcement during rollback without locking
+        # accounts that registered under the email-verification rollout.
+        with override_settings(ACCOUNT_EMAIL_ENABLED=False):
+            rolled_back = self.client.get('/api/auth/me/')
+            self.assertFalse(rolled_back.data['email_verification_required'])
+            self.assertEqual(self.client.get('/api/nutrition/foods/').status_code, 200)
 
         self.client.credentials()
         token = email_params(mail.outbox[0])['token']
