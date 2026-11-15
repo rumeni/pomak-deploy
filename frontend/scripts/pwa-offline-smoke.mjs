@@ -64,8 +64,16 @@ try {
   // SPA fallback must work when navigating to a deep link with no network.
   const routeResponse = await page.goto(url + '/trener', { waitUntil: 'domcontentloaded', timeout: 15000 })
   assert.equal(routeResponse?.status(), 200, 'Offline SPA route did not resolve')
-  assert.ok(await page.locator('#root').isVisible(), 'Offline SPA route is blank')
-  console.log('Offline /trener deep link renders')
+  // A visible #root alone is not enough: index.html renders this empty element
+  // even if JavaScript fails. Require actual React-rendered text while offline.
+  await page.waitForFunction(
+    () => /POMAK/i.test(document.querySelector('#root')?.textContent ?? ''),
+    null,
+    { timeout: 15000 },
+  )
+  const deepLinkText = await page.locator('#root').innerText()
+  assert.match(deepLinkText, /POMAK/i, 'Offline SPA deep link did not render React content')
+  console.log('Offline /trener deep link renders POMAK React content')
 
   await context.setOffline(false)
   console.log('PASS: real Chromium offline PWA service-worker smoke')
