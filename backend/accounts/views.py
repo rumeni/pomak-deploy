@@ -32,7 +32,20 @@ class LoginView(TokenObtainPairView):
     throttle_classes = [LoginRecoveryThrottle, AnonRateThrottle, ScopedRateThrottle]
 
     def post(self, request, *args, **kwargs):
-        return output_tokens(request, super().post(request, *args, **kwargs))
+        response = super().post(request, *args, **kwargs)
+        if web_request(request) and response.status_code < 400:
+            # A previous offline logout may not have reached the server.
+            # When a *new* password-verified web login succeeds, revoke the
+            # previous cookie before minting the replacement on this response.
+            # A DB failure must abort the login rather than leave two live
+            # refresh tokens. An expired/revoked old cookie is harmless.
+            previous = request.COOKIES.get('pomak.refresh')
+            if previous:
+                try:
+                    RefreshToken(previous).blacklist()
+                except TokenError:
+                    pass
+        return output_tokens(request, response)
 
     def throttled(self, request, wait):
         if getattr(self, 'login_challenge_required', False):
