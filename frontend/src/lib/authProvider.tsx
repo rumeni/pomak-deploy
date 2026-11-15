@@ -1,32 +1,13 @@
 import axios from 'axios'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import i18n, { changeLanguage, fromServerLanguage, toServerLanguage, type Language } from '../i18n'
 import { api } from './api'
+import { AuthContext, type RegisterData } from './authContext'
 import { setCurrentUserId } from './currentUser'
 import { tokens } from './tokens'
 import type { Me } from './types'
-
-export interface RegisterData {
-  email: string
-  password: string
-  displayName: string
-  accountType: 'client' | 'coach'
-}
-
-interface AuthState {
-  me: Me | undefined
-  loading: boolean
-  /** Prijava postoji, ali server nije dostupan, a podaci o korisniku nisu sačuvani na telefonu. */
-  unreachable: boolean
-  retry: () => void
-  login: (email: string, password: string) => Promise<void>
-  register: (data: RegisterData) => Promise<void>
-  logout: () => void
-}
-
-const AuthContext = createContext<AuthState | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
@@ -133,8 +114,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
-export function useAuth(): AuthState {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth mora biti unutar AuthProvider-a')
-  return ctx
-}

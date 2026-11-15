@@ -1,18 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { Exercise } from './api'
-import { EXERCISE_IMAGE_SLUGS } from './exerciseImages'
-
-type WithSlug = Pick<Exercise, 'name' | 'muscle'> & { slug?: string | null }
-
-/** Početni i završni položaj (Everkinetic crteži u public/exercises), ili null ako vežba nema crtež. */
-export function exerciseImageUrls(exercise: WithSlug): [string, string] | null {
-  const slug = exercise.slug
-  if (!slug || !EXERCISE_IMAGE_SLUGS.has(slug)) return null
-  const base = `${import.meta.env.BASE_URL}exercises/${slug}`
-  return [`${base}-1.svg`, `${base}-2.svg`]
-}
+import { exerciseImageUrls, type WithSlug } from './exerciseImageUrls'
 
 /** Mala sličica vežbe; bez crteža ujednačena ikonica (kardio ili snaga). */
 export function ExerciseThumb({ exercise, size = 'md' }: { exercise: WithSlug; size?: 'sm' | 'md' }) {

@@ -38,3 +38,11 @@ Local Python compilation can run without dependencies, but full Django/Vitest te
 - Known limitation: the email-account pre-auth rate limit can deny legitimate login after deliberate false attempts by another party. A future redesign needs a mechanism that still slows distributed password guessing without hard-locking a valid user.
 - Known limitation: authentication tokens are still stored in localStorage for the PWA/offline use case. Moving to HttpOnly cookies requires coordinated API, CSRF, PWA and mobile changes.
 - Six npm dev dependency advisories were previously reported and are not resolved by this backend PR.
+
+
+## Targeted login lockout follow-up
+
+- **Still open**: Issue #6, targeted lockout via the 10/min global account email quota. The proposed password-only bypass was **reverted** after an automated P1 review: it would let distributed attackers continue checking guesses against the password hash, effectively removing the account-wide protection. Do not ship a password-only bypass.
+- Safer next step: integrate an independent challenge such as Cloudflare Turnstile with server-side Siteverify, then test end-to-end on web and Capacitor before changing the quota. A Turnstile sitekey and secret must be configured; the app deliberately remains fail-closed until it is ready.
+- All five original frontend oxlint warnings were fixed by separating shared React hooks/helpers from component files and keying the trainer consent form by current server values. CI now rejects future oxlint warnings.
+- Six npm build-time advisories come from vite-plugin-pwa/Workbox and are tracked in Issue #9. No production npm advisories. Avoid an untested `npm audit fix --force` PWA downgrade.
