@@ -3,7 +3,8 @@ import { Capacitor } from '@capacitor/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
-import { api } from '../../lib/api'
+import { api, scopeIsCurrent, type AuthScope, type ScopedRequestConfig } from '../../lib/api'
+import { tokens } from '../../lib/tokens'
 import { diaryRequest, syncDiary } from '../diary/sync'
 import { syncOutbox } from './outbox'
 
@@ -27,14 +28,23 @@ export function useOutboxSync(ownerId: string | undefined): void {
     let stopped = false
 
     const run = async () => {
-      if (stopped) return
-      const report = await syncOutbox(ownerId, (payload) => api.post('/training/sessions/', payload))
+      // Capture a fresh auth generation on each attempt: refresh rotates tokens.
+      const scope: AuthScope = { ownerId, session: tokens.session() }
+      const stillCurrent = () => !stopped && scopeIsCurrent(scope)
+      const scopeKey = `${scope.session.generation}:${scope.session.refresh ?? ''}`
+      const requestConfig: ScopedRequestConfig = { __pomakScope: scope }
+      if (!stillCurrent()) return
+      const report = await syncOutbox(
+        ownerId, (payload) => api.post('/training/sessions/', payload, requestConfig), stillCurrent, scopeKey,
+      )
+      if (!stillCurrent()) return
       if (report.sent || report.rejected) await queryClient.invalidateQueries({ queryKey: ['sessions'] })
 
       const changedDays = await syncDiary(ownerId, (op) => {
         const { method, url, body } = diaryRequest(op)
-        return method === 'put' ? api.put(url, body) : api.delete(url)
-      })
+        return method === 'put' ? api.put(url, body, requestConfig) : api.delete(url, requestConfig)
+      }, stillCurrent, scopeKey)
+      if (!stillCurrent()) return
       if (changedDays.size) {
         await Promise.all([
           ...[...changedDays].map((date) => queryClient.invalidateQueries({ queryKey: ['diary', date] })),
@@ -42,9 +52,9 @@ export function useOutboxSync(ownerId: string | undefined): void {
         ])
       }
     }
-    const onEvent = () => void run()
+    const onEvent = () => { void run().catch(() => undefined) }
 
-    void run()
+    onEvent()
     window.addEventListener(SYNC_EVENT, onEvent)
     window.addEventListener('online', onEvent)
     const timer = setInterval(onEvent, INTERVAL_MS)

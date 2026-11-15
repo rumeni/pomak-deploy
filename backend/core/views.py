@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import status
@@ -21,7 +22,7 @@ class IdempotentCreateMixin:
             model = self.get_serializer_class().Meta.model
             try:
                 existing = model.objects.filter(pk=record_id).first()
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, DjangoValidationError):
                 raise ValidationError({'id': _('Invalid ID.')})
             if existing is not None:
                 if getattr(existing, f'{self.owner_field}_id') != request.user.pk:

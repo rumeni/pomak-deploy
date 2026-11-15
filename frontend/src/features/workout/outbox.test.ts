@@ -92,6 +92,28 @@ describe('syncOutbox', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it('promena naloga tokom slanja ne brise red koji pripada staroj sesiji', async () => {
+    await finishWorkout('u1', payload('a', '2026-09-30T12:00:00Z'), [])
+    await finishWorkout('u2', payload('b', '2026-09-30T12:00:00Z'), [])
+    let active = true
+    let complete!: () => void
+    let started!: () => void
+    const startedPromise = new Promise<void>((resolve) => { started = resolve })
+    const send = vi.fn(async () => {
+      started()
+      await new Promise<void>((resolve) => { complete = resolve })
+    })
+    const first = syncOutbox('u1', send, () => active, 'session-a')
+    await startedPromise
+    active = false
+    complete()
+    await first
+    expect(await db.outbox.get('a')).toBeDefined()
+    await syncOutbox('u2', async () => undefined, () => true, 'session-b')
+    expect(await db.outbox.get('b')).toBeUndefined()
+    expect(await db.outbox.get('a')).toBeDefined()
+  })
+
   it('istovremeni pozivi dele jedno slanje', async () => {
     await finishWorkout('u1', payload('a', '2026-09-30T12:00:00Z'), [])
     const send = vi.fn(async () => new Promise((r) => setTimeout(r, 10)))

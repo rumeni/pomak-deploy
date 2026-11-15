@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
@@ -58,7 +59,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void changeLanguage(accountLanguage).then(() => queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'me' }))
   }, [accountLanguage, queryClient])
 
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== 'pomak.access' && event.key !== 'pomak.refresh') return
+      queryClient.clear()
+      setHasToken(!!tokens.access())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [queryClient])
+
   const logout = useCallback(() => {
+    const refresh = tokens.refresh()
+    const access = tokens.access()
+    // Revoke on the server if online; local logout must not wait for the network.
+    if (access && refresh) {
+      void axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh }, {
+        headers: { Authorization: `Bearer ${access}` }, timeout: 5000,
+      }).catch(() => undefined)
+    }
     tokens.clear()
     setHasToken(false)
     queryClient.clear()

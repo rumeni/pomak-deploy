@@ -36,6 +36,23 @@ describe('syncDiary', () => {
     expect(await db.diaryOps.count()).toBe(3)
   })
 
+  it('stale response posle logout-a ne uklanja nesinhronizovanu stavku', async () => {
+    await db.diaryOps.add(row(1, {}))
+    let active = true
+    let finish!: () => void
+    let started!: () => void
+    const startedPromise = new Promise<void>((resolve) => { started = resolve })
+    const task = syncDiary('u1', async () => {
+      started()
+      await new Promise<void>((resolve) => { finish = resolve })
+    }, () => active, 'old-session')
+    await startedPromise
+    active = false
+    finish()
+    await task
+    expect(await db.diaryOps.get('op1')).toBeDefined()
+  })
+
   it('odbijena izmena dobija poruku, a sledeće idu dalje', async () => {
     await db.diaryOps.bulkAdd([row(1, {}), row(2, {})])
     const send = vi.fn(async (op: DiaryOpRow) => {
