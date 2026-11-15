@@ -198,6 +198,19 @@ describe('osvežavanje prijave', () => {
     expect(attempts).toBe(2)
   })
 
+  it('bez Web Locks potvrdjeno istekao cookie uklanja nevalidnu sesiju', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    let refreshCalls = 0
+    fakeServer((config) => {
+      if (config.url?.endsWith('/auth/refresh/')) refreshCalls += 1
+      return { status: 401, data: {} }
+    })
+    await expect(api.get('/auth/me/')).rejects.toBeInstanceOf(AxiosError)
+    expect(refreshCalls).toBe(2)
+    expect(tokens.hasSession()).toBe(false)
+    expect(tokens.access()).toBeNull()
+  })
+
   it('neuspela prijava (pogrešna lozinka) se ne ponavlja i ne osvežava', async () => {
     const seen: string[] = []
     fakeServer((config) => {
