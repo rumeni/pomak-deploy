@@ -31,10 +31,15 @@ class LoginView(TokenObtainPairView):
 
     def throttled(self, request, wait):
         if getattr(self, 'login_challenge_required', False):
-            raise Throttled(wait=wait, detail={
-                'detail': _('Too many sign-in attempts. Complete verification to try again.'),
-                'code': 'login_verification_required',
-            })
+            # DRF's Throttled constructor appends the retry duration to a
+            # STRING detail. Give it a string first, then add our stable
+            # machine-readable code to the structured response.
+            exc = Throttled(
+                wait=wait,
+                detail=_('Too many sign-in attempts. Complete verification to try again.'),
+            )
+            exc.detail = {'detail': exc.detail, 'code': 'login_verification_required'}
+            raise exc
         return super().throttled(request, wait)
 
 
