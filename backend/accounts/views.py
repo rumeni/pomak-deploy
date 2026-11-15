@@ -3,7 +3,7 @@ from django.utils.encoding import force_str
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status
-from rest_framework.exceptions import Throttled, ValidationError
+from rest_framework.exceptions import NotAuthenticated, Throttled, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 from rest_framework_simplejwt.exceptions import TokenError
@@ -59,15 +59,19 @@ class RefreshView(TokenRefreshView):
 
 
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
+    # Cookie-only web logout works even after a reload cleared the access token.
+    # Legacy clients without the explicit web header still require Bearer auth.
+    permission_classes = [AllowAny]
 
     def post(self, request):
+        if not web_request(request) and not request.user.is_authenticated:
+            raise NotAuthenticated()
         token = incoming_refresh(request)
         if not isinstance(token, str) or not token:
             raise ValidationError({'refresh': _('Refresh token is required.')})
         try:
             refresh = RefreshToken(token)
-            if str(refresh.get('user_id')) != str(request.user.pk):
+            if request.user.is_authenticated and str(refresh.get('user_id')) != str(request.user.pk):
                 raise ValidationError({'refresh': _('Invalid refresh token.')})
             refresh.blacklist()
         except TokenError:
