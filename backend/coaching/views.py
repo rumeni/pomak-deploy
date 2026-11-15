@@ -246,7 +246,7 @@ class CoachClientView(APIView):
                  'feeling': x.feeling, 'notes': x.notes,
                  'exercises': [
                      {'name': item.exercise.name, 'sets': [
-                         {'reps': setlog.reps, 'weight_kg': str(setlog.weight_kg) if setlog.weight_kg is not None else None,
+                         {'set_type': setlog.set_type, 'reps': setlog.reps, 'weight_kg': str(setlog.weight_kg) if setlog.weight_kg is not None else None,
                           'duration_seconds': setlog.duration_seconds, 'distance_m': setlog.distance_m}
                          for setlog in item.sets.all()
                      ]}
