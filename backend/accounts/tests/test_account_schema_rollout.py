@@ -4,6 +4,8 @@ from io import StringIO
 
 from django.core.management import call_command
 from django.test import TestCase
+from django.db import connection
+from django.db.migrations.loader import MigrationLoader
 
 from accounts.models import User
 
@@ -23,3 +25,16 @@ class AccountSchemaRolloutTests(TestCase):
         self.assertIn('EMAIL_VERIFICATION_REQUIRED', sql)
         self.assertIn('DEFAULT', sql)
         self.assertNotIn('DROP DEFAULT', sql)
+
+    def test_legacy_orm_can_insert_user_without_new_columns(self):
+        # Use the actual historical model from before accounts.0006, exactly
+        # as the still-running old backend would during the schema-first rollout.
+        loader = MigrationLoader(connection)
+        legacy_apps = loader.project_state([('accounts', '0005_auththrottlebucket')]).apps
+        LegacyUser = legacy_apps.get_model('accounts', 'User')
+        legacy = LegacyUser.objects.create(
+            email='legacy-db-default@example.com', password='!disabled',
+        )
+        user = User.objects.get(pk=legacy.pk)
+        self.assertEqual(user.session_version, 0)
+        self.assertFalse(user.email_verification_required)
