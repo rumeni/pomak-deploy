@@ -125,7 +125,7 @@ REST_FRAMEWORK = {
     # Direct/local Django must ignore client-supplied forwarding headers instead.
     'NUM_PROXIES': config('DRF_NUM_PROXIES', default=1 if is_vercel else 0, cast=int),
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'accounts.authentication.SessionVersionJWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -141,6 +141,30 @@ REST_FRAMEWORK = {
         'auth': '10/min',
     },
 }
+
+# Account emails are disabled until the transactional email provider and
+# the web/Android verification flows are tested. SMTP secrets stay in Vercel.
+ACCOUNT_EMAIL_ENABLED = config('ACCOUNT_EMAIL_ENABLED', default=False, cast=bool)
+ACCOUNT_EMAIL_BASE_URL = config('ACCOUNT_EMAIL_BASE_URL', default='')
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='')
+PASSWORD_RESET_TIMEOUT = 30 * 60  # 30 minutes
+EMAIL_VERIFICATION_TIMEOUT = 24 * 60 * 60  # 24 hours
+if ACCOUNT_EMAIL_ENABLED and not DEBUG:
+    from urllib.parse import urlsplit
+
+    base = urlsplit(ACCOUNT_EMAIL_BASE_URL)
+    if (base.scheme != 'https' or not base.hostname or base.username or base.password
+            or base.query or base.fragment or base.path not in ('', '/')
+            or not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD or not DEFAULT_FROM_EMAIL):
+        raise ImproperlyConfigured(
+            'Account emails require HTTPS ACCOUNT_EMAIL_BASE_URL and encrypted SMTP sender credentials.'
+        )
 
 # The recovery path is OFF until the web/Android widget and Siteverify
 # credentials have been manually tested and deployed together.
