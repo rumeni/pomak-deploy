@@ -1,8 +1,35 @@
+import { Capacitor } from '@capacitor/core'
+
 const ACCESS = 'pomak.access'
 const REFRESH = 'pomak.refresh'
 const SESSION = 'pomak.session-id'
 // Poslednji poznati podaci o korisniku: aplikacija pokrenuta bez interneta radi sa njima.
 const ME = 'pomak.me'
+const EPOCH = 'pomak.refresh-epoch' // Non-secret cross-tab rotation signal.
+const PENDING_WEB_LOGOUT = 'pomak.pending-logout' // Non-secret retry marker, never a JWT.
+const isNative = () => Capacitor.isNativePlatform()
+let accessToken: string | null = null
+let accessSession: string | null = null
+let nativeQueue = Promise.resolve()
+let loginIntent = 0
+
+async function nativeOperation<T>(run: () => Promise<T>): Promise<T> {
+  const job = nativeQueue.then(run)
+  nativeQueue = job.then(() => undefined, () => undefined)
+  return job
+}
+async function nativeRefresh(value?: string | null): Promise<string | null> {
+  return nativeOperation(async () => {
+    const { SecureStorage } = await import('@aparajita/capacitor-secure-storage')
+    if (value === null) { await SecureStorage.removeItem('pomak.refresh'); return null }
+    if (typeof value === 'string') { await SecureStorage.setItem('pomak.refresh', value); return value }
+    return SecureStorage.getItem('pomak.refresh')
+  })
+}
+function discardLegacy() {
+  localStorage.removeItem(ACCESS)
+  localStorage.removeItem(REFRESH)
+}
 
 // Stable for one login, including every access/refresh token rotation. Changes only
 // on login/logout/account switch and is shared by all tabs on the same origin.
@@ -27,7 +54,7 @@ function currentSessionId(): string | null {
   if (existing) return existing
   // Adopt an existing login created before session IDs were introduced without
   // making users sign in again after an app upgrade.
-  if (!read(ACCESS) || !read(REFRESH)) return null
+  if (!read(REFRESH)) return null
   try {
     localStorage.setItem(SESSION, newId())
     return read(SESSION)
@@ -37,11 +64,22 @@ function currentSessionId(): string | null {
 }
 
 export const tokens = {
-  access: () => read(ACCESS),
-  refresh: () => read(REFRESH),
+  access: () => accessSession === currentSessionId() ? accessToken : null,
+  refresh: async () => isNative() ? (await nativeRefresh()) ?? read(REFRESH) : read(REFRESH),
+  hasSession: () => !!currentSessionId(),
+  rotationEpoch: () => read(EPOCH),
+  pendingWebLogout: () => read(PENDING_WEB_LOGOUT),
+  queueWebLogout: (): string => {
+    const marker = newId()
+    localStorage.setItem(PENDING_WEB_LOGOUT, marker)
+    return marker
+  },
+  completeWebLogout(marker: string) {
+    if (read(PENDING_WEB_LOGOUT) === marker) localStorage.removeItem(PENDING_WEB_LOGOUT)
+  },
   /** JWT subject is a sanity check; the server still validates the signature. */
   userId: (): string | null => {
-    const jwt = read(ACCESS)
+    const jwt = tokens.access()
     if (!jwt) return null
     try {
       const payload = jwt.split('.')[1]
@@ -54,21 +92,57 @@ export const tokens = {
   },
   session: (): TokenSession => ({ id: currentSessionId() }),
   isCurrent: (session: TokenSession): boolean => !!session.id && session.id === currentSessionId(),
-  /** A fresh login creates a new logical session, even for the same account. */
-  set(access: string, refresh: string) {
-    localStorage.setItem(ACCESS, access)
-    localStorage.setItem(REFRESH, refresh)
-    localStorage.removeItem(ME)
-    // Publish identity last, after the new tokens exist, so other tabs do not
-    // observe the previous user's credentials as part of the new login.
-    localStorage.setItem(SESSION, newId())
+  /** Fresh login changes identity; rotation preserves it across requests/tabs. */
+  async set(access: string, refresh: string | null) {
+    const intent = ++loginIntent
+    const publish = () => {
+      discardLegacy()
+      localStorage.removeItem(ME)
+      const id = newId()
+      accessToken = access
+      accessSession = id
+      localStorage.setItem(SESSION, id)
+    }
+    if (!isNative()) { publish(); return }
+    if (!refresh) throw new Error('Native login requires a refresh token')
+    // Include the session publication in the same queue as secure writes.
+    await nativeOperation(async () => {
+      const { SecureStorage } = await import('@aparajita/capacitor-secure-storage')
+      if (intent !== loginIntent) throw new Error('Login superseded before secure write')
+      await SecureStorage.setItem(REFRESH, refresh)
+      if (intent !== loginIntent) {
+        await SecureStorage.removeItem(REFRESH)
+        throw new Error('Login canceled during secure write')
+      }
+      publish()
+    })
   },
-  /** Rotation is NOT a new login: never invalidate in-flight same-account work. */
-  rotate(access: string, refresh: string, session: TokenSession, expectedRefresh: string): boolean {
-    if (!tokens.isCurrent(session) || read(REFRESH) !== expectedRefresh) return false
-    localStorage.setItem(REFRESH, refresh)
-    localStorage.setItem(ACCESS, access)
-    return true
+  async rotate(access: string, refresh: string | null, session: TokenSession, expectedRefresh: string | null): Promise<boolean> {
+    const publish = () => {
+      discardLegacy()
+      accessToken = access
+      accessSession = session.id
+    }
+    if (!isNative()) {
+      if (!tokens.isCurrent(session) || read(REFRESH) !== expectedRefresh) return false
+      publish()
+      localStorage.setItem(EPOCH, newId())
+      return true
+    }
+    // Compare, write and recheck within ONE Keystore queue transaction.
+    return nativeOperation(async () => {
+      if (!tokens.isCurrent(session) || !refresh) return false
+      const { SecureStorage } = await import('@aparajita/capacitor-secure-storage')
+      const stored = (await SecureStorage.getItem(REFRESH)) ?? read(REFRESH)
+      if (!tokens.isCurrent(session) || stored !== expectedRefresh) return false
+      await SecureStorage.setItem(REFRESH, refresh)
+      if (!tokens.isCurrent(session)) {
+        await SecureStorage.removeItem(REFRESH)
+        return false
+      }
+      publish()
+      return true
+    })
   },
   cachedMe<T>(): T | undefined {
     const raw = read(ME)
@@ -85,10 +159,13 @@ export const tokens = {
       // bez keša aplikacija i dalje radi sa internetom
     }
   },
-  clear() {
-    localStorage.removeItem(ACCESS)
-    localStorage.removeItem(REFRESH)
+  clear(): Promise<void> {
+    ++loginIntent // Invalidate pending native login publication before queued deletion.
+    accessToken = null
+    accessSession = null
+    discardLegacy()
     localStorage.removeItem(ME)
     localStorage.removeItem(SESSION)
+    return isNative() ? nativeRefresh(null).then(() => undefined) : Promise.resolve()
   },
 }

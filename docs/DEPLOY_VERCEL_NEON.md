@@ -58,12 +58,12 @@ Deployment: verify `GET https://<api-domain>/api/health/` returns `{"status":"ok
 Create another project linked to the **same** GitHub repository, name `pomak-web`, Root Directory `frontend`, Framework `vite`. Set a **Production** environment variable before building:
 
 ```
-VITE_API_URL=https://<api-domain>/api
+VITE_API_URL=/api
 ```
 
-This must be a public *URL*, not a secret. The value is compiled into JavaScript at build time. `frontend/vercel.json` rewrites frontend page paths to `index.html`, preserving React Router deep links.
+This must be a public *URL*, not a secret. The value is compiled into JavaScript at build time. `frontend/vercel.json` proxies `/api/:path*` to `https://pomak-api.vercel.app/api/:path*` **before** the SPA fallback. The API thus appears same-origin to the browser so `HttpOnly; Secure; SameSite=Strict` refresh cookies work without credentialed CORS. Page paths still fall back to `index.html`.
 
-Do not use the React app's localhost API fallback in production. Verify in the browser's network tab that requests go to the deployed API project and that CORS preflight (`OPTIONS`) requests succeed.
+Do not use the React app's localhost API fallback or the direct cross-site API URL in **production web**. Verify browser requests target the web origin `/api` and return cookie-backed login/refresh. Android builds must use their own direct HTTPS `VITE_API_URL=https://pomak-api.vercel.app/api` and be rebuilt separately.
 
 ## 4. Smoke tests
 
@@ -80,7 +80,7 @@ Do not use the React app's localhost API fallback in production. Verify in the b
 - `DisallowedHost` → configure `ALLOWED_HOSTS` with the exact API hostname; redeploy.
 - CORS error → update `CORS_ALLOWED_ORIGINS` with the exact **frontend origin**; redeploy.
 - Database errors on `/api/auth/...` → verify Neon free database is provisioned, `DATABASE_URL` exists on API project, and migrations ran.
-- Missing `VITE_API_URL` → frontend points at same-origin `/api`, where there is no API in a two-project deployment; set variable on the frontend project and redeploy.
+- API proxy errors → verify the `/api/:path*` rewrite precedes the SPA fallback and `VITE_API_URL=/api` for web Production; older web deployments need the proxy before new cookie-only clients can ship.
 - Django admin static errors → check `collectstatic` in Vercel Django build logs; `STATIC_ROOT` is already configured.
 
 The `docker-compose.yml` file is intended for **local** development only, not for Vercel. Never deploy the local development DB or `.env` files.

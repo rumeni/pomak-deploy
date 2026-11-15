@@ -3,8 +3,8 @@ from django.utils.encoding import force_str
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status
-from rest_framework.exceptions import Throttled, ValidationError
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import NotAuthenticated, Throttled, ValidationError
+from rest_framework.permissions import AllowAny
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -15,6 +15,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .export import build_zip
 from .serializers import LoginSerializer, MeSerializer, RegisterSerializer
+from .token_transport import clear_refresh_cookie, incoming_refresh, output_tokens, web_request
 from .throttles import DatabaseAccountDeletionThrottle, DatabaseAuthThrottle, LoginRecoveryThrottle
 
 
@@ -29,6 +30,9 @@ class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     throttle_scope = 'auth'
     throttle_classes = [LoginRecoveryThrottle, AnonRateThrottle, ScopedRateThrottle]
+
+    def post(self, request, *args, **kwargs):
+        return output_tokens(request, super().post(request, *args, **kwargs))
 
     def throttled(self, request, wait):
         if getattr(self, 'login_challenge_required', False):
@@ -48,22 +52,38 @@ class RefreshView(TokenRefreshView):
     throttle_scope = 'auth'
     throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
 
+    def post(self, request, *args, **kwargs):
+        if web_request(request) and not request.data.get('refresh') and request.COOKIES.get('pomak.refresh'):
+            request._full_data = {**request.data, 'refresh': incoming_refresh(request)}
+        return output_tokens(request, super().post(request, *args, **kwargs))
+
 
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
+    # Cookie-only web logout works even after a reload cleared the access token.
+    # Legacy clients without the explicit web header still require Bearer auth.
+    permission_classes = [AllowAny]
 
     def post(self, request):
-        token = request.data.get('refresh')
+        if not web_request(request) and not request.user.is_authenticated:
+            raise NotAuthenticated()
+        token = incoming_refresh(request)
         if not isinstance(token, str) or not token:
+            # Offline web logout can be retried after the cookie has expired.
+            if web_request(request):
+                return clear_refresh_cookie(Response(status=status.HTTP_204_NO_CONTENT))
             raise ValidationError({'refresh': _('Refresh token is required.')})
         try:
             refresh = RefreshToken(token)
-            if str(refresh.get('user_id')) != str(request.user.pk):
+            if request.user.is_authenticated and str(refresh.get('user_id')) != str(request.user.pk):
                 raise ValidationError({'refresh': _('Invalid refresh token.')})
             refresh.blacklist()
         except TokenError:
+            # Missing/revoked cookie is already logged out; always clear it.
+            if web_request(request) and not request.data.get('refresh'):
+                return clear_refresh_cookie(Response(status=status.HTTP_204_NO_CONTENT))
             raise ValidationError({'refresh': _('Invalid refresh token.')}) from None
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        return clear_refresh_cookie(response) if web_request(request) else response
 
 
 class MeView(generics.RetrieveUpdateAPIView):

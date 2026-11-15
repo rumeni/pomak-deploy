@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from accounts.models import User
@@ -103,6 +106,13 @@ class TokenRevocationTests(APITestCase):
 
 
 class DatabaseAuthThrottleTests(APITestCase):
+    def setUp(self):
+        # Keep the PostgreSQL bucket window stable across slow CI runs.
+        self.clock = patch('accounts.throttles.timezone.now',
+                           return_value=timezone.now().replace(second=10, microsecond=0))
+        self.clock.start()
+        self.addCleanup(self.clock.stop)
+
     def test_account_limit_shared_across_ip_addresses(self):
         from accounts.models import AuthThrottleBucket
         from accounts.throttles import DatabaseAuthThrottle
@@ -120,6 +130,13 @@ class DatabaseAuthThrottleTests(APITestCase):
 
 
 class AccountDeletionThrottleTests(APITestCase):
+    def setUp(self):
+        # Keep the PostgreSQL bucket window stable across slow CI runs.
+        self.clock = patch('accounts.throttles.timezone.now',
+                           return_value=timezone.now().replace(second=10, microsecond=0))
+        self.clock.start()
+        self.addCleanup(self.clock.stop)
+
     def test_repeated_wrong_passwords_are_limited_per_account_across_ips(self):
         user = User.objects.create_user('delete-limit@primer.rs', 'jaka-lozinka-123')
         self.client.force_authenticate(user)

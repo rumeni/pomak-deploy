@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../i18n', () => ({ default: { language: 'sr-Latn' }, toServerLanguage: () => 'sr' }))
 
-import { api } from './api'
+import { api, revokePendingWebLogout, webHeaders, withAuthLock } from './api'
 import { tokens } from './tokens'
 
 type Handler = (config: InternalAxiosRequestConfig) => { status: number; data: unknown }
@@ -27,7 +27,7 @@ beforeEach(() => {
     setItem: (k: string, v: string) => void store.set(k, v),
     removeItem: (k: string) => void store.delete(k),
   })
-  tokens.set('stari', 'refresh-1')
+  void tokens.set('stari', null)
 })
 
 afterEach(() => vi.unstubAllGlobals())
@@ -65,7 +65,7 @@ describe('osvežavanje prijave', () => {
     finish({ status: 200, data: { access: 'late', refresh: 'late-refresh' } })
     await expect(request).rejects.toBeTruthy()
     expect(tokens.access()).toBeNull()
-    expect(tokens.refresh()).toBeNull()
+    expect(await tokens.refresh()).toBeNull()
   })
 
   it('paralelni zahtevi sa starim access tokenom koriste istu rotaciju', async () => {
@@ -94,16 +94,16 @@ describe('osvežavanje prijave', () => {
     finishLate401()
     await expect(second).resolves.toMatchObject({ data: { ok: true } })
     expect(refreshCalls).toBe(1)
-    expect(tokens.refresh()).toBe('refresh-2')
+    expect(await tokens.refresh()).toBeNull()
   })
 
-  it('promena refresh tokena ne invalidira isti login, dok ga logout i novi login invalidiraju', () => {
+  it('rotacija ne invalidira isti login, dok ga logout i novi login invalidiraju', async () => {
     const old = tokens.session()
-    expect(tokens.rotate('novi', 'refresh-2', old, 'refresh-1')).toBe(true)
+    expect(await tokens.rotate('novi', null, old, null)).toBe(true)
     expect(tokens.isCurrent(old)).toBe(true)
     tokens.clear()
     expect(tokens.isCurrent(old)).toBe(false)
-    tokens.set('pristup-drugog', 'refresh-drugog')
+    await tokens.set('pristup-drugog', null)
     expect(tokens.isCurrent(old)).toBe(false)
   })
 
@@ -115,7 +115,7 @@ describe('osvežavanje prijave', () => {
         lockCalls += 1
         // Simulates another tab winning the lock, publishing its fresh tokens,
         // then releasing the lock for the waiting tab.
-        expect(tokens.rotate('access-iz-drugog-taba', 'refresh-2', tokens.session(), 'refresh-1')).toBe(true)
+        expect(await tokens.rotate('access-iz-drugog-taba', null, tokens.session(), null)).toBe(true)
         return callback()
       },
     } })
@@ -133,6 +133,181 @@ describe('osvežavanje prijave', () => {
     expect(lockCalls).toBe(1)
     expect(refreshCalls).toBe(0)
     expect(tokens.access()).toBe('access-iz-drugog-taba')
+  })
+
+  it('web access/refresh JWTs nikada nisu zapisani u localStorage', async () => {
+    await tokens.set('access-jwt', null)
+    expect(tokens.access()).toBe('access-jwt')
+    expect(localStorage.getItem('pomak.access')).toBeNull()
+    expect(localStorage.getItem('pomak.refresh')).toBeNull()
+    expect(tokens.hasSession()).toBe(true)
+    await tokens.rotate('rotated-access', null, tokens.session(), null)
+    expect(localStorage.getItem('pomak.access')).toBeNull()
+    expect(localStorage.getItem('pomak.refresh')).toBeNull()
+  })
+
+  it('offline start zadržava session marker i keširan profil bez access JWT-a', async () => {
+    tokens.setCachedMe({ id: 'cached-owner' })
+    expect(tokens.hasSession()).toBe(true)
+    // A fresh page has no access token, but still knows the cached identity.
+    await tokens.rotate('online-access', null, tokens.session(), null)
+    expect(tokens.cachedMe<{ id: string }>()?.id).toBe('cached-owner')
+    expect(localStorage.getItem('pomak.session-id')).not.toBeNull()
+  })
+
+  it('migrira stari web refresh jednim pozivom i uklanja oba legacy JWT-a', async () => {
+    localStorage.setItem('pomak.access', 'legacy-access')
+    localStorage.setItem('pomak.refresh', 'legacy-refresh')
+    let saw: unknown
+    fakeServer((config) => {
+      if (config.url?.endsWith('/auth/refresh/')) {
+        saw = config.data
+        expect(config.headers['X-Pomak-Client']).toBe('web')
+        return { status: 200, data: { access: 'migrated-access' } }
+      }
+      return config.headers.Authorization === 'Bearer migrated-access'
+        ? { status: 200, data: { ok: true } }
+        : { status: 401, data: {} }
+    })
+    await api.get('/auth/me/')
+    expect(saw).toContain('legacy-refresh')
+    expect(localStorage.getItem('pomak.access')).toBeNull()
+    expect(localStorage.getItem('pomak.refresh')).toBeNull()
+  })
+
+  it('bez Web Locks neuspešna paralelna rotacija ne odjavljuje drugi tab', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    let attempts = 0
+    fakeServer((config) => {
+      if (config.url?.endsWith('/auth/refresh/')) {
+        attempts += 1
+        if (attempts === 1) {
+          // Another tab won the cookie rotation; only a non-secret epoch is shared.
+          localStorage.setItem('pomak.refresh-epoch', 'other-tab-won')
+          return { status: 401, data: {} }
+        }
+        return { status: 200, data: { access: 'recovered-access' } }
+      }
+      return config.headers.Authorization === 'Bearer recovered-access'
+        ? { status: 200, data: { ok: true } } : { status: 401, data: {} }
+    })
+    const session = tokens.session()
+    const response = await api.get('/auth/me/')
+    expect(response.status).toBe(200)
+    expect(tokens.isCurrent(session)).toBe(true)
+    expect(attempts).toBe(2)
+  })
+
+  it('bez Web Locks potvrdjeno istekao cookie uklanja nevalidnu sesiju', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    let refreshCalls = 0
+    fakeServer((config) => {
+      if (config.url?.endsWith('/auth/refresh/')) refreshCalls += 1
+      return { status: 401, data: {} }
+    })
+    await expect(api.get('/auth/me/')).rejects.toBeInstanceOf(AxiosError)
+    expect(refreshCalls).toBe(2)
+    expect(tokens.hasSession()).toBe(false)
+    expect(tokens.access()).toBeNull()
+  })
+
+  it('offline logout čuva samo neosetljivi marker i opoziva cookie po povratku mreže', async () => {
+    const marker = tokens.queueWebLogout()
+    await tokens.clear()
+    expect(tokens.pendingWebLogout()).toBe(marker)
+    expect(localStorage.getItem('pomak.access')).toBeNull()
+    expect(localStorage.getItem('pomak.refresh')).toBeNull()
+
+    fakeServer(() => ({ status: 503, data: {} }))
+    await expect(revokePendingWebLogout()).rejects.toBeInstanceOf(AxiosError)
+    expect(tokens.pendingWebLogout()).toBe(marker)
+
+    let revocations = 0
+    fakeServer((config) => {
+      expect(config.url).toContain('/auth/logout/')
+      expect(config.headers['X-Pomak-Client']).toBe('web')
+      expect(config.headers.Authorization).toBeUndefined()
+      expect(config.data).toBe('{}')
+      revocations += 1
+      return { status: 204, data: null }
+    })
+    await revokePendingWebLogout()
+    expect(revocations).toBe(1)
+    expect(tokens.pendingWebLogout()).toBeNull()
+    await revokePendingWebLogout()
+    expect(revocations).toBe(1)
+  })
+
+  it('kasni uspešan opoziv ne briše noviju oznaku za logout', async () => {
+    const first = tokens.queueWebLogout()
+    let finish!: (value: { status: number; data: unknown }) => void
+    const done = new Promise<{ status: number; data: unknown }>((resolve) => { finish = resolve })
+    const adapter = async (config: InternalAxiosRequestConfig) => {
+      const result = await done
+      return { ...result, statusText: '', headers: new AxiosHeaders(), config }
+    }
+    axios.defaults.adapter = adapter
+    const inFlight = revokePendingWebLogout()
+    const second = tokens.queueWebLogout()
+    finish({ status: 204, data: null })
+    await inFlight
+    expect(first).not.toBe(second)
+    expect(tokens.pendingWebLogout()).toBe(second)
+  })
+
+  it('bez Web Locks pozadinska odjava ne može obrisati cookie nove prijave', async () => {
+    vi.stubGlobal('navigator', { onLine: true }) // no navigator.locks
+    tokens.queueWebLogout()
+    await tokens.clear()
+    let releaseLogout!: () => void
+    let signalLogout!: () => void
+    const blockedLogout = new Promise<void>((resolve) => { releaseLogout = resolve })
+    const logoutStarted = new Promise<void>((resolve) => { signalLogout = resolve })
+    let cookie: string | null = 'previous-user-cookie'
+    const order: string[] = []
+    axios.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+      if (config.url?.endsWith('/auth/logout/')) {
+        order.push('logout:start')
+        signalLogout()
+        await blockedLogout // delayed Set-Cookie deletion from the old account
+        cookie = null
+        order.push('logout:end')
+        return { status: 204, data: null, statusText: '', headers: new AxiosHeaders(), config }
+      }
+      order.push('login')
+      cookie = 'new-user-cookie'
+      return { status: 200, data: { access: 'new-access' }, statusText: '', headers: new AxiosHeaders(), config }
+    }
+    const retry = withAuthLock(() => revokePendingWebLogout())
+    await logoutStarted
+    const login = withAuthLock(async () => {
+      await revokePendingWebLogout()
+      await axios.post(`${api.defaults.baseURL}/auth/login/`, {}, { headers: webHeaders() })
+      await tokens.set('new-access', null)
+    })
+    await Promise.resolve()
+    expect(order).toEqual(['logout:start'])
+    releaseLogout()
+    await Promise.all([retry, login])
+    expect(order).toEqual(['logout:start', 'logout:end', 'login'])
+    expect(cookie).toBe('new-user-cookie')
+    expect(tokens.pendingWebLogout()).toBeNull()
+    expect(tokens.access()).toBe('new-access')
+  })
+
+  it('bez Web Locks neuspešna odjava ne blokira naredni auth zahtev', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    tokens.queueWebLogout()
+    let calls = 0
+    fakeServer(() => {
+      calls += 1
+      return calls === 1 ? { status: 503, data: {} } : { status: 204, data: null }
+    })
+    await expect(withAuthLock(() => revokePendingWebLogout())).rejects.toBeInstanceOf(AxiosError)
+    expect(tokens.pendingWebLogout()).not.toBeNull()
+    await withAuthLock(() => revokePendingWebLogout())
+    expect(calls).toBe(2)
+    expect(tokens.pendingWebLogout()).toBeNull()
   })
 
   it('neuspela prijava (pogrešna lozinka) se ne ponavlja i ne osvežava', async () => {

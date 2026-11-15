@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import i18n, { changeLanguage, fromServerLanguage, toServerLanguage, type Language } from '../i18n'
-import { api } from './api'
+import { api, revokePendingWebLogout, webHeaders, withAuthLock } from './api'
 import { AuthContext, type RegisterData } from './authContext'
 import { setCurrentUserId } from './currentUser'
 import { tokens } from './tokens'
@@ -11,10 +11,7 @@ import type { Me } from './types'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
-  const [hasToken, setHasToken] = useState(() => {
-    tokens.session() // Upgrade an existing login to a persistent cross-tab identity.
-    return !!tokens.access()
-  })
+  const [hasToken, setHasToken] = useState(() => tokens.hasSession())
 
   const { data: me, isLoading, isError, refetch } = useQuery({
     queryKey: ['me'],
@@ -46,26 +43,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       // Token rotation is not a login/logout: do not discard the query cache.
-      if (event.key !== 'pomak.session-id' && !(event.key === 'pomak.access' && event.newValue === null)) return
+      if (event.key !== 'pomak.session-id') return
       queryClient.clear()
-      setHasToken(!!tokens.access())
+      setHasToken(tokens.hasSession())
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [queryClient])
 
-  const logout = useCallback(() => {
-    const refresh = tokens.refresh()
-    const access = tokens.access()
-    // Revoke on the server if online; local logout must not wait for the network.
-    if (access && refresh) {
-      void axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh }, {
-        headers: { Authorization: `Bearer ${access}` }, timeout: 5000,
-      }).catch(() => undefined)
+  // Logout may have happened offline. Retry cookie revocation after reconnect
+  // and on a later launch; only a non-secret pending marker survives locally.
+  useEffect(() => {
+    if (!Object.keys(webHeaders()).length) return
+    const retry = () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+      void withAuthLock(() => revokePendingWebLogout()).catch(() => undefined)
     }
-    tokens.clear()
+    window.addEventListener('online', retry)
+    retry()
+    return () => window.removeEventListener('online', retry)
+  }, [])
+
+  const logout = useCallback(() => {
+    const pendingRefresh = tokens.refresh()
+    const access = tokens.access()
+    const isWeb = Object.keys(webHeaders()).length > 0
+    if (isWeb) tokens.queueWebLogout()
+    // Queue cookie revocation BEFORE a possible new login takes the same lock.
+    const revoke = withAuthLock(async () => {
+      const refresh = await pendingRefresh
+      if (isWeb) {
+        await revokePendingWebLogout(refresh)
+      } else if (access && refresh) {
+        await axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh }, {
+          headers: { Authorization: `Bearer ${access}` }, timeout: 5000,
+        })
+      } else if (refresh) {
+        const { data } = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, { refresh }, { timeout: 5000 })
+        await axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh: data.refresh ?? refresh }, {
+          headers: { Authorization: `Bearer ${data.access}` }, timeout: 5000,
+        })
+      }
+    })
+    void tokens.clear() // Offline local logout never awaits the network.
     setHasToken(false)
     queryClient.clear()
+    void revoke.catch(() => undefined)
   }, [queryClient])
 
   useEffect(() => {
@@ -75,24 +98,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string, turnstileToken?: string) => {
-      const { data } = await api.post('/auth/login/', { email, password, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) })
-      tokens.set(data.access, data.refresh)
-      setHasToken(true)
+      await withAuthLock(async () => {
+        await revokePendingWebLogout()
+        const { data } = await api.post('/auth/login/', { email, password, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) })
+        await tokens.set(data.access, data.refresh ?? null)
+        setHasToken(true)
+      })
     },
     [],
   )
 
   const register = useCallback(
     async ({ email, password, displayName, accountType }: RegisterData) => {
-      const { data } = await api.post('/auth/register/', {
-        email,
-        password,
-        display_name: displayName,
-        account_type: accountType,
-        language: toServerLanguage(i18n.language as Language),
+      await withAuthLock(async () => {
+        await revokePendingWebLogout()
+        const { data } = await api.post('/auth/register/', {
+          email,
+          password,
+          display_name: displayName,
+          account_type: accountType,
+          language: toServerLanguage(i18n.language as Language),
+        })
+        if (Object.keys(webHeaders()).length) {
+          // /register is intentionally legacy for older APKs. Immediately
+          // exchange its one-time JSON refresh for a web-only HttpOnly cookie.
+          const migrated = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {
+            refresh: data.refresh,
+          }, { headers: webHeaders(), timeout: 15000 })
+          await tokens.set(migrated.data.access, null)
+        } else {
+          await tokens.set(data.access, data.refresh)
+        }
+        setHasToken(true)
       })
-      tokens.set(data.access, data.refresh)
-      setHasToken(true)
     },
     [],
   )
