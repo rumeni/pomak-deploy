@@ -9,7 +9,7 @@ export function AuthLayout({ title, compact = false, children }: { title: string
   return (
     <div className={`auth-stage pt-safe pb-safe ${compact ? 'auth-stage--compact' : ''}`}>
       <div className="topo-layer" aria-hidden />
-      <aside className="auth-aside" aria-hidden>
+      <aside className="auth-aside">
         <span className="brand-wordmark">POMAK</span>
         <p className="auth-aside-title">
           {t('common.tagline')
@@ -22,7 +22,7 @@ export function AuthLayout({ title, compact = false, children }: { title: string
       </aside>
       <main className="auth-panel relative">
         <div className="absolute right-5 top-5"><LanguageMenu /></div>
-        <div className="auth-panel-brand">
+        <div className="auth-panel-brand" aria-hidden={!compact}>
           <span className="brand-wordmark text-ink">POMAK</span>
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">{t('common.tagline')}</p>
         </div>
