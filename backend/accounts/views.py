@@ -1,4 +1,5 @@
 from django.http import HttpResponse
+from django.utils.encoding import force_str
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status
@@ -36,7 +37,7 @@ class LoginView(TokenObtainPairView):
             # machine-readable code to the structured response.
             exc = Throttled(
                 wait=wait,
-                detail=_('Too many sign-in attempts. Complete verification to try again.'),
+                detail=force_str(_('Too many sign-in attempts. Complete verification to try again.')),
             )
             exc.detail = {'detail': exc.detail, 'code': 'login_verification_required'}
             raise exc
