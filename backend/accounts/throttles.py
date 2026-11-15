@@ -48,6 +48,49 @@ class DatabaseAuthThrottle(BaseThrottle):
         return getattr(self, 'remaining', 60)
 
 
+# Preserve free-queue capacity; conservative MVP quotas, independent of account existence.
+RESET_PER_IP_PER_DAY = 20
+RESET_PER_EMAIL_PER_DAY = 3
+RESET_GLOBAL_PER_DAY = 150
+
+
+class PasswordResetThrottle(DatabaseAuthThrottle):
+    """Atomic daily QStash budget shared by every API instance.
+
+    All counters are based on supplied email/IP, never on whether an account
+    exists. These quotas only cap consumption; WAF is still required against
+    distributed denial of service.
+    """
+
+    def _daily_limit(self, kind, identity, limit, now):
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        key = hashlib.sha256(f'reset-day:{kind}:{identity}'.encode('utf-8')).hexdigest()
+        with transaction.atomic():
+            bucket, _ = AuthThrottleBucket.objects.get_or_create(
+                key=key, window_start=day_start, defaults={'attempts': 0},
+            )
+            AuthThrottleBucket.objects.filter(pk=bucket.pk).update(attempts=F('attempts') + 1)
+            bucket.refresh_from_db(fields=['attempts'])
+            if bucket.attempts > limit:
+                self.remaining = max(1, int((day_start + timedelta(days=1) - now).total_seconds()))
+                return False
+        return True
+
+    def allow_request(self, request, view):
+        if not super().allow_request(request, view):
+            return False
+        if request.method != 'POST':
+            return True
+        now = timezone.now()
+        ip = self.get_ident(request)
+        email = str(request.data.get('email', '')).strip().casefold() if isinstance(request.data, dict) else ''
+        if not self._daily_limit('ip', ip, RESET_PER_IP_PER_DAY, now):
+            return False
+        if email and not self._daily_limit('email', email, RESET_PER_EMAIL_PER_DAY, now):
+            return False
+        return self._daily_limit('global', 'all', RESET_GLOBAL_PER_DAY, now)
+
+
 class LoginRecoveryThrottle(DatabaseAuthThrottle):
     """Keep the strict account quota; admit very few independently verified retries.
 
