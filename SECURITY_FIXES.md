@@ -44,4 +44,5 @@ Local Python compilation can run without dependencies, but full Django/Vitest te
 
 - A correct account password is now accepted even after someone else exhausts its email throttle bucket. The exception is restricted to the login endpoint; wrong passwords and registration remain limited. Verified credentials are checked only after the shared PostgreSQL counter transaction has released its lock.
 - Source/IP quotas (PostgreSQL + DRF anonymous limit) still apply, and the global per-email quota still returns HTTP 429 for invalid credentials. However, **no password-only mechanism can both guarantee unhindered correct login and eliminate all distributed online guessing** without additional client verification. More comprehensive bot defense (edge challenge, device binding, MFA or passkeys) remains recommended for scale.
-- Frontend oxlint is now included in CI to make remaining cosmetic warnings visible.
+- All five original frontend oxlint warnings were fixed by separating shared React hooks/helpers from component files and deriving trainer consent draft state without an effect; CI now rejects any future oxlint warnings.
+- Six existing npm build-time advisories come from vite-plugin-pwa/Workbox and are tracked in GitHub Issue #9. No production npm advisories. Avoid an untested `npm audit fix --force` PWA downgrade.
