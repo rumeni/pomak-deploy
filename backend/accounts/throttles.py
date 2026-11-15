@@ -11,6 +11,10 @@ from rest_framework.throttling import BaseThrottle
 from .models import AuthThrottleBucket
 from .turnstile import claim_login_recovery_token, login_recovery_enabled, verify_login_recovery
 
+# One source IP cannot create more than ~88k minute/account buckets per day.
+# Cron clears up to 150k old rows per daily run. Distributed abuse still needs WAF.
+AUTH_IP_LIMIT_PER_MINUTE = 60
+
 
 class DatabaseAuthThrottle(BaseThrottle):
     """Atomic, PostgreSQL-backed IP and email quotas across serverless instances."""
@@ -36,7 +40,7 @@ class DatabaseAuthThrottle(BaseThrottle):
         email = str(request.data.get('email', '')).strip().casefold() if isinstance(request.data, dict) else ''
         # DRF NUM_PROXIES is 1 on Vercel and 0 for direct/local Django.
         ip = self.get_ident(request)
-        if not self.consume_limit('ip', ip, 120, now):
+        if not self.consume_limit('ip', ip, AUTH_IP_LIMIT_PER_MINUTE, now):
             return False
         return not email or self.consume_limit('account', email, 10, now)
 
@@ -56,7 +60,7 @@ class LoginRecoveryThrottle(DatabaseAuthThrottle):
             return True
         now = timezone.now()
         ip = self.get_ident(request)
-        if not self.consume_limit('ip', ip, 120, now):
+        if not self.consume_limit('ip', ip, AUTH_IP_LIMIT_PER_MINUTE, now):
             return False
         email = str(request.data.get('email', '')).strip().casefold() if isinstance(request.data, dict) else ''
         if not email or self.consume_limit('account', email, 10, now):

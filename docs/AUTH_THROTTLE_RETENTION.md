@@ -19,4 +19,6 @@ python manage.py cleanup_auth_throttle
 
 To verify daily execution, check the **pomak-api → Cron Jobs** and runtime logs in Vercel. The API is not designed to expose deletion counts publicly.
 
+With the shared auth IP limit reduced from 120 to **60 requests/IP/minute**, one continuously abusive source can create at most about **87,840** minute+account buckets/day (60 distinct account keys plus one IP bucket per minute). Extra Turnstile verification keys add a small bounded amount. **Distributed attacks across many source IPs can still exceed cron capacity**; deploy and monitor Vercel WAF rate limits before relying on cleanup as a sustained-attack defense.
+
 If a severe traffic attack creates more than 150,000 expired rows per day, reduce source abuse upstream and run the command in a trusted one-off job until the backlog is clear. This is retention cleanup, **not** a substitute for rate limiting or a DDoS defense.
