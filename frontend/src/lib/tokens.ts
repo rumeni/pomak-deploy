@@ -6,6 +6,7 @@ const SESSION = 'pomak.session-id'
 // Poslednji poznati podaci o korisniku: aplikacija pokrenuta bez interneta radi sa njima.
 const ME = 'pomak.me'
 const EPOCH = 'pomak.refresh-epoch' // Non-secret cross-tab rotation signal.
+const PENDING_WEB_LOGOUT = 'pomak.pending-logout' // Non-secret retry marker, never a JWT.
 const isNative = () => Capacitor.isNativePlatform()
 let accessToken: string | null = null
 let accessSession: string | null = null
@@ -67,6 +68,15 @@ export const tokens = {
   refresh: async () => isNative() ? (await nativeRefresh()) ?? read(REFRESH) : read(REFRESH),
   hasSession: () => !!currentSessionId(),
   rotationEpoch: () => read(EPOCH),
+  pendingWebLogout: () => read(PENDING_WEB_LOGOUT),
+  queueWebLogout: (): string => {
+    const marker = newId()
+    localStorage.setItem(PENDING_WEB_LOGOUT, marker)
+    return marker
+  },
+  completeWebLogout(marker: string) {
+    if (read(PENDING_WEB_LOGOUT) === marker) localStorage.removeItem(PENDING_WEB_LOGOUT)
+  },
   /** JWT subject is a sanity check; the server still validates the signature. */
   userId: (): string | null => {
     const jwt = tokens.access()
