@@ -26,6 +26,10 @@ jobs:
       - name: Oxlint (no warnings allowed)
         run: npm run lint -- --deny-warnings
       - run: npm run build
+      - name: Verify checked-in Capacitor native plugin wiring
+        run: |
+          npx cap sync android
+          git diff --exit-code -- android/capacitor.settings.gradle android/app/capacitor.build.gradle
       - name: Audit production dependencies (must remain free of moderate+ advisories)
         run: npm audit --omit=dev --audit-level=moderate
       - name: List development dependency advisories (informational)
