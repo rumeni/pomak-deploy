@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -6,7 +6,7 @@ import { Button, Field, FormError, LoadingScreen, ScreenHeader, SelectField } fr
 import { errorMessage } from '../../lib/api'
 import { parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
-import { useCreateFood, useFood, useUpdateFood, type FoodState, type NewFood } from './api'
+import { useCreateFood, useFood, useUpdateFood, type Food, type FoodState, type NewFood } from './api'
 
 const STATES: FoodState[] = ['prepared', 'raw', 'cooked', 'na']
 type ValueField = 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'
@@ -19,39 +19,39 @@ class FormInputError extends Error {
   }
 }
 
-/** Lična namirnica, npr. sa deklaracije. Prazna vrednost = nepoznato (null), ne 0. */
+/** Editor shared by creation and editing; keyed to the food ID so fetched
+ * initial values are read only once and query refetch cannot reset dirty form. */
 export function NewFoodPage() {
+  const { id } = useParams()
+  const existing = useFood(id)
+  const { t } = useTranslation()
+  if (id && existing.isLoading) return <LoadingScreen />
+  if (id && (!existing.data || existing.data.source !== 'custom' || !existing.data.is_custom)) {
+    return <p className="p-6 text-center text-danger">{t('nutrition.notFound')}</p>
+  }
+  return <FoodForm key={id ?? 'new'} initialFood={id ? existing.data : undefined} />
+}
+
+function FoodForm({ initialFood }: { initialFood?: Food }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { id } = useParams()
+  const id = initialFood?.id
   const editing = Boolean(id)
-  const existing = useFood(id)
   const create = useCreateFood()
   const update = useUpdateFood()
-  const [loadedId, setLoadedId] = useState<string | null>(null)
-  const [name, setName] = useState('')
-  const [state, setState] = useState<FoodState>('prepared')
-  const [values, setValues] = useState<Record<ValueField, string>>({ kcal: '', protein_g: '', carbs_g: '', fat_g: '', fiber_g: '' })
-  const [portions, setPortions] = useState<{ key: string; name: string; grams: string }[]>([])
+  const [name, setName] = useState(initialFood?.name ?? '')
+  const [state, setState] = useState<FoodState>(initialFood?.state ?? 'prepared')
+  const [values, setValues] = useState<Record<ValueField, string>>(() => ({
+    kcal: initialFood?.kcal ?? '',
+    protein_g: initialFood?.protein_g ?? '',
+    carbs_g: initialFood?.carbs_g ?? '',
+    fat_g: initialFood?.fat_g ?? '',
+    fiber_g: initialFood?.fiber_g ?? '',
+  }))
+  const [portions, setPortions] = useState<{ key: string; name: string; grams: string }[]>(
+    () => initialFood?.portions.map((portion) => ({ ...portion, key: uuid() })) ?? [],
+  )
   const [error, setError] = useState<string | null>(null)
-
-  // Load the editable record once; background query refetches must not wipe
-  // values while the user is typing.
-  useEffect(() => {
-    const food = existing.data
-    if (!id || !food || loadedId === id || food.source !== 'custom') return
-    setName(food.name)
-    setState(food.state)
-    setValues({
-      kcal: food.kcal,
-      protein_g: food.protein_g ?? '',
-      carbs_g: food.carbs_g ?? '',
-      fat_g: food.fat_g ?? '',
-      fiber_g: food.fiber_g ?? '',
-    })
-    setPortions(food.portions.map((p) => ({ key: uuid(), name: p.name, grams: p.grams })))
-    setLoadedId(id)
-  }, [id, existing.data, loadedId])
 
   const fields: [ValueField, string][] = [
     ['kcal', t('newFood.kcalRequired')],
@@ -102,11 +102,6 @@ export function NewFoodPage() {
       if (err instanceof FormInputError) setError(t(`newFood.errors.${err.message}`, err.params))
       else throw err
     }
-  }
-
-  if (editing && (existing.isLoading || (existing.data?.source === 'custom' && loadedId !== id))) return <LoadingScreen />
-  if (editing && (!existing.data || existing.data.source !== 'custom' || !existing.data.is_custom)) {
-    return <p className="p-6 text-center text-danger">{t('nutrition.notFound')}</p>
   }
 
   return (
