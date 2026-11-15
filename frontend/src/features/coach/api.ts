@@ -51,6 +51,7 @@ export function useCoachDashboard() {
   return useQuery({
     queryKey: DASHBOARD,
     queryFn: async () => (await api.get<CoachDashboard>('/coach/dashboard/')).data,
+    refetchInterval: 30000,
   })
 }
 
@@ -59,6 +60,7 @@ export function useCoachClient(id: string | undefined) {
     queryKey: ['coach-client', id],
     queryFn: async () => (await api.get<CoachClientDetails>(`/coach/clients/${id}/`)).data,
     enabled: !!id,
+    refetchInterval: 15000,
     retry: false,
   })
 }
