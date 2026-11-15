@@ -8,7 +8,7 @@ export interface RegisterData {
   accountType: 'client' | 'coach'
 }
 
-interface AuthState {
+export interface AuthState {
   me: Me | undefined
   loading: boolean
   /** Prijava postoji, ali server nije dostupan, a podaci o korisniku nisu sačuvani na telefonu. */
