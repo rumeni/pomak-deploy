@@ -55,6 +55,20 @@ export function useCreateFood() {
   })
 }
 
+/** Edit only the current user's custom food; the API rejects shared USDA and recipe edits. */
+export function useUpdateFood() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: NewFood }) =>
+      (await api.patch<Food>(`/nutrition/foods/${id}/`, body)).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['foods'] })
+      void queryClient.invalidateQueries({ queryKey: ['recent-foods'] })
+      void queryClient.invalidateQueries({ queryKey: ['recipes'] })
+    },
+  })
+}
+
 export function useDeleteFood() {
   const queryClient = useQueryClient()
   return useMutation({

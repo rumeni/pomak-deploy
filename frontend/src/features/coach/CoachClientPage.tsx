@@ -5,7 +5,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, FormError, LoadingScreen, ScreenHeader, selectClass } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
-import { getFormatLocale } from '../../lib/format'
+import { formatDecimal, getFormatLocale } from '../../lib/format'
+import { formatCoachSet } from './formatCoach'
 import { useRoutines } from '../training/api'
 import { useAssignCoachRoutine, useCoachClient, useDisconnectCoach } from './api'
 import { CoachMessages } from './CoachMessages'
@@ -48,7 +49,7 @@ export function CoachClientPage() {
               {w.exercises.map((item, index) => (
                 <div key={`${item.name}-${index}`} className="mt-1 text-sm">
                   <span>{item.name}: </span>
-                  <span className="text-muted">{item.sets.map((set) => [set.set_type === 'warmup' ? `${t('routine.warmupShort')}:` : '', set.weight_kg ? `${set.weight_kg} kg` : '', set.reps != null ? `${set.reps} ${t('coach.reps')}` : '', set.duration_seconds ? `${set.duration_seconds} s` : '', set.distance_m ? `${set.distance_m} m` : ''].filter(Boolean).join(' × ')).join(', ')}</span>
+                  <span className="text-muted">{item.sets.map((set) => formatCoachSet(set, `${t('routine.warmupShort')}:`, t('coach.reps'))).join(', ')}</span>
                 </div>
               ))}
               {w.notes && <p className="mt-1 whitespace-pre-wrap text-sm">{w.notes}</p>}
@@ -58,7 +59,7 @@ export function CoachClientPage() {
         <Card title={t('coach.goals')}>
           {data.goals.length === 0 && <p className="text-muted">{t('coach.noGoals')}</p>}
           {data.goals.map((goal) => (
-            <p key={goal.kind} className="py-1 text-sm">{t(`coach.goalKinds.${goal.kind}` as const, { defaultValue: goal.kind })}: <strong>{goal.target_value}</strong></p>
+            <p key={goal.kind} className="py-1 text-sm">{t(`coach.goalKinds.${goal.kind}` as const, { defaultValue: goal.kind })}: <strong>{formatDecimal(Number(goal.target_value))}</strong></p>
           ))}
         </Card>
         <Card title={t('coach.measurements')}>
@@ -66,7 +67,7 @@ export function CoachClientPage() {
             data.measurements.length === 0 ? <p className="text-muted">{t('coach.noMeasurements')}</p> :
             data.measurements.map((m, idx) => (
               <p key={`${m.kind}-${m.measured_on}-${idx}`} className="border-b border-line py-2 text-sm last:border-0">
-                {t(`coach.goalKinds.${m.kind}` as const, { defaultValue: m.kind })}: {m.value} {m.unit} · {dateLabel(m.measured_on)}
+                {t(`coach.goalKinds.${m.kind}` as const, { defaultValue: m.kind })}: {formatDecimal(Number(m.value))} {m.unit} · {dateLabel(m.measured_on)}
               </p>
             ))
           )}
@@ -76,7 +77,7 @@ export function CoachClientPage() {
             data.nutrition_days.length === 0 ? <p className="text-muted">{t('coach.noNutrition')}</p> :
             data.nutrition_days.map((day) => (
               <p key={day.date} className="border-b border-line py-2 text-sm last:border-0">
-                {day.date}: <strong>{Math.round(Number(day.kcal))} kcal</strong> · {t('coach.protein')} {day.protein_g ?? '—'} g
+                {day.date}: <strong>{Math.round(Number(day.kcal))} kcal</strong> · {t('coach.protein')} {day.protein_g === null ? '—' : formatDecimal(Number(day.protein_g))} g
               </p>
             ))
           )}
