@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../i18n', () => ({ default: { language: 'sr-Latn' }, toServerLanguage: () => 'sr' }))
 
-import { api, revokePendingWebLogout } from './api'
+import { api, revokePendingWebLogout, webHeaders, withAuthLock } from './api'
 import { tokens } from './tokens'
 
 type Handler = (config: InternalAxiosRequestConfig) => { status: number; data: unknown }
@@ -253,6 +253,61 @@ describe('osvežavanje prijave', () => {
     await inFlight
     expect(first).not.toBe(second)
     expect(tokens.pendingWebLogout()).toBe(second)
+  })
+
+  it('bez Web Locks pozadinska odjava ne može obrisati cookie nove prijave', async () => {
+    vi.stubGlobal('navigator', { onLine: true }) // no navigator.locks
+    tokens.queueWebLogout()
+    await tokens.clear()
+    let releaseLogout!: () => void
+    let signalLogout!: () => void
+    const blockedLogout = new Promise<void>((resolve) => { releaseLogout = resolve })
+    const logoutStarted = new Promise<void>((resolve) => { signalLogout = resolve })
+    let cookie: string | null = 'previous-user-cookie'
+    const order: string[] = []
+    axios.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+      if (config.url?.endsWith('/auth/logout/')) {
+        order.push('logout:start')
+        signalLogout()
+        await blockedLogout // delayed Set-Cookie deletion from the old account
+        cookie = null
+        order.push('logout:end')
+        return { status: 204, data: null, statusText: '', headers: new AxiosHeaders(), config }
+      }
+      order.push('login')
+      cookie = 'new-user-cookie'
+      return { status: 200, data: { access: 'new-access' }, statusText: '', headers: new AxiosHeaders(), config }
+    }
+    const retry = withAuthLock(() => revokePendingWebLogout())
+    await logoutStarted
+    const login = withAuthLock(async () => {
+      await revokePendingWebLogout()
+      await axios.post(`${api.defaults.baseURL}/auth/login/`, {}, { headers: webHeaders() })
+      await tokens.set('new-access', null)
+    })
+    await Promise.resolve()
+    expect(order).toEqual(['logout:start'])
+    releaseLogout()
+    await Promise.all([retry, login])
+    expect(order).toEqual(['logout:start', 'logout:end', 'login'])
+    expect(cookie).toBe('new-user-cookie')
+    expect(tokens.pendingWebLogout()).toBeNull()
+    expect(tokens.access()).toBe('new-access')
+  })
+
+  it('bez Web Locks neuspešna odjava ne blokira naredni auth zahtev', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    tokens.queueWebLogout()
+    let calls = 0
+    fakeServer(() => {
+      calls += 1
+      return calls === 1 ? { status: 503, data: {} } : { status: 204, data: null }
+    })
+    await expect(withAuthLock(() => revokePendingWebLogout())).rejects.toBeInstanceOf(AxiosError)
+    expect(tokens.pendingWebLogout()).not.toBeNull()
+    await withAuthLock(() => revokePendingWebLogout())
+    expect(calls).toBe(2)
+    expect(tokens.pendingWebLogout()).toBeNull()
   })
 
   it('neuspela prijava (pogrešna lozinka) se ne ponavlja i ne osvežava', async () => {
