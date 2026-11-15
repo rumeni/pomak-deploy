@@ -42,7 +42,7 @@ export async function deleteEntry(ownerId: string, date: string, entryId: string
     const rows = await db.diaryOps.where('ownerId').equals(ownerId).toArray()
     const rejected = rows.filter((op) => op.type === 'upsert' && op.entryId === entryId && op.error)
     await db.diaryOps.bulkDelete(rejected.map((op) => op.id))
-    await db.diaryOps.add({ type: 'delete', entryId, id: uuid(), ownerId, date, seq: nextSeq(), error: null })
+    await db.diaryOps.add({ type: 'delete', entryId, id: uuid(), ownerId, date, seq: nextSeq(), error: null } as DiaryOpRow)
   })
   requestSync()
 }
