@@ -23,7 +23,7 @@ This branch addresses the 2026-11-15 audit. **Do not deploy the backend before m
 
 ## Not fixed automatically
 
-- P2-08: dependency audit has 18 reported vulnerabilities (including 4 high) in earlier Vercel build. CI now reports production-only npm audit results, but dependency upgrades must be based on actual advisory output and verified tests. **Do not run `npm audit fix --force` blindly.**
+- P2-08: non-breaking npm updates were committed to the lockfile after automated tests and build; `npm audit --omit=dev --audit-level=high` now reports **0 production dependency vulnerabilities**. Six dev-tool advisories (2 low / 4 moderate) remain and need separate review, not `--force` upgrades.
 - P3-11: coach-client collaboration is an unimplemented product feature, not a regression. Building it is outside a bug-fix PR.
 
 Local Python compilation can run without dependencies, but full Django/Vitest tests require installed project dependencies and PostgreSQL. CI runs them on an isolated test DB, not the production Neon database.
