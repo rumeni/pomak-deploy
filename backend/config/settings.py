@@ -142,6 +142,14 @@ REST_FRAMEWORK = {
     },
 }
 
+# The recovery path is OFF until the web/Android widget and Siteverify
+# credentials have been manually tested and deployed together.
+TURNSTILE_LOGIN_ENABLED = config('TURNSTILE_LOGIN_ENABLED', default=False, cast=bool)
+TURNSTILE_SECRET_KEY = config('TURNSTILE_SECRET_KEY', default='')
+TURNSTILE_ALLOWED_HOSTNAMES = config('TURNSTILE_ALLOWED_HOSTNAMES', default='', cast=Csv())
+if TURNSTILE_LOGIN_ENABLED and not DEBUG and TURNSTILE_SECRET_KEY.startswith(('1x000000', '2x000000', '3x000000')):
+    raise ImproperlyConfigured('Turnstile test secrets must not be used in production.')
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
