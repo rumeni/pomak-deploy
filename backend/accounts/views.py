@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from .authentication import SessionVersionTokenRefreshSerializer
 from .export import build_zip
 from .serializers import LoginSerializer, MeSerializer, RegisterSerializer
 from .token_transport import clear_refresh_cookie, incoming_refresh, output_tokens, web_request
@@ -85,6 +86,7 @@ class LoginView(TokenObtainPairView):
 
 
 class RefreshView(TokenRefreshView):
+    serializer_class = SessionVersionTokenRefreshSerializer
     throttle_scope = 'auth'
     throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
 
@@ -123,6 +125,7 @@ class LogoutView(APIView):
 
 
 class MeView(generics.RetrieveUpdateAPIView):
+    allow_unverified_email = True
     serializer_class = MeSerializer
     http_method_names = ['get', 'patch']
 
