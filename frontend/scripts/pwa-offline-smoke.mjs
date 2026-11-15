@@ -33,9 +33,19 @@ try {
   browser = await chromium.launch({ headless: true, args: ['--no-sandbox'], ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) })
   const context = await browser.newContext({ serviceWorkers: 'allow' })
   const page = await context.newPage()
+  page.on('pageerror', error => console.error('PAGE ERROR:', error.message))
+  page.on('console', message => { if (message.type() === 'error') console.error('PAGE CONSOLE:', message.text()) })
   await page.goto(url, { waitUntil: 'domcontentloaded' })
-  await page.waitForFunction(() => 'serviceWorker' in navigator, { timeout: 15000 })
-  await page.evaluate(async () => { await navigator.serviceWorker.ready })
+  await page.waitForFunction(async () => {
+    if (!('serviceWorker' in navigator)) return false
+    return (await navigator.serviceWorker.getRegistrations()).length > 0
+  }, null, { timeout: 15000 })
+  await page.evaluate(async () => {
+    await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker did not activate after registration')), 15000)),
+    ])
+  })
   // The first navigation installs the SW; the second is controlled by it.
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), { timeout: 15000 })
