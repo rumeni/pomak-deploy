@@ -129,6 +129,30 @@ class DatabaseAuthThrottleTests(APITestCase):
         self.assertEqual(AuthThrottleBucket.objects.filter(attempts__gte=10).count(), 1)
 
 
+    def test_one_ip_cannot_create_more_than_sixty_unique_account_buckets_per_minute(self):
+        from accounts.models import AuthThrottleBucket
+        from accounts.throttles import AUTH_IP_LIMIT_PER_MINUTE, DatabaseAuthThrottle
+        from rest_framework.test import APIRequestFactory
+        from rest_framework.request import Request
+        from rest_framework.parsers import JSONParser
+
+        self.assertEqual(AUTH_IP_LIMIT_PER_MINUTE, 60)
+        factory = APIRequestFactory()
+        for index in range(60):
+            req = Request(factory.post(
+                '/api/auth/login/', {'email': f'unique-{index}@example.com'},
+                format='json', REMOTE_ADDR='203.0.113.17',
+            ), parsers=[JSONParser()])
+            self.assertTrue(DatabaseAuthThrottle().allow_request(req, None))
+        blocked = Request(factory.post(
+            '/api/auth/login/', {'email': 'unique-60@example.com'},
+            format='json', REMOTE_ADDR='203.0.113.17',
+        ), parsers=[JSONParser()])
+        self.assertFalse(DatabaseAuthThrottle().allow_request(blocked, None))
+        # One shared IP bucket and exactly 60 account buckets, not 61.
+        self.assertEqual(AuthThrottleBucket.objects.count(), 61)
+
+
 class AccountDeletionThrottleTests(APITestCase):
     def setUp(self):
         # Keep the PostgreSQL bucket window stable across slow CI runs.
