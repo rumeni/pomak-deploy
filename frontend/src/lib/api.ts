@@ -1,4 +1,5 @@
 import axios, { AxiosError, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
+import { Capacitor } from '@capacitor/core'
 
 import i18n, { toServerLanguage, type Language } from '../i18n'
 import { tokens, type TokenSession } from './tokens'
@@ -12,24 +13,31 @@ export function scopeIsCurrent(scope: AuthScope): boolean {
   return tokens.isCurrent(scope.session) && getCurrentUserId() === scope.ownerId && tokens.userId() === scope.ownerId
 }
 
+export const webHeaders = () => Capacitor.isNativePlatform() ? {} : { 'X-Pomak-Client': 'web' }
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8001/api' : '/api'),
   timeout: 15000,
 })
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   const request = config as AuthRequest
-  // Capture the login identity once; a request must never be replayed under
-  // another account, even if a late 401 arrives after logout and new login.
   request.__pomakSession ??= tokens.session()
-  if (request.__pomakSession.id && !tokens.isCurrent(request.__pomakSession)) {
+  const session = request.__pomakSession
+  if (session.id && !tokens.isCurrent(session)) {
     throw new Error('Authentication changed before sending the request')
   }
+  const isAuthCall = ['/auth/login/', '/auth/register/', '/auth/refresh/'].includes(request.url ?? '')
+  if (!isAuthCall && session.id && !tokens.access() && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+    await refreshFor(session, null) // Fresh tab: bootstrap from cookie/native store before first API call.
+  }
+  if (session.id && !tokens.isCurrent(session)) throw new Error('Authentication changed before sending the request')
   if (request.__pomakScope && !scopeIsCurrent(request.__pomakScope)) {
     throw new Error('Authentication changed before sending the request')
   }
   const access = tokens.access()
   if (access) config.headers.Authorization = `Bearer ${access}`
+  if (request.url === '/auth/login/') Object.assign(config.headers, webHeaders())
   config.headers['Accept-Language'] = toServerLanguage(i18n.language as Language)
   return config
 })
@@ -38,47 +46,42 @@ api.interceptors.request.use((config) => {
 // user's in-flight refresh; navigator.locks coordinates OTHER browser tabs.
 let refreshing: { id: string; promise: Promise<string> } | null = null
 
-async function refreshAccess(session: TokenSession, rejectedAccess: string): Promise<string> {
+async function refreshAccess(session: TokenSession, rejectedAccess: string | null): Promise<string> {
   const refreshUnderLock = async (): Promise<string> => {
     if (!tokens.isCurrent(session)) throw new Error('Authentication changed during token refresh')
-    // Another tab (or request) may have rotated the token while we waited for
-    // the exclusive lock. Reuse its new access token instead of refreshing again.
     const currentAccess = tokens.access()
     if (currentAccess && currentAccess !== rejectedAccess) return currentAccess
-    const refresh = tokens.refresh()
-    if (!refresh) throw new Error('Nema refresh tokena')
+    const refresh = await tokens.refresh()
+    if (!tokens.isCurrent(session)) throw new Error('Authentication changed during token refresh')
     try {
-      const { data } = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, { refresh })
+      const { data } = await axios.post(
+        `${api.defaults.baseURL}/auth/refresh/`,
+        refresh ? { refresh } : {},
+        { headers: webHeaders(), timeout: 15000 },
+      )
       if (!tokens.isCurrent(session)) throw new Error('Authentication changed during token refresh')
-      if (!tokens.rotate(data.access, data.refresh ?? refresh, session, refresh)) {
+      if (!await tokens.rotate(data.access, data.refresh ?? null, session, refresh)) {
         const newerAccess = tokens.access()
-        if (newerAccess && tokens.isCurrent(session) && tokens.refresh() !== refresh) return newerAccess
+        if (newerAccess && tokens.isCurrent(session)) return newerAccess
         throw new Error('Authentication changed during token refresh')
       }
       return data.access
     } catch (error) {
-      // If another tab already rotated successfully, consume its fresh tokens.
-      const otherAccess = tokens.access()
-      if (tokens.isCurrent(session) && tokens.refresh() !== refresh && otherAccess) return otherAccess
-      // A temporary network/server failure should not forcibly log the user out.
-      // Invalidation from a definitive auth rejection is safe while holding the
-      // cross-tab lock, provided no newer tokens/session have appeared.
+      const newerAccess = tokens.access()
+      if (newerAccess && newerAccess !== rejectedAccess && tokens.isCurrent(session)) return newerAccess
       const status = axios.isAxiosError(error) ? error.response?.status : undefined
-      if ([400, 401, 403].includes(status ?? 0) && tokens.isCurrent(session) && tokens.refresh() === refresh) {
-        tokens.clear()
+      if ([400, 401, 403].includes(status ?? 0) && tokens.isCurrent(session)) {
+        void tokens.clear()
         if (typeof window !== 'undefined') window.dispatchEvent(new Event('pomak:logout'))
       }
       throw error
     }
   }
-
-  // Web Locks are supported by modern Safari/Chrome/Android WebView and are
-  // scoped to all same-origin tabs. The fallback still serializes within a tab.
   const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
   return locks?.request ? locks.request('pomak:jwt-refresh', refreshUnderLock) : refreshUnderLock()
 }
 
-function refreshFor(session: TokenSession, rejectedAccess: string): Promise<string> {
+function refreshFor(session: TokenSession, rejectedAccess: string | null): Promise<string> {
   if (!session.id) return Promise.reject(new Error('No active session'))
   if (refreshing?.id === session.id) return refreshing.promise
   const promise = refreshAccess(session, rejectedAccess).finally(() => {
