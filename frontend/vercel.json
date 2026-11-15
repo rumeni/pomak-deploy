@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "QA_CONFIG_PROBE_UNKNOWN_FIELD": true,
   "rewrites": [
     {
       "source": "/api/:path*",
