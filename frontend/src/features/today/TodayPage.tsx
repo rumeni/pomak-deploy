@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { Button, Card, PageHeader } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { errorMessage } from '../../lib/api'
-import { addDays, formatDecimal, formatLongDate, formatShortDate, fromISODate, getFormatLocale, parseDecimal, toISODate } from '../../lib/format'
+import { formatDecimal, formatLongDate, formatShortDate, fromISODate, getFormatLocale, parseDecimal, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { totals } from '../diary/model'
 import { useDiaryDay } from '../diary/store'
@@ -14,8 +14,11 @@ import { mondayOf } from '../progress/week'
 import { useRoutines } from '../training/api'
 import { ActiveWorkoutBanner } from '../workout/ActiveWorkoutBanner'
 import { useSessions } from '../workout/api'
+import { fromOutbox, fromServer } from '../workout/history'
+import { usePendingSessions } from '../workout/outbox'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { nextRoutine } from './next'
+import { weekActivity } from './week'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
 const linkClass = 'flex min-h-11 items-center text-sm font-semibold text-brand-dark'
@@ -46,7 +49,7 @@ export function TodayPage() {
         }
       />
       <div className="today-main">
-        <TodayHero ownerId={me?.id} tracksNutrition={!!profile?.tracks_nutrition} />
+        <TodayHero ownerId={me?.id} tracksTraining={!!profile?.tracks_training} tracksNutrition={!!profile?.tracks_nutrition} />
         <div className="mt-4"><ActiveWorkoutBanner /></div>
         <div className="today-dashboard-grid">
           {profile?.tracks_training && <TrainingCard />}
@@ -59,18 +62,19 @@ export function TodayPage() {
 }
 
 /** Tamni panel sa stvarnim brojevima: treninzi ove nedelje, kalorije danas, poslednja težina. */
-function TodayHero({ ownerId, tracksNutrition }: { ownerId: string | undefined; tracksNutrition: boolean }) {
+function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: string | undefined; tracksTraining: boolean; tracksNutrition: boolean }) {
   const { t } = useTranslation()
   const today = toISODate(new Date())
   const monday = mondayOf(today)
   const week = useWeek(monday)
   const { data: sessions } = useSessions()
+  // Treninzi koji čekaju slanje (bez interneta) se vide odmah.
+  const pending = usePendingSessions(tracksTraining ? ownerId : undefined)
   const { data: weights } = useMeasurements('weight')
   const { day } = useDiaryDay(tracksNutrition ? ownerId : undefined, today)
 
   const weekday = new Intl.DateTimeFormat(getFormatLocale(), { weekday: 'narrow' })
-  const trainedOn = new Set(sessions?.map((s) => toISODate(new Date(s.started_at))))
-  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
+  const { days, trained, unsentThisWeek } = weekActivity((sessions ?? []).map(fromServer), (pending ?? []).map(fromOutbox), monday)
   const workouts = week.data?.workouts
   const latest = weights?.[0]
 
@@ -79,13 +83,15 @@ function TodayHero({ ownerId, tracksNutrition }: { ownerId: string | undefined; 
       <div className="topo-layer" aria-hidden />
       <p className="today-hero-kicker">{t('today.thisWeek')}</p>
       <div className="today-stats">
-        <div className="today-stat">
-          <span className="stat-value">
-            {workouts?.count ?? '–'}
-            {workouts?.target ? <small>/{workouts.target}</small> : null}
-          </span>
-          <span className="stat-label">{t('today.statWorkouts')}</span>
-        </div>
+        {tracksTraining && (
+          <div className="today-stat">
+            <span className="stat-value">
+              {workouts ? workouts.count + unsentThisWeek : '–'}
+              {workouts?.target ? <small>/{workouts.target}</small> : null}
+            </span>
+            <span className="stat-label">{t('today.statWorkouts')}</span>
+          </div>
+        )}
         {tracksNutrition && (
           <div className="today-stat">
             <span className="stat-value">
@@ -100,14 +106,16 @@ function TodayHero({ ownerId, tracksNutrition }: { ownerId: string | undefined; 
           <span className="stat-label">{t('today.statWeight')}</span>
         </div>
       </div>
-      <div className="today-week" aria-hidden>
-        {days.map((d) => (
-          <div key={d} className={`today-day ${trainedOn.has(d) ? 'is-done' : ''} ${d === today ? 'is-today' : ''}`}>
-            <span />
-            {weekday.format(fromISODate(d))}
-          </div>
-        ))}
-      </div>
+      {tracksTraining && (
+        <div className="today-week" aria-hidden>
+          {days.map((d) => (
+            <div key={d} className={`today-day ${trained.has(d) ? 'is-done' : ''} ${d === today ? 'is-today' : ''}`}>
+              <span />
+              {weekday.format(fromISODate(d))}
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   )
 }
