@@ -118,3 +118,10 @@ jobs:
           cd android
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
+      - name: Upload Android debug APK for device testing
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pomak-android-debug-apk
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
