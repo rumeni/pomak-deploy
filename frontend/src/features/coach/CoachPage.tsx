@@ -105,25 +105,10 @@ function SharingOptions({ values, onChange }: {
 function ClientWorkspace({ connection, assignments }: { connection: Connection | null; assignments: { id: string; name: string; routine_id: string }[] }) {
   const { t } = useTranslation()
   const disconnect = useDisconnectCoach()
-  const updateSharing = useUpdateCoachSharing()
   const connect = useConnectCoach()
   const [code, setCode] = useState('')
-  // A draft belongs to the current connection and its last server values.
-  // When consent changes in another tab, the next poll supersedes stale edits.
-  const sharingKey = connection
-    ? `${connection.id}:${connection.share_measurements}:${connection.share_nutrition}`
-    : 'no-coach'
-  const [sharingDraft, setSharingDraft] = useState<{
-    key: string
-    values: { share_measurements: boolean; share_nutrition: boolean }
-  } | null>(null)
-  const sharing = sharingDraft?.key === sharingKey
-    ? sharingDraft.values
-    : {
-        share_measurements: connection?.share_measurements ?? false,
-        share_nutrition: connection?.share_nutrition ?? false,
-      }
-  const setSharing = (values: typeof sharing) => setSharingDraft({ key: sharingKey, values })
+  // Until the invite is accepted, the client can choose initial sharing flags.
+  const [sharing, setSharing] = useState({ share_measurements: false, share_nutrition: false })
   const onConnect = (e: FormEvent) => {
     e.preventDefault()
     connect.mutate({ code: code.trim().toUpperCase(), ...sharing })
@@ -149,9 +134,10 @@ function ClientWorkspace({ connection, assignments }: { connection: Connection |
       <Card title={t('coach.myCoach')}>
         <p className="mb-3 text-lg font-semibold">{connection.coach.name}</p>
         <p className="mb-3 text-sm text-muted">{t('coach.connectedAt', { date: dateLabel(connection.connected_at) })}</p>
-        <SharingOptions values={sharing} onChange={setSharing} />
-        <Button className="mt-3 w-full" variant="secondary" disabled={updateSharing.isPending} onClick={() => updateSharing.mutate(sharing)}>{t('coach.saveSharing')}</Button>
-        <FormError message={updateSharing.error ? errorMessage(updateSharing.error) : null} />
+        <ConnectedSharingSettings
+          key={`${connection.id}:${connection.share_measurements}:${connection.share_nutrition}`}
+          connection={connection}
+        />
         <p className="mt-2 text-xs text-muted">{t('coach.revokeAnytime')}</p>
         <Button variant="ghost" className="mt-3 w-full text-danger" disabled={disconnect.isPending} onClick={() => {
           if (window.confirm(t('coach.disconnectConfirm'))) disconnect.mutate(undefined)
@@ -169,6 +155,24 @@ function ClientWorkspace({ connection, assignments }: { connection: Connection |
         <p className="mt-2 text-xs text-muted">{t('coach.routinesInTraining')}</p>
       </Card>
       <CoachMessages key={connection.id} selfId={connection.client.id} />
+    </>
+  )
+}
+
+
+/** Keyed by the server's consent values so even A → B → A polls cannot reuse an old draft. */
+function ConnectedSharingSettings({ connection }: { connection: Connection }) {
+  const { t } = useTranslation()
+  const updateSharing = useUpdateCoachSharing()
+  const [sharing, setSharing] = useState({
+    share_measurements: connection.share_measurements,
+    share_nutrition: connection.share_nutrition,
+  })
+  return (
+    <>
+      <SharingOptions values={sharing} onChange={setSharing} />
+      <Button className="mt-3 w-full" variant="secondary" disabled={updateSharing.isPending} onClick={() => updateSharing.mutate(sharing)}>{t('coach.saveSharing')}</Button>
+      <FormError message={updateSharing.error ? errorMessage(updateSharing.error) : null} />
     </>
   )
 }
