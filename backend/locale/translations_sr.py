@@ -19,6 +19,7 @@ SR = {
     'I am a coach': 'Trener sam',
     'An account with this email already exists.': 'Nalog sa ovim email-om već postoji.',
     'Wrong email or password.': 'Pogrešan email ili lozinka.',
+    'Too many sign-in attempts. Complete verification to try again.': 'Previše pokušaja prijave. Završite bezbednosnu proveru i pokušajte ponovo.',
     # Zajedničko
     'Invalid ID.': 'Neispravan ID.',
     'This ID is already taken.': 'ID je već zauzet.',
