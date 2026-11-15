@@ -26,8 +26,13 @@ class RegisterView(generics.CreateAPIView):
 
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
-    throttle_scope = 'auth'
-    throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
+    # Account-email quotas only block invalid credentials. Legitimate login
+    # remains possible when another client exhausts the email quota.
+    allow_correct_password_when_limited = True
+    # ScopedRateThrottle's 10/min source quota could independently lock out
+    # users behind shared NATs. DatabaseAuthThrottle enforces a cross-instance
+    # source limit; AnonRateThrottle retains the 200/day DRF safety limit.
+    throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle]
 
 
 class RefreshView(TokenRefreshView):
