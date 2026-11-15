@@ -74,3 +74,30 @@ class FoodDatabaseTests(APITestCase):
         own.refresh_from_db()
         self.assertIsNotNone(own.archived_at)
         self.assertNotIn('Proba', self.names('proba'))
+
+
+    def test_owner_can_edit_custom_food_and_portions_but_other_user_cannot(self):
+        created = self.client.post('/api/nutrition/foods/', {
+            'name': 'Moja namirnica', 'kcal': '200', 'state': 'prepared',
+            'protein_g': None, 'portions': [{'name': 'komad', 'grams': '30'}],
+        }, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        food_id = created.data['id']
+        url = f'/api/nutrition/foods/{food_id}/'
+
+        updated = self.client.patch(url, {
+            'name': 'Ispravljena namirnica', 'kcal': '175', 'state': 'cooked',
+            'protein_g': '12.5', 'portions': [{'name': 'porcija', 'grams': '80'}],
+        }, format='json')
+        self.assertEqual(updated.status_code, 200, updated.data)
+        self.assertEqual(updated.data['name'], 'Ispravljena namirnica')
+        self.assertEqual(updated.data['kcal'], '175.0')
+        self.assertEqual(updated.data['protein_g'], '12.50')
+        self.assertEqual(updated.data['portions'], [{'name': 'porcija', 'grams': '80.00'}])
+        self.assertIsNone(updated.data['carbs_g'])
+
+        other = User.objects.create_user('other-food@example.com', 'jaka-lozinka-123')
+        self.client.force_authenticate(other)
+        self.assertEqual(self.client.patch(url, {'name': 'Nije moja'}, format='json').status_code, 404)
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.client.get(url).data['name'], 'Ispravljena namirnica')
