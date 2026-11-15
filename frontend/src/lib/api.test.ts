@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../i18n', () => ({ default: { language: 'sr-Latn' }, toServerLanguage: () => 'sr' }))
 
-import { api } from './api'
+import { api, revokePendingWebLogout } from './api'
 import { tokens } from './tokens'
 
 type Handler = (config: InternalAxiosRequestConfig) => { status: number; data: unknown }
@@ -209,6 +209,50 @@ describe('osvežavanje prijave', () => {
     expect(refreshCalls).toBe(2)
     expect(tokens.hasSession()).toBe(false)
     expect(tokens.access()).toBeNull()
+  })
+
+  it('offline logout čuva samo neosetljivi marker i opoziva cookie po povratku mreže', async () => {
+    const marker = tokens.queueWebLogout()
+    await tokens.clear()
+    expect(tokens.pendingWebLogout()).toBe(marker)
+    expect(localStorage.getItem('pomak.access')).toBeNull()
+    expect(localStorage.getItem('pomak.refresh')).toBeNull()
+
+    fakeServer(() => ({ status: 503, data: {} }))
+    await expect(revokePendingWebLogout()).rejects.toBeInstanceOf(AxiosError)
+    expect(tokens.pendingWebLogout()).toBe(marker)
+
+    let revocations = 0
+    fakeServer((config) => {
+      expect(config.url).toContain('/auth/logout/')
+      expect(config.headers['X-Pomak-Client']).toBe('web')
+      expect(config.headers.Authorization).toBeUndefined()
+      expect(config.data).toBe('{}')
+      revocations += 1
+      return { status: 204, data: null }
+    })
+    await revokePendingWebLogout()
+    expect(revocations).toBe(1)
+    expect(tokens.pendingWebLogout()).toBeNull()
+    await revokePendingWebLogout()
+    expect(revocations).toBe(1)
+  })
+
+  it('kasni uspešan opoziv ne briše noviju oznaku za logout', async () => {
+    const first = tokens.queueWebLogout()
+    let finish!: (value: { status: number; data: unknown }) => void
+    const done = new Promise<{ status: number; data: unknown }>((resolve) => { finish = resolve })
+    const adapter = async (config: InternalAxiosRequestConfig) => {
+      const result = await done
+      return { ...result, statusText: '', headers: new AxiosHeaders(), config }
+    }
+    axios.defaults.adapter = adapter
+    const inFlight = revokePendingWebLogout()
+    const second = tokens.queueWebLogout()
+    finish({ status: 204, data: null })
+    await inFlight
+    expect(first).not.toBe(second)
+    expect(tokens.pendingWebLogout()).toBe(second)
   })
 
   it('neuspela prijava (pogrešna lozinka) se ne ponavlja i ne osvežava', async () => {
