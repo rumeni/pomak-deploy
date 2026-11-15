@@ -58,6 +58,7 @@ export function ProfilePage() {
         <Card>
           <TrackingSetting />
         </Card>
+        <NavRow to="/profil/lozinka">{t('accountSecurity.changeTitle')}</NavRow>
         <NavRow to="/profil/obroci">{t('profile.mealsLink')}</NavRow>
         <NavRow to="/ishrana/cilj">{t('profile.targetLink')}</NavRow>
         <ExactAlarmSetting />
