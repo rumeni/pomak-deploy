@@ -50,6 +50,13 @@ class AuthCookieTransportTests(APITestCase):
         self.assertEqual(new.status_code, 200, new.data)
         self.assert_cookie(new)
 
+    def test_cookie_cannot_be_refreshed_into_legacy_json_without_web_header(self):
+        login = self.login(**WEB)
+        self.client.cookies['pomak.refresh'] = login.cookies['pomak.refresh'].value
+        response = self.client.post('/api/auth/refresh/', {}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn('refresh', response.data)
+
     def test_legacy_without_header_is_identical(self):
         login = self.login()
         self.assertEqual(login.status_code, 200)
