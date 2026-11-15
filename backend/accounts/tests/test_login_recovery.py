@@ -24,6 +24,10 @@ from accounts.turnstile import claim_login_recovery_token, verify_login_recovery
 )
 class LoginRecoveryTests(APITestCase):
     def setUp(self):
+        self.clock = patch('accounts.throttles.timezone.now',
+                           return_value=timezone.now().replace(second=10, microsecond=0))
+        self.clock.start()
+        self.addCleanup(self.clock.stop)
         self.user = User.objects.create_user('target@example.com', 'jaka-lozinka-123')
 
     def login(self, password, ip, token=None, email='target@example.com'):
@@ -122,6 +126,12 @@ class LoginRecoveryTests(APITestCase):
 
 
 class DisabledLoginRecoveryTests(APITestCase):
+    def setUp(self):
+        self.clock = patch('accounts.throttles.timezone.now',
+                           return_value=timezone.now().replace(second=10, microsecond=0))
+        self.clock.start()
+        self.addCleanup(self.clock.stop)
+
     @override_settings(TURNSTILE_LOGIN_ENABLED=False)
     def test_old_account_cap_is_unchanged_until_explicitly_enabled(self):
         User.objects.create_user('safe@example.com', 'jaka-lozinka-123')
