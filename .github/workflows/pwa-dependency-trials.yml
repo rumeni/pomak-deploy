@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, scoped-glob, global-glob-minimatch, pwa-v2]
+        variant: [scoped-glob]
     defaults:
       run:
         working-directory: frontend
@@ -56,6 +56,11 @@ jobs:
           test -s dist/sw.js
           test -s dist/manifest.webmanifest
           echo 'Generated PWA service worker and manifest are present.'
+      - name: Offline Chromium PWA smoke (including deep SPA route)
+        run: |
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+          node scripts/pwa-offline-smoke.mjs
       - name: Report full and production-only advisories and resolved versions
         if: always()
         env:
