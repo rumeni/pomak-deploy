@@ -1,11 +1,16 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const secureStore = vi.hoisted(() => new Map<string, string>())
+const writeControl = vi.hoisted(() => ({ gate: null as Promise<void> | null, started: null as (() => void) | null }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true } }))
 vi.mock('@aparajita/capacitor-secure-storage', () => ({
   SecureStorage: {
     getItem: async (key: string) => secureStore.get(key) ?? null,
-    setItem: async (key: string, value: string) => { secureStore.set(key, value) },
+    setItem: async (key: string, value: string) => {
+      writeControl.started?.()
+      if (writeControl.gate) await writeControl.gate
+      secureStore.set(key, value)
+    },
     removeItem: async (key: string) => { secureStore.delete(key) },
   },
 }))
@@ -21,6 +26,8 @@ beforeEach(async () => {
   })
   await tokens.clear()
   secureStore.clear()
+  writeControl.gate = null
+  writeControl.started = null
 })
 afterEach(() => vi.unstubAllGlobals())
 
@@ -42,6 +49,21 @@ describe('native Keystore atomic session', () => {
     await cleared
     expect(await tokens.refresh()).toBeNull()
     expect(tokens.access()).toBeNull()
+  })
+
+  it('pending native login cannot publish a session after logout during Keystore write', async () => {
+    let release!: () => void
+    writeControl.gate = new Promise<void>((resolve) => { release = resolve })
+    const started = new Promise<void>((resolve) => { writeControl.started = resolve })
+    const login = tokens.set('late-access', 'late-refresh')
+    await started
+    const logout = tokens.clear()
+    release()
+    await expect(login).rejects.toThrow('Login canceled')
+    await logout
+    expect(tokens.hasSession()).toBe(false)
+    expect(tokens.access()).toBeNull()
+    expect(await tokens.refresh()).toBeNull()
   })
 
   it('a new native login wins over an in-flight prior-account rotation', async () => {
