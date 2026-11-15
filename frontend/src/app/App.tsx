@@ -81,6 +81,7 @@ export function App() {
       <Route path="/ishrana/rucni" element={<ManualEntryPage />} />
       <Route path="/ishrana/namirnice" element={<FoodsPage />} />
       <Route path="/ishrana/namirnice/nova" element={<NewFoodPage />} />
+      <Route path="/ishrana/namirnice/:id/izmena" element={<NewFoodPage />} />
       <Route path="/ishrana/namirnice/:id" element={<FoodDetailPage />} />
       <Route path="/ishrana/recepti/novi" element={<RecipePage />} />
       <Route path="/ishrana/cilj" element={<TargetPage />} />
