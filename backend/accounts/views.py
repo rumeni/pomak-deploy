@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status
 from rest_framework.exceptions import NotAuthenticated, Throttled, ValidationError
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -68,6 +68,9 @@ class LogoutView(APIView):
             raise NotAuthenticated()
         token = incoming_refresh(request)
         if not isinstance(token, str) or not token:
+            # Offline web logout can be retried after the cookie has expired.
+            if web_request(request):
+                return clear_refresh_cookie(Response(status=status.HTTP_204_NO_CONTENT))
             raise ValidationError({'refresh': _('Refresh token is required.')})
         try:
             refresh = RefreshToken(token)
@@ -75,6 +78,9 @@ class LogoutView(APIView):
                 raise ValidationError({'refresh': _('Invalid refresh token.')})
             refresh.blacklist()
         except TokenError:
+            # Missing/revoked cookie is already logged out; always clear it.
+            if web_request(request) and not request.data.get('refresh'):
+                return clear_refresh_cookie(Response(status=status.HTTP_204_NO_CONTENT))
             raise ValidationError({'refresh': _('Invalid refresh token.')}) from None
         response = Response(status=status.HTTP_204_NO_CONTENT)
         return clear_refresh_cookie(response) if web_request(request) else response
