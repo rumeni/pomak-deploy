@@ -4,6 +4,7 @@ export const en = {
     close: 'Close',
     appName: 'POMAK',
     tagline: 'Your training. Your nutrition. Your progress.',
+    authIntro: 'Workouts, food and measurements in one place — they work offline too. Bring in a coach when it suits you.',
     loading: 'Loading…',
     saving: 'Saving…',
     save: 'Save',
