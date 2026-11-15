@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
@@ -108,10 +108,22 @@ function ClientWorkspace({ connection, assignments }: { connection: Connection |
   const updateSharing = useUpdateCoachSharing()
   const connect = useConnectCoach()
   const [code, setCode] = useState('')
-  const [sharing, setSharing] = useState({ share_measurements: false, share_nutrition: false })
-  useEffect(() => {
-    if (connection) setSharing({ share_measurements: connection.share_measurements, share_nutrition: connection.share_nutrition })
-  }, [connection?.id, connection?.share_measurements, connection?.share_nutrition])
+  // A draft belongs to the current connection and its last server values.
+  // When consent changes in another tab, the next poll supersedes stale edits.
+  const sharingKey = connection
+    ? `${connection.id}:${connection.share_measurements}:${connection.share_nutrition}`
+    : 'no-coach'
+  const [sharingDraft, setSharingDraft] = useState<{
+    key: string
+    values: { share_measurements: boolean; share_nutrition: boolean }
+  } | null>(null)
+  const sharing = sharingDraft?.key === sharingKey
+    ? sharingDraft.values
+    : {
+        share_measurements: connection?.share_measurements ?? false,
+        share_nutrition: connection?.share_nutrition ?? false,
+      }
+  const setSharing = (values: typeof sharing) => setSharingDraft({ key: sharingKey, values })
   const onConnect = (e: FormEvent) => {
     e.preventDefault()
     connect.mutate({ code: code.trim().toUpperCase(), ...sharing })

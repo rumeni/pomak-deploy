@@ -2,7 +2,8 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { Exercise } from './api'
-import { ExerciseDemo, exerciseImageUrls } from './ExerciseImage'
+import { ExerciseDemo } from './ExerciseImage'
+import { exerciseImageUrls } from './exerciseImageUrls'
 import { ExerciseInstructions } from './ExerciseInstructions'
 
 /** Donji panel sa crtežom vežbe, osnovnim podacima (mišić, oprema) i uputstvom. Zatvara se dodirom van panela ili ✕. */

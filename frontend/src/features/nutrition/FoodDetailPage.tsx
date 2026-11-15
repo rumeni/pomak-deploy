@@ -9,7 +9,7 @@ import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
 import { mealForTime, mealSettings } from '../diary/meals'
 import { AmountPicker } from './AmountPicker'
 import { useDeleteFood, useFood } from './api'
-import { fmtValue } from './MacroLine'
+import { fmtValue } from './macroFormat'
 import { nutritionFor } from './nutrition'
 
 export function FoodDetailPage() {

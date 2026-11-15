@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { exerciseImageUrls } from './ExerciseImage'
+import { exerciseImageUrls } from './exerciseImageUrls'
 import { EXERCISE_IMAGE_SLUGS } from './exerciseImages'
 
 describe('exerciseImageUrls', () => {
