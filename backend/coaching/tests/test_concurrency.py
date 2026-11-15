@@ -3,7 +3,7 @@
 import threading
 import time
 
-from django.db import close_old_connections, transaction
+from django.db import close_old_connections, connections, transaction
 from django.test import TransactionTestCase
 from rest_framework.test import APIClient
 
@@ -42,7 +42,7 @@ class ConnectionTeardownConcurrencyTests(TransactionTestCase):
             except Exception as error:
                 problems.append(error)
             finally:
-                close_old_connections()
+                connections.close_all()
 
         def disconnect():
             close_old_connections()
@@ -54,7 +54,7 @@ class ConnectionTeardownConcurrencyTests(TransactionTestCase):
             except Exception as error:
                 problems.append(error)
             finally:
-                close_old_connections()
+                connections.close_all()
 
         write_thread = threading.Thread(target=writer)
         delete_thread = threading.Thread(target=disconnect)
