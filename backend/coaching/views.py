@@ -183,7 +183,7 @@ class ConnectView(APIView):
             raise ValidationError({'detail': 'Disconnect your current coach before connecting another one.'})
         code = serializer.validated_data['code']
         with transaction.atomic():
-            invite = CoachInvitation.objects.select_for_update().select_related('coach__profile').filter(
+            invite = CoachInvitation.objects.select_for_update().filter(
                 code=code, revoked_at__isnull=True, redeemed_at__isnull=True, expires_at__gt=timezone.now(),
             ).first()
             if invite is None or not invite.coach.profile.is_coach:
