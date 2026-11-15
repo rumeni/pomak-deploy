@@ -28,10 +28,10 @@ export function useOutboxSync(ownerId: string | undefined): void {
     let stopped = false
 
     const run = async () => {
-      // Capture a fresh auth generation on each attempt: refresh rotates tokens.
+      // Capture one logical login; refresh rotation does not change the session.
       const scope: AuthScope = { ownerId, session: tokens.session() }
       const stillCurrent = () => !stopped && scopeIsCurrent(scope)
-      const scopeKey = `${scope.session.generation}:${scope.session.refresh ?? ''}`
+      const scopeKey = scope.session.id ?? ''
       const requestConfig: ScopedRequestConfig = { __pomakScope: scope }
       if (!stillCurrent()) return
       const report = await syncOutbox(

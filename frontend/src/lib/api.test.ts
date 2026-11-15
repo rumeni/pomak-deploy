@@ -68,6 +68,73 @@ describe('osvežavanje prijave', () => {
     expect(tokens.refresh()).toBeNull()
   })
 
+  it('paralelni zahtevi sa starim access tokenom koriste istu rotaciju', async () => {
+    let finishLate401!: () => void
+    const late401 = new Promise<void>((resolve) => { finishLate401 = resolve })
+    let refreshCalls = 0
+    const adapter = async (config: InternalAxiosRequestConfig) => {
+      let status = 200
+      let data: unknown = { ok: true }
+      if (config.url?.endsWith('/auth/refresh/')) {
+        refreshCalls += 1
+        data = { access: 'novi', refresh: 'refresh-2' }
+      } else {
+        if (config.url === '/second/' && config.headers.Authorization === 'Bearer stari') await late401
+        if (config.headers.Authorization !== 'Bearer novi') status = 401
+      }
+      const response = { status, data, statusText: '', headers: new AxiosHeaders(), config }
+      if (status >= 400) throw new AxiosError('fail', 'ERR', config, null, response)
+      return response
+    }
+    api.defaults.adapter = adapter
+    axios.defaults.adapter = adapter
+    const second = api.post('/second/', { value: 2 })
+    const first = api.post('/first/', { value: 1 })
+    await expect(first).resolves.toMatchObject({ data: { ok: true } })
+    finishLate401()
+    await expect(second).resolves.toMatchObject({ data: { ok: true } })
+    expect(refreshCalls).toBe(1)
+    expect(tokens.refresh()).toBe('refresh-2')
+  })
+
+  it('promena refresh tokena ne invalidira isti login, dok ga logout i novi login invalidiraju', () => {
+    const old = tokens.session()
+    expect(tokens.rotate('novi', 'refresh-2', old, 'refresh-1')).toBe(true)
+    expect(tokens.isCurrent(old)).toBe(true)
+    tokens.clear()
+    expect(tokens.isCurrent(old)).toBe(false)
+    tokens.set('pristup-drugog', 'refresh-drugog')
+    expect(tokens.isCurrent(old)).toBe(false)
+  })
+
+  it('novi access drugog taba koristi se posle Web Lock umesto duple rotacije', async () => {
+    let refreshCalls = 0
+    let lockCalls = 0
+    vi.stubGlobal('navigator', { locks: {
+      request: async (_name: string, callback: () => Promise<string>) => {
+        lockCalls += 1
+        // Simulates another tab winning the lock, publishing its fresh tokens,
+        // then releasing the lock for the waiting tab.
+        expect(tokens.rotate('access-iz-drugog-taba', 'refresh-2', tokens.session(), 'refresh-1')).toBe(true)
+        return callback()
+      },
+    } })
+    fakeServer((config) => {
+      if (config.url?.endsWith('/auth/refresh/')) {
+        refreshCalls += 1
+        return { status: 200, data: { access: 'neocekivan', refresh: 'neocekivan-refresh' } }
+      }
+      return config.headers.Authorization === 'Bearer access-iz-drugog-taba'
+        ? { status: 200, data: { ok: true } }
+        : { status: 401, data: {} }
+    })
+    const response = await api.get('/auth/me/')
+    expect(response.data).toEqual({ ok: true })
+    expect(lockCalls).toBe(1)
+    expect(refreshCalls).toBe(0)
+    expect(tokens.access()).toBe('access-iz-drugog-taba')
+  })
+
   it('neuspela prijava (pogrešna lozinka) se ne ponavlja i ne osvežava', async () => {
     const seen: string[] = []
     fakeServer((config) => {
