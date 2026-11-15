@@ -25,6 +25,7 @@ Set the following variables on **pomak-api**, through Vercel encrypted environme
 | `EMAIL_HOST` | API | SMTP hostname of the chosen transactional provider |
 | `EMAIL_PORT` | API | Usually `587` |
 | `EMAIL_USE_TLS` | API | `True` for SMTP STARTTLS |
+| `EMAIL_TIMEOUT` | API | SMTP socket timeout in seconds; defaults to `10` |
 | `EMAIL_HOST_USER` | API | Encrypted SMTP username/API key |
 | `EMAIL_HOST_PASSWORD` | API | Encrypted SMTP password/API key |
 | `DEFAULT_FROM_EMAIL` | API | Verified sender for the project domain |
@@ -39,11 +40,14 @@ When enabled outside DEBUG, startup refuses missing QStash credentials or invali
 
 ## Staged QA before enabling
 
-1. Apply migration `accounts.0006_user_email_verification_session_version` **once** from trusted deployment tooling, not automatically from parallel Vercel builds. Verify old accounts remain usable.
-2. Deploy frontend and backend with `ACCOUNT_EMAIL_ENABLED=False`. Verify existing login/refresh, old Android APK, and authenticated password change. No email should be sent at this stage.
-3. Configure transactional email DNS/sender (SPF, DKIM, DMARC) **and QStash**. Test webhook signing (including rotated keys), known/unknown email parity, queue outages and delivery retries, deduplication, deliverability including a second real mailbox, link TTL/one-time consumption and resend failures.
-4. Test signup → unverified profile → blocked protected routes → verify link → app accessible on web **and** a fresh Android build. Test reset and password change across two devices: all old JWTs must fail.
-5. Only after these checks, enable `ACCOUNT_EMAIL_ENABLED=True` on the API and `VITE_ACCOUNT_EMAIL_ENABLED=true` at frontend build time; monitor rate limiting, error rates and delivery timeouts. Plan rollback by setting email flag to False while preserving data and previous account access.
+1. **Before merging the PR or deploying the new backend**, use a trusted one-off release runner with this PR's checked-out migration code and the correct production `DATABASE_URL` to run `python manage.py sqlmigrate accounts 0006`. Confirm both new columns have persistent PostgreSQL defaults (`0` and `false`) and **neither has `DROP DEFAULT`**. Take a recoverable DB backup. If you cannot run this separate pre-deploy schema step, DO NOT merge the PR.
+2. Still while **the old backend is serving production traffic**, run `python manage.py migrate accounts 0006` exactly once from that trusted runner. This is a schema-only deployment, not a frontend/API deployment. Immediately verify that **old backend login, refresh, and registration** continue to work: it must be able to insert users without specifying the two new fields because PostgreSQL retains the defaults.
+3. Only after the migration and old-code smoke pass, merge/deploy the new backend and frontend with `ACCOUNT_EMAIL_ENABLED=False`. Confirm new login/refresh, password-change session revocation, pre-existing accounts, and older Android APK compatibility. Verify no email is sent while disabled.
+4. Configure transactional email DNS/sender (SPF, DKIM, DMARC) **and QStash**. Test webhook signing (including rotated keys), known/unknown email parity, queue outages and delivery retries, deduplication, deliverability including a second real mailbox, link TTL/one-time consumption and resend failures.
+5. Test signup → unverified profile → blocked protected routes → verify link → app accessible on web **and** a fresh Android build. Test reset and password change across two devices: all old JWTs must fail.
+6. Only after these checks, enable `ACCOUNT_EMAIL_ENABLED=True` on the API and `VITE_ACCOUNT_EMAIL_ENABLED=true` at frontend build time; monitor rate limiting, error rates and delivery timeouts. Plan rollback by setting email flag to False while preserving data and previous account access.
+
+**Rollback:** The schema change is intentionally additive. If rolling back the application to the old code, retain the two columns and database defaults; do not reverse migration `0006` while the new app might still run. A `main` merge can trigger Vercel auto-deployment, so migration-first is a hard requirement, not an optional post-merge task.
 
 ## Operational limits
 
