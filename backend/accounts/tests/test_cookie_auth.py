@@ -93,6 +93,23 @@ class AuthCookieTransportTests(APITestCase):
             'refresh': login.cookies['pomak.refresh'].value,
         }, format='json').status_code, 401)
 
+    def test_offline_web_logout_retry_is_idempotent_without_cookie(self):
+        login = self.login(**WEB)
+        self.client.cookies['pomak.refresh'] = login.cookies['pomak.refresh'].value
+        first = self.client.post('/api/auth/logout/', {}, format='json', **WEB)
+        self.assertEqual(first.status_code, 204)
+        # Browser removed its cookie; a reconnect retry should also succeed.
+        del self.client.cookies['pomak.refresh']
+        second = self.client.post('/api/auth/logout/', {}, format='json', **WEB)
+        self.assertEqual(second.status_code, 204)
+        self.assertEqual(second.cookies['pomak.refresh']['max-age'], 0)
+
+    def test_web_logout_retires_invalid_cookie(self):
+        self.client.cookies['pomak.refresh'] = 'revoked-or-corrupt'
+        response = self.client.post('/api/auth/logout/', {}, format='json', **WEB)
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.cookies['pomak.refresh']['max-age'], 0)
+
     def test_unauthenticated_legacy_logout_still_denied(self):
         login = self.login()
         response = self.client.post('/api/auth/logout/', {
