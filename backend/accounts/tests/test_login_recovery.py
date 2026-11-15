@@ -68,7 +68,7 @@ class LoginRecoveryTests(APITestCase):
             self.assertEqual(res.status_code, 401, res.data)
         blocked = self.login('jaka-lozinka-123', '203.0.113.12', 'third-token')
         self.assertEqual(blocked.status_code, 429, blocked.data)
-        self.assertEqual(str(blocked.data['code']), 'login_verification_required')
+        self.assertNotIn('code', blocked.data)  # No futile prompt: the minute's recovery budget is spent.
         self.assertEqual(verify.call_count, 3)
 
     @patch('accounts.throttles.verify_login_recovery', return_value=True)
