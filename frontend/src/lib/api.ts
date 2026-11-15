@@ -22,10 +22,11 @@ export function withAuthLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export const api = axios.create({
-  // Production browsers must stay on the web origin, even if Vercel has an
-  // older VITE_API_URL pointing at the separate cross-site API domain.
-  baseURL: !Capacitor.isNativePlatform() && import.meta.env.PROD ? '/api'
-    : import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8001/api' : '/api'),
+  // Web is same-origin in development (Vite proxy) and production (Vercel rewrite).
+  // Native Capacitor intentionally uses an absolute HTTPS API URL.
+  baseURL: Capacitor.isNativePlatform()
+    ? import.meta.env.VITE_API_URL ?? 'https://pomak-api.vercel.app/api'
+    : '/api',
   timeout: 15000,
 })
 
