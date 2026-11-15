@@ -146,6 +146,11 @@ REST_FRAMEWORK = {
 # the web/Android verification flows are tested. SMTP secrets stay in Vercel.
 ACCOUNT_EMAIL_ENABLED = config('ACCOUNT_EMAIL_ENABLED', default=False, cast=bool)
 ACCOUNT_EMAIL_BASE_URL = config('ACCOUNT_EMAIL_BASE_URL', default='')
+# Signed, durable queue: submit all syntactically valid reset addresses before any account lookup.
+ACCOUNT_EMAIL_WORKER_URL = config('ACCOUNT_EMAIL_WORKER_URL', default='')
+QSTASH_TOKEN = config('QSTASH_TOKEN', default='')
+QSTASH_CURRENT_SIGNING_KEY = config('QSTASH_CURRENT_SIGNING_KEY', default='')
+QSTASH_NEXT_SIGNING_KEY = config('QSTASH_NEXT_SIGNING_KEY', default='')
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = config('EMAIL_HOST', default='localhost')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
@@ -159,11 +164,15 @@ if ACCOUNT_EMAIL_ENABLED and not DEBUG:
     from urllib.parse import urlsplit
 
     base = urlsplit(ACCOUNT_EMAIL_BASE_URL)
+    worker = urlsplit(ACCOUNT_EMAIL_WORKER_URL)
     if (base.scheme != 'https' or not base.hostname or base.username or base.password
             or base.query or base.fragment or base.path not in ('', '/')
+            or worker.scheme != 'https' or not worker.hostname or worker.username or worker.password
+            or worker.query or worker.fragment or worker.path != '/api/internal/password-reset-email/'
+            or not QSTASH_TOKEN or not QSTASH_CURRENT_SIGNING_KEY or not QSTASH_NEXT_SIGNING_KEY
             or not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD or not DEFAULT_FROM_EMAIL):
         raise ImproperlyConfigured(
-            'Account emails require HTTPS ACCOUNT_EMAIL_BASE_URL and encrypted SMTP sender credentials.'
+            'Account email rollout requires HTTPS sender/worker URLs, QStash queue signing keys and SMTP sender credentials.'
         )
 
 # The recovery path is OFF until the web/Android widget and Siteverify
