@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework.throttling import BaseThrottle
 
 from .models import AuthThrottleBucket
-from .turnstile import login_recovery_enabled, verify_login_recovery
+from .turnstile import claim_login_recovery_token, login_recovery_enabled, verify_login_recovery
 
 
 class DatabaseAuthThrottle(BaseThrottle):
@@ -80,6 +80,10 @@ class LoginRecoveryThrottle(DatabaseAuthThrottle):
                 view.login_challenge_required = False
             return False
         if not verify_login_recovery(token, ip):
+            return False
+        # Cloudflare's concurrent replay detection is eventually consistent:
+        # atomically claim the accepted token in PostgreSQL before admission.
+        if not claim_login_recovery_token(token):
             return False
         if not self.consume_limit('login-verified-account', email, 2, now):
             if view is not None:
