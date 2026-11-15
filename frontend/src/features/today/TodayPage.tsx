@@ -45,11 +45,26 @@ export function TodayPage() {
           </>
         }
       />
-      <div className="mx-auto flex max-w-xl flex-col gap-3 px-4 pb-6">
-        <ActiveWorkoutBanner />
-        {profile?.tracks_training && <TrainingCard />}
-        {profile?.tracks_nutrition && me && <NutritionCard ownerId={me.id} />}
-        <WeightCard />
+      <div className="today-main">
+        <section className="today-hero" aria-label={t('today.title')}>
+          <span className="today-hero-kicker">{t('today.title')} · POMAK</span>
+          <h2>{t('common.tagline')}</h2>
+          <p>{t('today.nextWorkout')} · {t('today.nutrition')} · {t('progress.title')}</p>
+          <div className="today-hero-actions">
+            <Link className="today-hero-link" to="/trening">
+              {t('tabs.training')} <span aria-hidden>↗</span>
+            </Link>
+            <Link className="today-hero-link today-hero-link--outline" to="/napredak">
+              {t('tabs.progress')} <span aria-hidden>↗</span>
+            </Link>
+          </div>
+        </section>
+        <div className="mt-4"><ActiveWorkoutBanner /></div>
+        <div className="today-dashboard-grid">
+          {profile?.tracks_training && <TrainingCard />}
+          {profile?.tracks_nutrition && me && <NutritionCard ownerId={me.id} />}
+          <WeightCard />
+        </div>
       </div>
     </>
   )
@@ -76,7 +91,7 @@ function TrainingCard() {
   }
 
   return (
-    <Card>
+    <Card className="dashboard-card dashboard-card--training">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('today.training')}</h2>
         {week.data && (
@@ -103,8 +118,8 @@ function TrainingCard() {
       {isLoading && <p className="py-2 text-muted">{t('common.loading')}</p>}
       {next ? (
         <>
-          <p className="mt-2 text-sm text-muted">{t('today.nextWorkout')}</p>
-          <p className="text-lg font-semibold">{next.name}</p>
+          <p className="mt-5 text-xs font-bold uppercase tracking-widest text-muted">{t('today.nextWorkout')}</p>
+          <p className="mt-1 text-xl font-bold tracking-tight">{next.name}</p>
           <p className="truncate text-sm text-muted">{next.exercises.map((e) => e.exercise.name).join(' · ')}</p>
           <Button className="mt-3 w-full" onClick={() => void onStart(next)} disabled={starting}>
             {t('today.start', { name: next.name })}
@@ -152,22 +167,22 @@ function NutritionCard({ ownerId }: { ownerId: string }) {
   const diff = target ? target.kcal - tot.kcal : 0
 
   return (
-    <Card>
+    <Card className="dashboard-card dashboard-card--nutrition">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('today.nutrition')}</h2>
         <Link to="/ishrana" className={`-my-2 ${linkClass}`}>
           {t('today.openDiary')}
         </Link>
       </div>
-      <p className="text-3xl font-bold tabular-nums">
+      <p className="dashboard-metric mt-3 tabular-nums">
         {tot.kcal}
         {target && <span className="text-xl font-semibold text-muted"> / {formatDecimal(target.kcal)}</span>}{' '}
         <span className="text-base font-medium text-muted">{t('nutrition.kcal')}</span>
       </p>
       {target ? (
         <>
-          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-line" aria-hidden>
-            <div className="h-full rounded-full bg-brand" style={{ width: `${Math.round(share * 100)}%` }} />
+          <div className="dashboard-progress mt-4" aria-hidden>
+            <div style={{ width: `${Math.round(share * 100)}%` }} />
           </div>
           <p className="mt-1 text-sm text-muted tabular-nums">
             {diff >= 0 ? t('diary.remaining', { kcal: formatDecimal(diff) }) : t('diary.overTarget', { kcal: formatDecimal(-diff) })}
@@ -225,7 +240,7 @@ function WeightCard() {
   }
 
   return (
-    <Card>
+    <Card className="dashboard-card dashboard-card--weight">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('progress.bodyWeight')}</h2>
         <Link to="/napredak/merenja" className={`-my-2 ${linkClass}`}>
