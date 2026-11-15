@@ -1,9 +1,5 @@
 """Cookie transport is opt-in; old Android JSON token behavior is unchanged."""
 
-from datetime import timedelta
-from unittest.mock import patch
-
-from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from accounts.models import User
@@ -28,7 +24,7 @@ class AuthCookieTransportTests(APITestCase):
         self.assertEqual(cookie['samesite'], 'Strict')
         self.assertEqual(cookie['path'], '/api/auth/')
         self.assertEqual(cookie['max-age'], 30 * 24 * 60 * 60)
-        self.assertNotIn('domain', cookie.keys())
+        self.assertEqual(cookie['domain'], '')
 
     def test_web_login_refresh_from_cookie_only_and_rotate(self):
         login = self.login(**WEB)
