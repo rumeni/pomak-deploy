@@ -55,7 +55,7 @@ class AuthCookieTransportTests(APITestCase):
         self.client.cookies['pomak.refresh'] = login.cookies['pomak.refresh'].value
         response = self.client.post('/api/auth/refresh/', {}, format='json')
         self.assertEqual(response.status_code, 400)
-        self.assertNotIn('refresh', response.data)
+        self.assertNotIsInstance(response.data.get('refresh'), str)  # Field error, never a JWT.
 
     def test_legacy_without_header_is_identical(self):
         login = self.login()
