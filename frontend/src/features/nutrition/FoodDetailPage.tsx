@@ -99,6 +99,14 @@ export function FoodDetailPage() {
 
         {food.is_custom && (
           <>
+            {food.source === 'custom' && (
+              <Link
+                to={`/ishrana/namirnice/${food.id}/izmena`}
+                className="flex min-h-12 items-center justify-center rounded-xl bg-card font-semibold text-brand-dark ring-1 ring-line active:bg-brand-soft"
+              >
+                {t('nutrition.editFood')}
+              </Link>
+            )}
             <FormError message={remove.isError ? errorMessage(remove.error) : null} />
             <Button variant="ghost" className="text-danger" onClick={onDelete} disabled={remove.isPending}>
               {isRecipe ? t('recipe.delete') : t('nutrition.deleteFood')}
