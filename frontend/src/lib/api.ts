@@ -65,7 +65,7 @@ api.interceptors.request.use(async (config) => {
   }
   const access = tokens.access()
   if (access) config.headers.Authorization = `Bearer ${access}`
-  if (request.url === '/auth/login/') Object.assign(config.headers, webHeaders())
+  if (request.url === '/auth/login/' || request.url === '/auth/register/') Object.assign(config.headers, webHeaders())
   config.headers['Accept-Language'] = toServerLanguage(i18n.language as Language)
   return config
 })

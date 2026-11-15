@@ -659,3 +659,7 @@ msgstr "Vežbe iz zajedničke biblioteke ne mogu da se menjaju."
 #, python-format
 msgid "%(name)s (copy)"
 msgstr "%(name)s (kopija)"
+
+#: accounts/views.py:57
+msgid "Too many sign-in attempts. Complete verification to try again."
+msgstr "Previše pokušaja prijave. Završite bezbednosnu proveru i pokušajte ponovo."

@@ -320,3 +320,17 @@ describe('osvežavanje prijave', () => {
     expect(seen).toEqual(['/auth/login/'])
   })
 })
+
+describe('web registration transport', () => {
+  it('sends the web header so the backend never serializes refresh in JSON', async () => {
+    let mode: unknown = null
+    fakeServer((config) => {
+      mode = config.headers['X-Pomak-Client']
+      return { status: 201, data: { access: 'access-only' } }
+    })
+    await api.post('/auth/register/', {
+      email: 'new@example.com', password: 'jaka-lozinka-123',
+    })
+    expect(mode).toBe('web')
+  })
+})

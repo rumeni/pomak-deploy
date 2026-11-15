@@ -176,3 +176,85 @@ class ForwardedIpSettingsTests(APITestCase):
                                                   HTTP_X_FORWARDED_FOR='198.51.100.8, 203.0.113.9'))
         with override_settings(REST_FRAMEWORK={**settings.REST_FRAMEWORK, 'NUM_PROXIES': 1}):
             self.assertEqual(BaseThrottle().get_ident(request), '203.0.113.9')
+
+
+
+class WebRegistrationCookieTests(APITestCase):
+    def test_web_registration_sets_secure_cookie_without_refresh_json(self):
+        response = self.client.post('/api/auth/register/', {
+            'email': 'web-register@example.com', 'password': 'jaka-lozinka-123',
+        }, format='json', HTTP_X_POMAK_CLIENT='web')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('access', response.data)
+        self.assertNotIn('refresh', response.data)
+        cookie = response.cookies['pomak.refresh']
+        self.assertTrue(cookie['httponly'])
+        self.assertTrue(cookie['secure'])
+        self.assertEqual(cookie['samesite'], 'Strict')
+        self.assertEqual(cookie['path'], '/api/auth/')
+
+    def test_existing_native_clients_keep_legacy_registration_json(self):
+        response = self.client.post('/api/auth/register/', {
+            'email': 'native-register@example.com', 'password': 'jaka-lozinka-123',
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertNotIn('pomak.refresh', response.cookies)
+
+
+class WebReLoginRevocationTests(APITestCase):
+    """A new web login must not leave the old offline-logout cookie valid."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('relogin@example.com', 'jaka-lozinka-123')
+
+    def login(self):
+        return self.client.post(
+            '/api/auth/login/',
+            {'email': 'relogin@example.com', 'password': 'jaka-lozinka-123'},
+            format='json', HTTP_X_POMAK_CLIENT='web',
+        )
+
+    def test_successful_relogin_blacklists_previous_refresh_cookie(self):
+        first = self.login()
+        self.assertEqual(first.status_code, 200, first.data)
+        old = first.cookies['pomak.refresh'].value
+
+        second = self.login()
+        self.assertEqual(second.status_code, 200, second.data)
+        new = second.cookies['pomak.refresh'].value
+        self.assertNotEqual(old, new)
+
+        self.client.cookies['pomak.refresh'] = old
+        replay = self.client.post(
+            '/api/auth/refresh/', {}, format='json', HTTP_X_POMAK_CLIENT='web',
+        )
+        self.assertEqual(replay.status_code, 401)
+
+        self.client.cookies['pomak.refresh'] = new
+        valid = self.client.post(
+            '/api/auth/refresh/', {}, format='json', HTTP_X_POMAK_CLIENT='web',
+        )
+        self.assertEqual(valid.status_code, 200, valid.data)
+
+    def test_expired_old_cookie_does_not_block_new_login(self):
+        self.client.cookies['pomak.refresh'] = 'expired-or-invalid'
+        response = self.login()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIn('pomak.refresh', response.cookies)
+
+    def test_invalid_password_does_not_revoke_old_cookie(self):
+        first = self.login()
+        old = first.cookies['pomak.refresh'].value
+        rejected = self.client.post(
+            '/api/auth/login/',
+            {'email': 'relogin@example.com', 'password': 'wrong'},
+            format='json', HTTP_X_POMAK_CLIENT='web',
+        )
+        self.assertEqual(rejected.status_code, 401, rejected.data)
+        self.client.cookies['pomak.refresh'] = old
+        still_valid = self.client.post(
+            '/api/auth/refresh/', {}, format='json', HTTP_X_POMAK_CLIENT='web',
+        )
+        self.assertEqual(still_valid.status_code, 200, still_valid.data)

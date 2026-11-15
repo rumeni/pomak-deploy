@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 
 import i18n, { changeLanguage, fromServerLanguage, toServerLanguage, type Language } from '../i18n'
 import { api, revokePendingWebLogout, webHeaders, withAuthLock } from './api'
+import { performLogin } from './login'
 import { AuthContext, type RegisterData } from './authContext'
 import { setCurrentUserId } from './currentUser'
 import { tokens } from './tokens'
@@ -99,9 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string, turnstileToken?: string) => {
       await withAuthLock(async () => {
-        await revokePendingWebLogout()
-        const { data } = await api.post('/auth/login/', { email, password, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) })
-        await tokens.set(data.access, data.refresh ?? null)
+        await performLogin(email, password, turnstileToken)
         setHasToken(true)
       })
     },
@@ -120,12 +119,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           language: toServerLanguage(i18n.language as Language),
         })
         if (Object.keys(webHeaders()).length) {
-          // /register is intentionally legacy for older APKs. Immediately
-          // exchange its one-time JSON refresh for a web-only HttpOnly cookie.
-          const migrated = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {
-            refresh: data.refresh,
-          }, { headers: webHeaders(), timeout: 15000 })
-          await tokens.set(migrated.data.access, null)
+          if (data.refresh) {
+            // Backwards compatibility with older server versions which still
+            // return JSON refresh on registration even with the web header.
+            const migrated = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {
+              refresh: data.refresh,
+            }, { headers: webHeaders(), timeout: 15000 })
+            await tokens.set(migrated.data.access, null)
+          } else {
+            await tokens.set(data.access, null)
+          }
         } else {
           await tokens.set(data.access, data.refresh)
         }
