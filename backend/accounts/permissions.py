@@ -1,5 +1,6 @@
 """Require verified inbox ownership for accounts created under email gating."""
 
+from django.conf import settings
 from rest_framework.permissions import BasePermission
 
 
@@ -10,6 +11,6 @@ class VerifiedEmailPermission(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
-        if user.email_verification_required and user.email_verified_at is None:
+        if settings.ACCOUNT_EMAIL_ENABLED and user.email_verification_required and user.email_verified_at is None:
             return getattr(view, 'allow_unverified_email', False)
         return True
