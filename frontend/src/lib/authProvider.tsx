@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import i18n, { changeLanguage, fromServerLanguage, toServerLanguage, type Language } from '../i18n'
-import { api, webHeaders, withAuthLock } from './api'
+import { api, revokePendingWebLogout, webHeaders, withAuthLock } from './api'
 import { AuthContext, type RegisterData } from './authContext'
 import { setCurrentUserId } from './currentUser'
 import { tokens } from './tokens'
@@ -51,17 +51,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', onStorage)
   }, [queryClient])
 
+  // Logout may have happened offline. Retry cookie revocation after reconnect
+  // and on a later launch; only a non-secret pending marker survives locally.
+  useEffect(() => {
+    if (!Object.keys(webHeaders()).length) return
+    const retry = () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+      void withAuthLock(() => revokePendingWebLogout()).catch(() => undefined)
+    }
+    window.addEventListener('online', retry)
+    retry()
+    return () => window.removeEventListener('online', retry)
+  }, [])
+
   const logout = useCallback(() => {
     const pendingRefresh = tokens.refresh()
     const access = tokens.access()
+    const isWeb = Object.keys(webHeaders()).length > 0
+    if (isWeb) tokens.queueWebLogout()
     // Queue cookie revocation BEFORE a possible new login takes the same lock.
     const revoke = withAuthLock(async () => {
       const refresh = await pendingRefresh
-      if (Object.keys(webHeaders()).length) {
-        // Cookie-based logout must omit possibly expired bearer credentials.
-        await axios.post(`${api.defaults.baseURL}/auth/logout/`, refresh ? { refresh } : {}, {
-          headers: webHeaders(), timeout: 5000,
-        })
+      if (isWeb) {
+        await revokePendingWebLogout(refresh)
       } else if (access && refresh) {
         await axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh }, {
           headers: { Authorization: `Bearer ${access}` }, timeout: 5000,
@@ -87,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string, turnstileToken?: string) => {
       await withAuthLock(async () => {
+        await revokePendingWebLogout()
         const { data } = await api.post('/auth/login/', { email, password, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) })
         await tokens.set(data.access, data.refresh ?? null)
         setHasToken(true)
@@ -98,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(
     async ({ email, password, displayName, accountType }: RegisterData) => {
       await withAuthLock(async () => {
+        await revokePendingWebLogout()
         const { data } = await api.post('/auth/register/', {
           email,
           password,
@@ -110,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // exchange its one-time JSON refresh for a web-only HttpOnly cookie.
           const migrated = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {
             refresh: data.refresh,
-          }, { headers: webHeaders() })
+          }, { headers: webHeaders(), timeout: 15000 })
           await tokens.set(migrated.data.access, null)
         } else {
           await tokens.set(data.access, data.refresh)
