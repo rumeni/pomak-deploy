@@ -30,7 +30,10 @@ const AuthContext = createContext<AuthState | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
-  const [hasToken, setHasToken] = useState(() => !!tokens.access())
+  const [hasToken, setHasToken] = useState(() => {
+    tokens.session() // Upgrade an existing login to a persistent cross-tab identity.
+    return !!tokens.access()
+  })
 
   const { data: me, isLoading, isError, refetch } = useQuery({
     queryKey: ['me'],
@@ -61,7 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== 'pomak.access' && event.key !== 'pomak.refresh') return
+      // Token rotation is not a login/logout: do not discard the query cache.
+      if (event.key !== 'pomak.session-id' && !(event.key === 'pomak.access' && event.newValue === null)) return
       queryClient.clear()
       setHasToken(!!tokens.access())
     }
