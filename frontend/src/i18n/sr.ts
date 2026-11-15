@@ -44,6 +44,8 @@ export const sr = {
     loggingIn: 'Prijavljivanje…',
     verificationPrompt: 'Previše pokušaja. Potvrdi bezbednosnu proveru, pa pokušaj ponovo.',
     verificationLabel: 'Bezbednosna provera za prijavu',
+    verificationRetry: 'Ponovi bezbednosnu proveru',
+    verificationTryNormal: 'Pokušaj ponovo običnu prijavu',
     verificationUnavailable: 'Bezbednosna provera trenutno nije dostupna. Pokušaj ponovo kasnije.',
     register: 'Napravi nalog',
     registering: 'Pravljenje naloga…',
