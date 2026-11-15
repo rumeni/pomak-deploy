@@ -58,14 +58,20 @@ class ProfileSerializer(serializers.ModelSerializer):
 class MeSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer()
     email_verified = serializers.SerializerMethodField()
+    email_verification_required = serializers.SerializerMethodField()
 
     def get_email_verified(self, obj):
         return obj.email_verified_at is not None
 
+    def get_email_verification_required(self, obj):
+        # Explicitly disabled email delivery must also unlock the frontend
+        # during a staged rollout rollback, without changing stored user state.
+        return settings.ACCOUNT_EMAIL_ENABLED and obj.email_verification_required
+
     class Meta:
         model = User
         fields = ['id', 'email', 'email_verified', 'email_verification_required', 'profile']
-        read_only_fields = ['id', 'email']
+        read_only_fields = ['id', 'email', 'email_verification_required']
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})
