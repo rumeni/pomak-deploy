@@ -119,12 +119,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           language: toServerLanguage(i18n.language as Language),
         })
         if (Object.keys(webHeaders()).length) {
-          // /register is intentionally legacy for older APKs. Immediately
-          // exchange its one-time JSON refresh for a web-only HttpOnly cookie.
-          const migrated = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {
-            refresh: data.refresh,
-          }, { headers: webHeaders(), timeout: 15000 })
-          await tokens.set(migrated.data.access, null)
+          if (data.refresh) {
+            // Backwards compatibility with older server versions which still
+            // return JSON refresh on registration even with the web header.
+            const migrated = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {
+              refresh: data.refresh,
+            }, { headers: webHeaders(), timeout: 15000 })
+            await tokens.set(migrated.data.access, null)
+          } else {
+            await tokens.set(data.access, null)
+          }
         } else {
           await tokens.set(data.access, data.refresh)
         }
