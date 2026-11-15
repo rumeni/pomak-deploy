@@ -15,8 +15,17 @@ export function scopeIsCurrent(scope: AuthScope): boolean {
 
 export const webHeaders = () => Capacitor.isNativePlatform() ? {} : { 'X-Pomak-Client': 'web' }
 
+export function withAuthLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
+  return !Capacitor.isNativePlatform() && locks?.request
+    ? locks.request('pomak:jwt-refresh', fn) : fn()
+}
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8001/api' : '/api'),
+  // Production browsers must stay on the web origin, even if Vercel has an
+  // older VITE_API_URL pointing at the separate cross-site API domain.
+  baseURL: !Capacitor.isNativePlatform() && import.meta.env.PROD ? '/api'
+    : import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8001/api' : '/api'),
   timeout: 15000,
 })
 
@@ -52,6 +61,7 @@ async function refreshAccess(session: TokenSession, rejectedAccess: string | nul
     const currentAccess = tokens.access()
     if (currentAccess && currentAccess !== rejectedAccess) return currentAccess
     const refresh = await tokens.refresh()
+    const epoch = tokens.rotationEpoch()
     if (!tokens.isCurrent(session)) throw new Error('Authentication changed during token refresh')
     try {
       const { data } = await axios.post(
@@ -71,14 +81,26 @@ async function refreshAccess(session: TokenSession, rejectedAccess: string | nul
       if (newerAccess && newerAccess !== rejectedAccess && tokens.isCurrent(session)) return newerAccess
       const status = axios.isAxiosError(error) ? error.response?.status : undefined
       if ([400, 401, 403].includes(status ?? 0) && tokens.isCurrent(session)) {
-        void tokens.clear()
-        if (typeof window !== 'undefined') window.dispatchEvent(new Event('pomak:logout'))
+        // Without Web Locks another tab may have rotated the cookie already.
+        // A failed tab must never delete the shared login marker in that case.
+        const noLocks = !Capacitor.isNativePlatform() && !(typeof navigator !== 'undefined' && navigator.locks?.request)
+        if (noLocks) {
+          await new Promise((resolve) => setTimeout(resolve, 150))
+          if (tokens.rotationEpoch() !== epoch) {
+            const retry = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {}, { headers: webHeaders() })
+            if (tokens.isCurrent(session) && await tokens.rotate(retry.data.access, null, session, null)) {
+              return retry.data.access
+            }
+          }
+        } else {
+          void tokens.clear()
+          if (typeof window !== 'undefined') window.dispatchEvent(new Event('pomak:logout'))
+        }
       }
       throw error
     }
   }
-  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
-  return locks?.request ? locks.request('pomak:jwt-refresh', refreshUnderLock) : refreshUnderLock()
+  return withAuthLock(refreshUnderLock)
 }
 
 function refreshFor(session: TokenSession, rejectedAccess: string | null): Promise<string> {
