@@ -10,12 +10,12 @@ Both real and nonexistent emails follow the same quota and verification path; th
 
 - Normal login: **10 requests/account/minute**, **120 requests/IP/minute** in PostgreSQL, plus the existing DRF anonymous and auth-scoped throttles.
 - After exhaustion: return HTTP 429 and `code: login_verification_required` only if recovery is enabled and server-side configuration is complete; otherwise preserve the original 429 behavior.
-- Challenged login: token must be verified by Cloudflare's HTTPS Siteverify endpoint with the **backend secret**, and must match `action=pomak_login_recovery` and an explicitly allowlisted hostname. Cloudflare validates expiry and single-use (300 seconds); a duplicate must fail.
+- Challenged login: token must be verified by Cloudflare's HTTPS Siteverify endpoint with the **backend secret**, and must match `action=pomak_login_recovery` and an explicitly allowlisted hostname. Siteverify handles provider validation and the 300-second token lifespan. **Additionally, the backend atomically records a SHA-256 token claim under a PostgreSQL advisory transaction lock** so two simultaneous successful Siteverify responses cannot reuse one challenge across accounts. Claims remain for at least the five-minute validity period and are pruned by the existing 2-hour cleanup.
 - After successful Siteverify, allow at most **2 verified recovery logins/account/minute** and **3/IP/minute**, in atomic PostgreSQL buckets; incorrect passwords still count. This keeps a bounded account-wide rate even across rotating IP addresses.
 - Before Siteverify, limit validation attempts to **8/IP/minute** to cap unnecessary provider calls. Unverified tokens do not consume the two precious per-account recovery attempts, so random invalid-token spam cannot directly exhaust them.
 - Network errors, wrong action/hostname, token length over 2048, missing configuration and Siteverify failures all fail closed. No bypass based only on password correctness.
 - Recovery still respects the other DRF IP-based throttles. A user behind the same abusive IP may need to wait for that separate IP window; the recovery protects against **distributed, per-account** lockouts, not a saturated IP-wide gate.
-- The existing 2-hour retention job cleans the same-minute challenge buckets automatically; no database migration.
+- The existing 2-hour retention job cleans same-minute challenge counters and hashed token claims automatically; no database migration.
 
 Security limits: Turnstile is friction rather than a mathematical proof of humanity. An attacker who repeatedly solves valid challenges can still use the small recovery budget or attempt denial of service. Monitor verification failures, account rates and user feedback. Stronger/longer duration limits or dedicated risk scoring are future options.
 
@@ -33,7 +33,7 @@ Do not use Cloudflare's **test** secret in production. The backend checks and re
 
 - Ten wrong passwords from ten different IPs; an 11th request gets a challenge, and an **independently verified** challenge with the correct password logs in.
 - Unknown email receives the same throttled response and challenge behavior (no existence disclosure).
-- Invalid/reused/expired token and wrong action/hostname fail; no tokens or secrets leak in logs.
+- Invalid/reused/expired token and wrong action/hostname fail; no tokens or secrets leak in logs. Parallel repeated submission of a single Siteverify token must admit at most one attempt across all Vercel instances.
 - Two validated wrong-password recovery attempts consume the per-account verified budget. A third fails even from a new IP.
 - Confirm accessibility, widget expiry/reset, offline/online transitions, registration and refresh remain unchanged.
 - Confirm real installed PWA update and Android Capacitor WebView (including access to `challenges.cloudflare.com`) before enabling in production.
