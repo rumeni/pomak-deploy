@@ -16,6 +16,8 @@ export interface Profile {
 export interface Me {
   id: string
   email: string
+  email_verified?: boolean
+  email_verification_required?: boolean
   profile: Profile
 }
 
