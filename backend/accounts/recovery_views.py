@@ -87,7 +87,7 @@ class PasswordResetConfirmView(APIView):
         try:
             user_pk = force_str(urlsafe_base64_decode(uid))
             user = User.objects.get(pk=user_pk, is_active=True)
-        except (ValueError, TypeError, OverflowError, UnicodeDecodeError, User.DoesNotExist):
+        except (ValueError, TypeError, OverflowError, UnicodeDecodeError, DjangoValidationError, User.DoesNotExist):
             raise ValidationError(GENERIC_INVALID) from None
         with transaction.atomic():
             user = User.objects.select_for_update().get(pk=user.pk)
