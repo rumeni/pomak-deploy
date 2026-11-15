@@ -97,6 +97,14 @@ class PasswordRecoveryTests(APITestCase):
         self.assertEqual(invalid.status_code, 400)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('strong-old-password-123'))
+        # A decodable value that isn't a UUID is also a client error, never 500.
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+        uid = urlsafe_base64_encode(force_bytes('not-a-uuid'))
+        res = self.client.post('/api/auth/password/reset/confirm/', {
+            'uid': uid, 'token': 'invalid', 'new_password': 'strong-new-password-456',
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
 
 
 @override_settings(**EMAIL_TEST_SETTINGS)
