@@ -53,7 +53,7 @@ class RefreshView(TokenRefreshView):
     throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
 
     def post(self, request, *args, **kwargs):
-        if not request.data.get('refresh') and request.COOKIES.get('pomak.refresh'):
+        if web_request(request) and not request.data.get('refresh') and request.COOKIES.get('pomak.refresh'):
             request._full_data = {**request.data, 'refresh': incoming_refresh(request)}
         return output_tokens(request, super().post(request, *args, **kwargs))
 
