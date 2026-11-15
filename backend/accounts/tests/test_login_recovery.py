@@ -140,5 +140,5 @@ class SiteverifyTests(APITestCase):
 
         with patch('accounts.turnstile.urlopen', side_effect=URLError('offline')):
             self.assertFalse(verify_login_recovery('token123', '192.0.2.22'))
-        with patch('accounts.turnstile.urlopen', return_value=io.BytesIO(b'not-json')):
+        with patch('accounts.turnstile.urlopen', return_value=self.fake_response('not-json')):
             self.assertFalse(verify_login_recovery('token123', '192.0.2.22'))
