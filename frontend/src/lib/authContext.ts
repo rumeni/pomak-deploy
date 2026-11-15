@@ -14,7 +14,7 @@ export interface AuthState {
   /** Prijava postoji, ali server nije dostupan, a podaci o korisniku nisu sačuvani na telefonu. */
   unreachable: boolean
   retry: () => void
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string, turnstileToken?: string) => Promise<void>
   register: (data: RegisterData) => Promise<void>
   logout: () => void
 }
