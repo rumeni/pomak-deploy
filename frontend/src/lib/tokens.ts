@@ -5,6 +5,7 @@ const REFRESH = 'pomak.refresh'
 const SESSION = 'pomak.session-id'
 // Poslednji poznati podaci o korisniku: aplikacija pokrenuta bez interneta radi sa njima.
 const ME = 'pomak.me'
+const EPOCH = 'pomak.refresh-epoch' // Non-secret cross-tab rotation signal.
 const isNative = () => Capacitor.isNativePlatform()
 let accessToken: string | null = null
 let accessSession: string | null = null
@@ -64,6 +65,7 @@ export const tokens = {
   access: () => accessSession === currentSessionId() ? accessToken : null,
   refresh: async () => isNative() ? (await nativeRefresh()) ?? read(REFRESH) : read(REFRESH),
   hasSession: () => !!currentSessionId(),
+  rotationEpoch: () => read(EPOCH),
   /** JWT subject is a sanity check; the server still validates the signature. */
   userId: (): string | null => {
     const jwt = tokens.access()
@@ -81,28 +83,49 @@ export const tokens = {
   isCurrent: (session: TokenSession): boolean => !!session.id && session.id === currentSessionId(),
   /** Fresh login changes identity; rotation preserves it across requests/tabs. */
   async set(access: string, refresh: string | null) {
-    if (isNative()) {
-      if (!refresh) throw new Error('Native login requires a refresh token')
-      await nativeRefresh(refresh)
+    const publish = () => {
+      discardLegacy()
+      localStorage.removeItem(ME)
+      const id = newId()
+      accessToken = access
+      accessSession = id
+      localStorage.setItem(SESSION, id)
     }
-    discardLegacy()
-    localStorage.removeItem(ME)
-    const id = newId()
-    accessToken = access
-    accessSession = id
-    localStorage.setItem(SESSION, id)
+    if (!isNative()) { publish(); return }
+    if (!refresh) throw new Error('Native login requires a refresh token')
+    // Include the session publication in the same queue as secure writes.
+    await nativeOperation(async () => {
+      const { SecureStorage } = await import('@aparajita/capacitor-secure-storage')
+      await SecureStorage.setItem(REFRESH, refresh)
+      publish()
+    })
   },
   async rotate(access: string, refresh: string | null, session: TokenSession, expectedRefresh: string | null): Promise<boolean> {
-    if (!tokens.isCurrent(session) || await tokens.refresh() !== expectedRefresh) return false
-    if (isNative()) {
-      if (!refresh) return false
-      await nativeRefresh(refresh)
+    const publish = () => {
+      discardLegacy()
+      accessToken = access
+      accessSession = session.id
     }
-    if (!tokens.isCurrent(session)) return false
-    discardLegacy()
-    accessToken = access
-    accessSession = session.id
-    return true
+    if (!isNative()) {
+      if (!tokens.isCurrent(session) || read(REFRESH) !== expectedRefresh) return false
+      publish()
+      localStorage.setItem(EPOCH, newId())
+      return true
+    }
+    // Compare, write and recheck within ONE Keystore queue transaction.
+    return nativeOperation(async () => {
+      if (!tokens.isCurrent(session) || !refresh) return false
+      const { SecureStorage } = await import('@aparajita/capacitor-secure-storage')
+      const stored = (await SecureStorage.getItem(REFRESH)) ?? read(REFRESH)
+      if (!tokens.isCurrent(session) || stored !== expectedRefresh) return false
+      await SecureStorage.setItem(REFRESH, refresh)
+      if (!tokens.isCurrent(session)) {
+        await SecureStorage.removeItem(REFRESH)
+        return false
+      }
+      publish()
+      return true
+    })
   },
   cachedMe<T>(): T | undefined {
     const raw = read(ME)
