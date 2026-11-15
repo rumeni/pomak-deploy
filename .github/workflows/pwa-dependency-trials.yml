@@ -57,6 +57,7 @@ jobs:
           test -s dist/manifest.webmanifest
           echo 'Generated PWA service worker and manifest are present.'
       - name: Offline Chromium PWA smoke (including deep SPA route)
+        timeout-minutes: 5
         run: |
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
           CHROME_PATH="$(command -v google-chrome)" node scripts/pwa-offline-smoke.mjs
