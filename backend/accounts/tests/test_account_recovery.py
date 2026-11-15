@@ -1,6 +1,13 @@
 """Account email recovery and session revocation behavior, with in-memory mail."""
 
+import base64
+import hashlib
+import json
+import time
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
+
+import jwt
 
 from django.core import mail
 from django.test import override_settings
@@ -14,6 +21,10 @@ EMAIL_TEST_SETTINGS = {
     'ACCOUNT_EMAIL_BASE_URL': 'https://pomak-web.example',
     'EMAIL_BACKEND': 'django.core.mail.backends.locmem.EmailBackend',
     'DEFAULT_FROM_EMAIL': 'POMAK <noreply@pomak.example>',
+    'ACCOUNT_EMAIL_WORKER_URL': 'https://api.pomak.example/api/internal/password-reset-email/',
+    'QSTASH_TOKEN': 'test-only-publish-token',
+    'QSTASH_CURRENT_SIGNING_KEY': 'test-only-signing-key',
+    'QSTASH_NEXT_SIGNING_KEY': 'test-only-next-signing-key',
 }
 
 
@@ -29,7 +40,27 @@ class PasswordRecoveryTests(APITestCase):
         self.user = User.objects.create_user('recover@example.com', 'strong-old-password-123')
 
     def request_reset(self, email):
-        return self.client.post('/api/auth/password/reset/request/', {'email': email}, format='json')
+        with patch('accounts.recovery_views.urlopen') as publisher:
+            publisher.return_value.__enter__.return_value.status = 200
+            response = self.client.post('/api/auth/password/reset/request/', {'email': email}, format='json')
+            if response.status_code == 202:
+                self.assertEqual(publisher.call_count, 1)
+                request = publisher.call_args.args[0]
+                self.assertEqual(json.loads(request.data)['email'], email.lower())
+                self.assertEqual(request.get_header('Upstash-redact-fields'), 'body')
+            return response
+
+    def deliver_reset(self, email, signing_key='test-only-signing-key'):
+        raw = json.dumps({'email': email}, separators=(',', ':')).encode('utf-8')
+        now = int(time.time())
+        token = jwt.encode({
+            'iss': 'Upstash',
+            'sub': EMAIL_TEST_SETTINGS['ACCOUNT_EMAIL_WORKER_URL'],
+            'iat': now, 'nbf': now - 1, 'exp': now + 60,
+            'body': base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).decode('ascii').rstrip('='),
+        }, signing_key, algorithm='HS256')
+        return self.client.post('/api/internal/password-reset-email/', data=raw,
+                                content_type='application/json', HTTP_UPSTASH_SIGNATURE=token)
 
     def test_unknown_address_uses_identical_public_response(self):
         known = self.request_reset('recover@example.com')
@@ -37,6 +68,10 @@ class PasswordRecoveryTests(APITestCase):
         self.assertEqual(known.status_code, 202)
         self.assertEqual(unknown.status_code, 202)
         self.assertEqual(known.data, unknown.data)
+        # No lookup or SMTP call takes place in the public request path.
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(self.deliver_reset('unknown@example.com').status_code, 204)
+        self.assertEqual(self.deliver_reset('recover@example.com').status_code, 204)
         self.assertEqual(len(mail.outbox), 1)
 
     def test_reset_changes_password_and_invalidates_access_and_refresh(self):
@@ -47,6 +82,8 @@ class PasswordRecoveryTests(APITestCase):
         old_access, old_refresh = login.data['access'], login.data['refresh']
 
         self.assertEqual(self.request_reset('recover@example.com').status_code, 202)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(self.deliver_reset('recover@example.com').status_code, 204)
         self.assertEqual(len(mail.outbox), 1)
         params = email_params(mail.outbox[0])
         self.assertEqual(self.client.post('/api/auth/password/reset/confirm/', {
@@ -88,6 +125,24 @@ class PasswordRecoveryTests(APITestCase):
         }, format='json')
         self.assertEqual(valid.status_code, 204, valid.data)
         self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
+
+    def test_qstash_worker_requires_valid_signature_and_body_hash(self):
+        raw = b'{"email":"recover@example.com"}'
+        unsigned = self.client.post('/api/internal/password-reset-email/', data=raw,
+                                    content_type='application/json')
+        self.assertEqual(unsigned.status_code, 403)
+        self.assertEqual(len(mail.outbox), 0)
+        signed = self.deliver_reset('recover@example.com', signing_key='wrong-key')
+        self.assertEqual(signed.status_code, 403)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_queue_failure_returns_same_error_without_account_disclosure(self):
+        for address in ('recover@example.com', 'nobody@example.com'):
+            with patch('accounts.recovery_views.urlopen', side_effect=OSError('provider unavailable')):
+                response = self.client.post('/api/auth/password/reset/request/',
+                                            {'email': address}, format='json')
+            self.assertEqual(response.status_code, 503)
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_bad_uid_or_token_cannot_change_password(self):
         invalid = self.client.post('/api/auth/password/reset/confirm/', {
