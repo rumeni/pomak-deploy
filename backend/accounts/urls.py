@@ -1,8 +1,13 @@
 from django.urls import path
 
-from . import views
+from . import views, recovery_views
 
 urlpatterns = [
+    path('password/reset/request/', recovery_views.PasswordResetRequestView.as_view()),
+    path('password/reset/confirm/', recovery_views.PasswordResetConfirmView.as_view()),
+    path('password/change/', recovery_views.PasswordChangeView.as_view()),
+    path('email/verify/', recovery_views.EmailVerificationView.as_view()),
+    path('email/resend/', recovery_views.EmailVerificationResendView.as_view()),
     path('register/', views.RegisterView.as_view()),
     path('login/', views.LoginView.as_view()),
     path('refresh/', views.RefreshView.as_view()),
