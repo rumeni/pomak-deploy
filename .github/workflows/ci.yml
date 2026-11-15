@@ -23,11 +23,16 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm test
-      - name: Oxlint audit
-        run: npm run lint
+      - name: Oxlint (no warnings allowed)
+        run: npm run lint -- --deny-warnings
       - run: npm run build
       - name: Audit production dependencies (informational)
         run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+      - name: List development dependency advisories (informational)
+        run: |
+          npm audit --json > audit.json || true
+          node -e 'const d=require("./audit.json"); for (const [name,v] of Object.entries(d.vulnerabilities||{})) console.log(name+" "+v.severity+" range="+v.range+" fix="+JSON.stringify(v.fixAvailable)); console.log("Totals:",JSON.stringify(d.metadata?.vulnerabilities||{}));'
         continue-on-error: true
 
   backend:
