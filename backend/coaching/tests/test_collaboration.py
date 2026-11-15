@@ -7,7 +7,7 @@ from accounts.models import User
 from coaching.models import CoachAssignment, CoachConnection, CoachInvitation, CoachMessage
 from nutrition.models import MealEntry
 from progress.models import Measurement
-from training.models import Exercise, Routine, RoutineExercise, RoutineSet, WorkoutSession
+from training.models import Exercise, Routine, RoutineExercise, RoutineSet, SessionExercise, SetLog, WorkoutSession
 
 
 class CoachCollaborationTests(APITestCase):
@@ -121,6 +121,26 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual(self.client.post(target + 'assign/', {'routine_id': str(self.coach.pk)}, format='json').status_code, 404)
         self.assertEqual(self.client.get('/api/coach/messages/', {'client_id': str(self.client_user.pk)}).status_code, 404)
         self.assertEqual(self.client.post('/api/coach/messages/', {'client_id': str(self.client_user.pk), 'text': 'test'}, format='json').status_code, 404)
+
+    def test_warmup_sets_are_labeled_in_client_workout_summary(self):
+        self.connect()
+        shared = Exercise.objects.create(
+            owner=None, slug='coach-sets-exercise', name='Squat', equipment=Exercise.Equipment.BARBELL,
+            measurement=Exercise.Measurement.WEIGHT_REPS, muscle=Exercise.Muscle.LEGS,
+        )
+        now = timezone.now()
+        workout = WorkoutSession.objects.create(
+            owner=self.client_user, name='Strength', started_at=now - timedelta(hours=2), finished_at=now,
+        )
+        item = SessionExercise.objects.create(session=workout, exercise=shared, position=0)
+        SetLog.objects.create(session_exercise=item, position=0, set_type=RoutineSet.SetType.WARMUP, reps=12)
+        SetLog.objects.create(session_exercise=item, position=1, set_type=RoutineSet.SetType.WORKING, reps=8, weight_kg='60')
+        self.as_user(self.coach)
+        response = self.client.get(f'/api/coach/clients/{self.client_user.pk}/')
+        self.assertEqual(response.status_code, 200, response.data)
+        sets = response.data['recent_workouts'][0]['exercises'][0]['sets']
+        self.assertEqual([s['set_type'] for s in sets], ['warmup', 'working'])
+        self.assertEqual(sets[1]['weight_kg'], '60.00')
 
     def test_assigns_independent_copy_of_shared_routine(self):
         self.connect()
