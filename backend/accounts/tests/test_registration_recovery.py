@@ -46,3 +46,16 @@ class WebRegistrationRecoveryTests(APITestCase):
             'email': 'another@example.com', 'password': 'strong-password-123',
         }, format='json', HTTP_X_POMAK_CLIENT='web')
         self.assertEqual(response.status_code, 201, response.data)
+
+    def test_revocation_failure_rolls_back_new_account(self):
+        from unittest.mock import patch
+
+        with patch('accounts.views.RefreshToken.blacklist',
+                   side_effect=RuntimeError('simulated blacklist failure')):
+            with self.assertRaises(RuntimeError):
+                self.client.post('/api/auth/register/', {
+                    'email': 'must-rollback@example.com',
+                    'password': 'strong-password-123',
+                }, format='json', HTTP_X_POMAK_CLIENT='web')
+
+        self.assertFalse(User.objects.filter(email='must-rollback@example.com').exists())
