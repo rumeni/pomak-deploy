@@ -1,94 +1,121 @@
-const ACCESS = 'pomak.access'
-const REFRESH = 'pomak.refresh'
-const SESSION = 'pomak.session-id'
-// Poslednji poznati podaci o korisniku: aplikacija pokrenuta bez interneta radi sa njima.
-const ME = 'pomak.me'
+import { Capacitor } from '@capacitor/core'
 
-// Stable for one login, including every access/refresh token rotation. Changes only
-// on login/logout/account switch and is shared by all tabs on the same origin.
+const ACCESS = 'pomak.access' // legacy only; never written again
+const REFRESH = 'pomak.refresh' // legacy only; never written again
+const SESSION = 'pomak.session-id'
+const ME = 'pomak.me'
+const NATIVE_REFRESH = 'pomak.refresh'
+const isNative = () => Capacitor.isNativePlatform()
+
 export interface TokenSession { id: string | null }
+let accessToken: string | null = null
+let sessionAccessId: string | null = null
+let secureQueue = Promise.resolve()
 
 function read(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
+  try { return localStorage.getItem(key) } catch { return null }
 }
-
+function write(key: string, value: string) {
+  localStorage.setItem(key, value)
+}
+function remove(key: string) {
+  try { localStorage.removeItem(key) } catch { /* private browsing */ }
+}
 function newId(): string {
   return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
-
 function currentSessionId(): string | null {
-  const existing = read(SESSION)
-  if (existing) return existing
-  // Adopt an existing login created before session IDs were introduced without
-  // making users sign in again after an app upgrade.
-  if (!read(ACCESS) || !read(REFRESH)) return null
-  try {
-    localStorage.setItem(SESSION, newId())
-    return read(SESSION)
-  } catch {
-    return null
-  }
+  const id = read(SESSION)
+  if (id) return id
+  if (!read(REFRESH)) return null
+  const adopted = newId()
+  write(SESSION, adopted)
+  return adopted
+}
+async function secure<T>(fn: () => Promise<T>): Promise<T> {
+  const job = secureQueue.then(fn)
+  secureQueue = job.then(() => undefined, () => undefined)
+  return job
+}
+async function nativeStorage() {
+  const { SecureStorage } = await import('@aparajita/capacitor-secure-storage')
+  return SecureStorage
+}
+async function nativeRead() {
+  return secure(async () => (await nativeStorage()).getItem(NATIVE_REFRESH))
+}
+async function nativeWrite(value: string | null) {
+  return secure(async () => {
+    const storage = await nativeStorage()
+    if (value === null) await storage.removeItem(NATIVE_REFRESH)
+    else await storage.setItem(NATIVE_REFRESH, value)
+  })
+}
+function discardLegacy() {
+  remove(ACCESS)
+  remove(REFRESH)
 }
 
 export const tokens = {
-  access: () => read(ACCESS),
-  refresh: () => read(REFRESH),
-  /** JWT subject is a sanity check; the server still validates the signature. */
+  access: () => sessionAccessId === currentSessionId() ? accessToken : null,
+  refresh: async (): Promise<string | null> => {
+    if (!isNative()) return read(REFRESH) // only during one-time migration
+    return (await nativeRead()) ?? read(REFRESH)
+  },
+  legacyRefresh: () => read(REFRESH),
+  hasSession: () => !!currentSessionId(),
+  /** JWT subject is a sanity check; server validates the signature. */
   userId: (): string | null => {
-    const jwt = read(ACCESS)
+    const jwt = tokens.access()
     if (!jwt) return null
     try {
       const payload = jwt.split('.')[1]
       if (!payload) return null
       const data = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { user_id?: unknown }
       return typeof data.user_id === 'string' ? data.user_id : null
-    } catch {
-      return null
-    }
+    } catch { return null }
   },
   session: (): TokenSession => ({ id: currentSessionId() }),
-  isCurrent: (session: TokenSession): boolean => !!session.id && session.id === currentSessionId(),
-  /** A fresh login creates a new logical session, even for the same account. */
-  set(access: string, refresh: string) {
-    localStorage.setItem(ACCESS, access)
-    localStorage.setItem(REFRESH, refresh)
-    localStorage.removeItem(ME)
-    // Publish identity last, after the new tokens exist, so other tabs do not
-    // observe the previous user's credentials as part of the new login.
-    localStorage.setItem(SESSION, newId())
+  isCurrent: (session: TokenSession) => !!session.id && session.id === currentSessionId(),
+  async set(access: string, refresh: string | null) {
+    if (isNative()) {
+      if (!refresh) throw new Error('Native login requires a refresh token')
+      await nativeWrite(refresh)
+    }
+    discardLegacy()
+    remove(ME)
+    const id = newId()
+    accessToken = access
+    sessionAccessId = id
+    write(SESSION, id) // Publish identity only after native storage succeeded.
   },
-  /** Rotation is NOT a new login: never invalidate in-flight same-account work. */
-  rotate(access: string, refresh: string, session: TokenSession, expectedRefresh: string): boolean {
-    if (!tokens.isCurrent(session) || read(REFRESH) !== expectedRefresh) return false
-    localStorage.setItem(REFRESH, refresh)
-    localStorage.setItem(ACCESS, access)
+  async rotate(access: string, refresh: string | null, session: TokenSession, expected: string | null): Promise<boolean> {
+    if (!tokens.isCurrent(session) || await tokens.refresh() !== expected) return false
+    if (isNative()) {
+      if (!refresh) return false
+      await nativeWrite(refresh)
+    }
+    if (!tokens.isCurrent(session)) return false
+    discardLegacy()
+    accessToken = access
+    sessionAccessId = session.id
     return true
   },
   cachedMe<T>(): T | undefined {
     const raw = read(ME)
-    try {
-      return raw ? (JSON.parse(raw) as T) : undefined
-    } catch {
-      return undefined
-    }
+    try { return raw ? (JSON.parse(raw) as T) : undefined } catch { return undefined }
   },
   setCachedMe(me: unknown) {
-    try {
-      localStorage.setItem(ME, JSON.stringify(me))
-    } catch {
-      // bez keša aplikacija i dalje radi sa internetom
-    }
+    try { write(ME, JSON.stringify(me)) } catch { /* offline cache best effort */ }
   },
-  clear() {
-    localStorage.removeItem(ACCESS)
-    localStorage.removeItem(REFRESH)
-    localStorage.removeItem(ME)
-    localStorage.removeItem(SESSION)
+  clear(): Promise<void> {
+    accessToken = null
+    sessionAccessId = null
+    discardLegacy()
+    remove(ME)
+    remove(SESSION)
+    return isNative() ? nativeWrite(null) : Promise.resolve()
   },
 }
