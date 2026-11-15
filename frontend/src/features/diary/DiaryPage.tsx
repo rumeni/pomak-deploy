@@ -30,8 +30,8 @@ export function DiaryPage() {
   return (
     <>
       <PageHeader title={t('nutrition.title')} action={<LanguageMenu />} />
-      <div className="flex flex-col gap-3 px-4">
-        <div className="flex items-center justify-between rounded-2xl bg-card p-1 shadow-sm ring-1 ring-line/60">
+      <div className="flex flex-col gap-4 px-4 pb-8">
+        <div className="flex items-center justify-between rounded-3xl bg-card p-2 shadow-sm ring-1 ring-line/60">
           <NavButton label={t('diary.prevDay')} path="M15 18l-6-6 6-6" onClick={() => go(-1)} />
           <p className="text-center font-semibold">{dayLabel(date, today, t)}</p>
           <NavButton label={t('diary.nextDay')} path="M9 18l6-6-6-6" onClick={() => go(1)} />
@@ -110,7 +110,7 @@ function TotalsCard({ totals: tot, target, past }: { totals: DayTotals; target: 
           </Link>
         )}
       </div>
-      <p className="text-3xl font-bold tabular-nums">
+      <p className="dashboard-metric mt-2 tabular-nums">
         {tot.kcal}
         {target && <span className="text-xl font-semibold text-muted"> / {formatDecimal(target.kcal)}</span>}{' '}
         <span className="text-base font-medium text-muted">{t('nutrition.kcal')}</span>
