@@ -208,6 +208,21 @@ class EmailConfirmationTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access}')
         self.assertEqual(self.client.get('/api/nutrition/foods/').status_code, 200)
 
+    def test_unverified_account_can_delete_itself(self):
+        registered = self.client.post('/api/auth/register/', {
+            'email': 'remove-unverified@example.com',
+            'password': 'strong-password-123',
+        }, format='json')
+        self.assertEqual(registered.status_code, 201, registered.data)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {registered.data['access']}")
+        self.assertEqual(self.client.get('/api/nutrition/foods/').status_code, 403)
+
+        deleted = self.client.post('/api/auth/me/delete/', {
+            'password': 'strong-password-123',
+        }, format='json')
+        self.assertEqual(deleted.status_code, 204, getattr(deleted, 'data', None))
+        self.assertFalse(User.objects.filter(email='remove-unverified@example.com').exists())
+
     def test_expired_or_tampered_email_link_is_rejected(self):
         user = User.objects.create_user(
             'verify-bad@example.com', 'strong-password-123',
