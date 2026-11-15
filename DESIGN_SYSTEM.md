@@ -4,7 +4,7 @@ This branch refreshes the existing React + Tailwind UI. **The Capacitor Android 
 
 ## Direction
 
-Calm, confident, training-focused. Replace the generic white-card/teal-strip look with warm neutral canvas, deep botanical green, bright lime highlights on signature moments, editorial titles, and subtle layered surfaces. Prioritize clarity of the next action over decorative illustrations or invented progress numbers.
+Athletic, editorial, data-first. Warm paper canvas with faint grain, near-black ink panels, one signal color (orange) for the active state, progress and the brand mark. Titles and big numbers use the condensed cut of Archivo (bundled locally, works offline in the APK). The only decoration is the topographic contour drawing in `frontend/src/assets/topo.svg` (own artwork, generated from noise), applied as a CSS mask (`.topo-layer`) so one file works in any color. The Today panel shows real numbers (workouts this week, kcal today, latest weight, days trained) instead of a slogan.
 
 ## Design tokens
 
@@ -12,17 +12,16 @@ All source-of-truth tokens live in `frontend/src/index.css` in `@theme`. Never h
 
 | Token | Value | Usage |
 | --- | --- | --- |
-| `ink` | `#172c2a` | Main text |
-| `muted` | `#63736e` | Secondary copy |
-| `surface` | `#f3f6f1` | Canvas |
-| `card` | `#ffffff` | Interactive surfaces |
-| `line` | `#dce5df` | Dividers |
-| `brand` | `#176c58` | Main controls |
-| `brand-dark` | `#0d5041` | Hover / emphasis |
-| `brand-soft` | `#e7f2ec` | Active rows, subtle CTAs |
-| `accent` | `#e8b75a` | Secondary emphasis |
-| `lime` | `#e0f3a7` | Signature hero CTA |
-| `danger` | `#b13e43` | Semantic error and destructive actions |
+| `ink` | `#141615` | Main text, dark panels, navigation |
+| `muted` | `#6c6f6a` | Secondary copy |
+| `surface` | `#f2efe9` | Paper canvas (with grain) |
+| `card` | `#fdfcfa` | Interactive surfaces |
+| `line` | `#e3dfd7` | Dividers, card borders |
+| `brand` | `#171918` | Primary buttons, selected borders |
+| `brand-dark` | `#050605` | Emphasis text, hover |
+| `brand-soft` | `#e9e5dd` | Secondary buttons, selected rows |
+| `accent` | `#ff5a1f` | Active nav icon, progress, charts, focus ring, brand mark |
+| `danger` | `#b8262f` | Semantic error and destructive actions |
 
 The desktop sidebar is enabled at a wide viewport (980px). On mobile and native Android, keep the rounded floating bottom navigation; its links still point to the same routes. The app shell respects CSS safe-area insets for devices with cutouts and gesture navigation.
 

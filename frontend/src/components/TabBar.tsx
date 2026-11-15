@@ -15,8 +15,7 @@ export function TabBar() {
   return (
     <nav className="app-nav" aria-label={t('common.appName')}>
       <div className="app-nav-brand" aria-hidden>
-        <span className="app-nav-brand-mark">P</span>
-        <span><strong>POMAK</strong><small>EVERY DAY COUNTS</small></span>
+        <span className="brand-wordmark">POMAK</span>
       </div>
       <ul className="app-nav-list">
         {tabs.map((tab) => (
@@ -33,7 +32,6 @@ export function TabBar() {
           </li>
         ))}
       </ul>
-      <div className="app-nav-footer" aria-hidden>POMAK © 2026</div>
     </nav>
   )
 }

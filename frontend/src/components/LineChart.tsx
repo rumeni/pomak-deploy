@@ -22,9 +22,9 @@ export function LineChart({ points, format, label }: { points: ChartPoint[]; for
       <svg viewBox={`-6 -6 ${W + 12} ${H + 12}`} className="h-40 w-full overflow-visible" role="img" aria-label={label}>
         <line x1={0} y1={H} x2={W} y2={H} className="stroke-line" strokeWidth={1} />
         <line x1={0} y1={0} x2={W} y2={0} className="stroke-line" strokeWidth={1} strokeDasharray="4 4" />
-        <path d={path} fill="none" className="stroke-brand" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        <path d={path} fill="none" className="stroke-accent" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         {plotted.map((p) => (
-          <circle key={`${p.date}-${p.x}`} cx={p.x} cy={p.y} r={4} className="fill-card stroke-brand" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+          <circle key={`${p.date}-${p.x}`} cx={p.x} cy={p.y} r={4} className="fill-card stroke-accent" strokeWidth={2} vectorEffect="non-scaling-stroke" />
         ))}
       </svg>
       {min !== max && (
