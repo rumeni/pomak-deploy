@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
-import { Button, Field, FormError, ScreenHeader, SelectField } from '../../components/ui'
+import { Button, Field, FormError, LoadingScreen, ScreenHeader, SelectField } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
-import { useCreateFood, type FoodState, type NewFood } from './api'
+import { useCreateFood, useFood, useUpdateFood, type FoodState, type NewFood } from './api'
 
 const STATES: FoodState[] = ['prepared', 'raw', 'cooked', 'na']
 type ValueField = 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'
@@ -23,12 +23,35 @@ class FormInputError extends Error {
 export function NewFoodPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { id } = useParams()
+  const editing = Boolean(id)
+  const existing = useFood(id)
   const create = useCreateFood()
+  const update = useUpdateFood()
+  const [loadedId, setLoadedId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [state, setState] = useState<FoodState>('prepared')
   const [values, setValues] = useState<Record<ValueField, string>>({ kcal: '', protein_g: '', carbs_g: '', fat_g: '', fiber_g: '' })
   const [portions, setPortions] = useState<{ key: string; name: string; grams: string }[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  // Load the editable record once; background query refetches must not wipe
+  // values while the user is typing.
+  useEffect(() => {
+    const food = existing.data
+    if (!id || !food || loadedId === id || food.source !== 'custom') return
+    setName(food.name)
+    setState(food.state)
+    setValues({
+      kcal: food.kcal,
+      protein_g: food.protein_g ?? '',
+      carbs_g: food.carbs_g ?? '',
+      fat_g: food.fat_g ?? '',
+      fiber_g: food.fiber_g ?? '',
+    })
+    setPortions(food.portions.map((p) => ({ key: uuid(), name: p.name, grams: p.grams })))
+    setLoadedId(id)
+  }, [id, existing.data, loadedId])
 
   const fields: [ValueField, string][] = [
     ['kcal', t('newFood.kcalRequired')],
@@ -71,16 +94,24 @@ export function NewFoodPage() {
     e.preventDefault()
     setError(null)
     try {
-      create.mutate(toBody(), { onSuccess: (food) => navigate(`/ishrana/namirnice/${food.id}`, { replace: true }) })
+      const body = toBody()
+      const success = (food: { id: string }) => navigate(`/ishrana/namirnice/${food.id}`, { replace: true })
+      if (id) update.mutate({ id, body }, { onSuccess: success })
+      else create.mutate(body, { onSuccess: success })
     } catch (err) {
       if (err instanceof FormInputError) setError(t(`newFood.errors.${err.message}`, err.params))
       else throw err
     }
   }
 
+  if (editing && (existing.isLoading || (existing.data?.source === 'custom' && loadedId !== id))) return <LoadingScreen />
+  if (editing && (!existing.data || existing.data.source !== 'custom' || !existing.data.is_custom)) {
+    return <p className="p-6 text-center text-danger">{t('nutrition.notFound')}</p>
+  }
+
   return (
     <div className="min-h-full pb-10">
-      <ScreenHeader title={t('newFood.title')} onBack={() => navigate(-1)} />
+      <ScreenHeader title={t(editing ? 'newFood.editTitle' : 'newFood.title')} onBack={() => navigate(-1)} />
       <form className="mx-auto flex max-w-xl flex-col gap-4 p-4" onSubmit={onSubmit} noValidate>
         <Field label={t('newFood.name')} name="name" placeholder={t('newFood.nameExample')} value={name} onChange={(e) => setName(e.target.value)} />
         <SelectField label={t('newFood.state')} name="state" value={state} onChange={(e) => setState(e.target.value as FoodState)}>
@@ -140,9 +171,9 @@ export function NewFoodPage() {
           </Button>
         </fieldset>
 
-        <FormError message={error ?? (create.isError ? errorMessage(create.error) : null)} />
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? t('common.saving') : t('newFood.save')}
+        <FormError message={error ?? (update.isError ? errorMessage(update.error) : create.isError ? errorMessage(create.error) : null)} />
+        <Button type="submit" disabled={create.isPending || update.isPending}>
+          {create.isPending || update.isPending ? t('common.saving') : t('newFood.save')}
         </Button>
       </form>
     </div>
