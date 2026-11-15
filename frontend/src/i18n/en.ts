@@ -98,6 +98,10 @@ export const en = {
   today: {
     title: 'Today',
     greeting: 'Hi, {{name}}',
+    thisWeek: 'This week',
+    statWorkouts: 'workouts',
+    statKcal: 'kcal today',
+    statWeight: 'kg, latest',
     profileAria: 'Profile and settings',
     training: 'Training',
     weekCount: 'This week {{count}} of {{target}}',

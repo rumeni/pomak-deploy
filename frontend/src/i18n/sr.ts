@@ -101,6 +101,10 @@ export const sr = {
   today: {
     title: 'Danas',
     greeting: 'Zdravo, {{name}}',
+    thisWeek: 'Ova nedelja',
+    statWorkouts: 'treninga',
+    statKcal: 'kcal danas',
+    statWeight: 'kg, poslednje',
     profileAria: 'Profil i podešavanja',
     training: 'Trening',
     weekCount: 'Ove nedelje {{count}} od {{target}}',

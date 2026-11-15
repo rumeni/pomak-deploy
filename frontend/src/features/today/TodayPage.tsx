@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { Button, Card, PageHeader } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { errorMessage } from '../../lib/api'
-import { formatDecimal, formatLongDate, formatShortDate, parseDecimal, toISODate } from '../../lib/format'
+import { addDays, formatDecimal, formatLongDate, formatShortDate, fromISODate, getFormatLocale, parseDecimal, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { totals } from '../diary/model'
 import { useDiaryDay } from '../diary/store'
@@ -46,19 +46,7 @@ export function TodayPage() {
         }
       />
       <div className="today-main">
-        <section className="today-hero" aria-label={t('today.title')}>
-          <span className="today-hero-kicker">{t('today.title')} · POMAK</span>
-          <h2>{t('common.tagline')}</h2>
-          <p>{t('today.nextWorkout')} · {t('today.nutrition')} · {t('progress.title')}</p>
-          <div className="today-hero-actions">
-            <Link className="today-hero-link" to="/trening">
-              {t('tabs.training')} <span aria-hidden>↗</span>
-            </Link>
-            <Link className="today-hero-link today-hero-link--outline" to="/napredak">
-              {t('tabs.progress')} <span aria-hidden>↗</span>
-            </Link>
-          </div>
-        </section>
+        <TodayHero ownerId={me?.id} tracksNutrition={!!profile?.tracks_nutrition} />
         <div className="mt-4"><ActiveWorkoutBanner /></div>
         <div className="today-dashboard-grid">
           {profile?.tracks_training && <TrainingCard />}
@@ -67,6 +55,60 @@ export function TodayPage() {
         </div>
       </div>
     </>
+  )
+}
+
+/** Tamni panel sa stvarnim brojevima: treninzi ove nedelje, kalorije danas, poslednja težina. */
+function TodayHero({ ownerId, tracksNutrition }: { ownerId: string | undefined; tracksNutrition: boolean }) {
+  const { t } = useTranslation()
+  const today = toISODate(new Date())
+  const monday = mondayOf(today)
+  const week = useWeek(monday)
+  const { data: sessions } = useSessions()
+  const { data: weights } = useMeasurements('weight')
+  const { day } = useDiaryDay(tracksNutrition ? ownerId : undefined, today)
+
+  const weekday = new Intl.DateTimeFormat(getFormatLocale(), { weekday: 'narrow' })
+  const trainedOn = new Set(sessions?.map((s) => toISODate(new Date(s.started_at))))
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
+  const workouts = week.data?.workouts
+  const latest = weights?.[0]
+
+  return (
+    <section className="today-hero" aria-label={t('today.thisWeek')}>
+      <div className="topo-layer" aria-hidden />
+      <p className="today-hero-kicker">{t('today.thisWeek')}</p>
+      <div className="today-stats">
+        <div className="today-stat">
+          <span className="stat-value">
+            {workouts?.count ?? '–'}
+            {workouts?.target ? <small>/{workouts.target}</small> : null}
+          </span>
+          <span className="stat-label">{t('today.statWorkouts')}</span>
+        </div>
+        {tracksNutrition && (
+          <div className="today-stat">
+            <span className="stat-value">
+              {day ? totals(day.entries).kcal : '–'}
+              {day?.target ? <small>/{formatDecimal(day.target.kcal)}</small> : null}
+            </span>
+            <span className="stat-label">{t('today.statKcal')}</span>
+          </div>
+        )}
+        <div className="today-stat">
+          <span className="stat-value">{latest ? formatDecimal(Number(latest.value)) : '–'}</span>
+          <span className="stat-label">{t('today.statWeight')}</span>
+        </div>
+      </div>
+      <div className="today-week" aria-hidden>
+        {days.map((d) => (
+          <div key={d} className={`today-day ${trainedOn.has(d) ? 'is-done' : ''} ${d === today ? 'is-today' : ''}`}>
+            <span />
+            {weekday.format(fromISODate(d))}
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
