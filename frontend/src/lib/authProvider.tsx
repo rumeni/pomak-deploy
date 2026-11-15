@@ -74,8 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout])
 
   const login = useCallback(
-    async (email: string, password: string) => {
-      const { data } = await api.post('/auth/login/', { email, password })
+    async (email: string, password: string, turnstileToken?: string) => {
+      const { data } = await api.post('/auth/login/', { email, password, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) })
       tokens.set(data.access, data.refresh)
       setHasToken(true)
     },
