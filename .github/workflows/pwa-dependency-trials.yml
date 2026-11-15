@@ -1,0 +1,78 @@
+name: POMAK PWA dependency safety trials
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pwa-trial:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/pwa-audit-workbox-2026-11-15'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, scoped-glob, global-glob-minimatch, pwa-v2]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Trial dependency changes (never push)
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          case "$VARIANT" in
+            baseline) echo 'Baseline lockfile' ;;
+            scoped-glob)
+              npm pkg set 'overrides.workbox-build.glob=14.0.3'
+              npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+              ;;
+            global-glob-minimatch)
+              npm pkg set 'overrides.glob=14.0.3' 'overrides.minimatch=11.0.8'
+              npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+              ;;
+            pwa-v2)
+              npm install --package-lock-only --ignore-scripts --no-audit --no-fund -D vite-plugin-pwa@2.0.0
+              ;;
+            *) exit 1 ;;
+          esac
+      - name: Resolve and install exact candidate lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Run Vitest
+        run: npm test
+      - name: Lint and production build (including service worker)
+        run: |
+          npm run lint -- --deny-warnings
+          npm run build
+          test -s dist/sw.js
+          test -s dist/manifest.webmanifest
+          echo 'Generated PWA service worker and manifest are present.'
+      - name: Report full and production-only advisories and resolved versions
+        if: always()
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          npm audit --json > /tmp/pomak-full-audit.json || true
+          npm audit --omit=dev --json > /tmp/pomak-prod-audit.json || true
+          node - <<'NODE'
+          const fs = require('node:fs')
+          for (const kind of ['full', 'prod']) {
+            const a=JSON.parse(fs.readFileSync('/tmp/pomak-'+(kind==='full'?'full':'prod')+'-audit.json','utf8'))
+            console.log(kind+' AUDIT: '+JSON.stringify(a.metadata?.vulnerabilities||{}))
+            console.log(kind+' PACKAGES: '+Object.keys(a.vulnerabilities||{}).join(', '))
+          }
+          const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8'))
+          const keys=['vite-plugin-pwa','workbox-build','@rollup/plugin-node-resolve','deepmerge','glob','minimatch']
+          for (const [path, data] of Object.entries(lock.packages||{})) {
+            if(keys.some(k => path === 'node_modules/'+k || path.endsWith('/node_modules/'+k))) console.log('RESOLVED '+path+' '+data.version)
+          }
+          NODE
