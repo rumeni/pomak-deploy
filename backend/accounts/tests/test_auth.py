@@ -178,6 +178,31 @@ class ForwardedIpSettingsTests(APITestCase):
             self.assertEqual(BaseThrottle().get_ident(request), '203.0.113.9')
 
 
+
+class WebRegistrationCookieTests(APITestCase):
+    def test_web_registration_sets_secure_cookie_without_refresh_json(self):
+        response = self.client.post('/api/auth/register/', {
+            'email': 'web-register@example.com', 'password': 'jaka-lozinka-123',
+        }, format='json', HTTP_X_POMAK_CLIENT='web')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('access', response.data)
+        self.assertNotIn('refresh', response.data)
+        cookie = response.cookies['pomak.refresh']
+        self.assertTrue(cookie['httponly'])
+        self.assertTrue(cookie['secure'])
+        self.assertEqual(cookie['samesite'], 'Strict')
+        self.assertEqual(cookie['path'], '/api/auth/')
+
+    def test_existing_native_clients_keep_legacy_registration_json(self):
+        response = self.client.post('/api/auth/register/', {
+            'email': 'native-register@example.com', 'password': 'jaka-lozinka-123',
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertNotIn('pomak.refresh', response.cookies)
+
+
 class WebReLoginRevocationTests(APITestCase):
     """A new web login must not leave the old offline-logout cookie valid."""
 
