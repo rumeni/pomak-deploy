@@ -9,38 +9,83 @@ from django.utils import timezone
 from rest_framework.throttling import BaseThrottle
 
 from .models import AuthThrottleBucket
+from .turnstile import login_recovery_enabled, verify_login_recovery
 
 
 class DatabaseAuthThrottle(BaseThrottle):
-    """Enforce account and IP quotas atomically across serverless instances.
+    """Atomic, PostgreSQL-backed IP and email quotas across serverless instances."""
 
-    The account limit is the primary defence against distributed guessing.
-    Proxy IP limits are supplemental and conservative to avoid penalizing NATs.
+    def consume_limit(self, kind, identity, limit, now):
+        bucket_start = now.replace(second=0, microsecond=0)
+        key = hashlib.sha256(f'{kind}:{identity}'.encode('utf-8')).hexdigest()
+        with transaction.atomic():
+            bucket, _ = AuthThrottleBucket.objects.get_or_create(
+                key=key, window_start=bucket_start, defaults={'attempts': 0},
+            )
+            AuthThrottleBucket.objects.filter(pk=bucket.pk).update(attempts=F('attempts') + 1)
+            bucket.refresh_from_db(fields=['attempts'])
+            if bucket.attempts > limit:
+                self.remaining = max(1, int((bucket_start + timedelta(minutes=1) - now).total_seconds()))
+                return False
+        return True
+
+    def allow_request(self, request, view):
+        if request.method != 'POST':
+            return True
+        now = timezone.now()
+        email = str(request.data.get('email', '')).strip().casefold() if isinstance(request.data, dict) else ''
+        # DRF NUM_PROXIES is 1 on Vercel and 0 for direct/local Django.
+        ip = self.get_ident(request)
+        if not self.consume_limit('ip', ip, 120, now):
+            return False
+        return not email or self.consume_limit('account', email, 10, now)
+
+    def wait(self):
+        return getattr(self, 'remaining', 60)
+
+
+class LoginRecoveryThrottle(DatabaseAuthThrottle):
+    """Keep the strict account quota; admit very few independently verified retries.
+
+    Never accept a correct password by itself as a bypass: this would permit
+    distributed password guessing with rotating IPs.
     """
 
     def allow_request(self, request, view):
         if request.method != 'POST':
             return True
         now = timezone.now()
-        bucket_start = now.replace(second=0, microsecond=0)
-        email = str(request.data.get('email', '')).strip().casefold() if isinstance(request.data, dict) else ''
-        # DRF NUM_PROXIES is 1 on Vercel (which overwrites X-Forwarded-For),
-        # and 0 for direct/local Django. Keep the global DB and DRF IP limits aligned.
         ip = self.get_ident(request)
-        limits = [('ip', ip, 120)]
-        if email:
-            limits.append(('account', email, 10))
-        for kind, identity, limit in limits:
-            key = hashlib.sha256(f'{kind}:{identity}'.encode('utf-8')).hexdigest()
-            with transaction.atomic():
-                bucket, _ = AuthThrottleBucket.objects.get_or_create(
-                    key=key, window_start=bucket_start, defaults={'attempts': 0},
-                )
-                AuthThrottleBucket.objects.filter(pk=bucket.pk).update(attempts=F('attempts') + 1)
-                bucket.refresh_from_db(fields=['attempts'])
-                if bucket.attempts > limit:
-                    self.remaining = max(1, int((bucket_start + timedelta(minutes=1) - now).total_seconds()))
-                    return False
+        if not self.consume_limit('ip', ip, 120, now):
+            return False
+        email = str(request.data.get('email', '')).strip().casefold() if isinstance(request.data, dict) else ''
+        if not email or self.consume_limit('account', email, 10, now):
+            return True
+        if not login_recovery_enabled():
+            return False
+
+        # No account lookup: registered and unregistered email addresses have
+        # exactly the same challenge behavior when their quota is exhausted.
+        if view is not None:
+            view.login_challenge_required = True
+        token = request.data.get('turnstile_token') if isinstance(request.data, dict) else None
+        if not isinstance(token, str) or not 0 < len(token) <= 2048:
+            return False
+
+        # Cheap source-based protection before calling the external Siteverify
+        # endpoint. Invalid/unverified tokens never consume the account's
+        # precious VERIFIED-recovery quota, preventing easy lockouts.
+        if not self.consume_limit('login-challenge-verification-ip', ip, 8, now):
+            return False
+        if not verify_login_recovery(token, ip):
+            return False
+        if not self.consume_limit('login-verified-account', email, 2, now):
+            return False
+        if not self.consume_limit('login-verified-ip', ip, 3, now):
+            return False
+
+        if view is not None:
+            view.login_challenge_required = False
         return True
 
     def wait(self):
