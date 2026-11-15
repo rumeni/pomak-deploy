@@ -2,13 +2,19 @@
 
 import io
 import json
+import hashlib
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
+from threading import Barrier
 from unittest.mock import patch
 
+from django.db import close_old_connections
 from django.test import override_settings
-from rest_framework.test import APITestCase
+from django.utils import timezone
+from rest_framework.test import APITestCase, APITransactionTestCase
 
-from accounts.models import User
-from accounts.turnstile import verify_login_recovery
+from accounts.models import AuthThrottleBucket, User
+from accounts.turnstile import claim_login_recovery_token, verify_login_recovery
 
 
 @override_settings(
@@ -80,6 +86,33 @@ class LoginRecoveryTests(APITestCase):
         self.assertEqual(good.status_code, 200, good.data)
         verify.assert_called_once()
 
+    @patch('accounts.throttles.verify_login_recovery', return_value=True)
+    def test_verified_token_cannot_be_replayed_across_accounts(self, verify):
+        self.exhaust_account_without_owning_any_credentials()
+        User.objects.create_user('second@example.com', 'jaka-lozinka-123')
+        for i in range(10):
+            response = self.login('invalid', f'192.0.2.{i + 1}', email='second@example.com')
+            self.assertEqual(response.status_code, 401, response.data)
+
+        first = self.login('incorrect', '203.0.113.31', 'same-siteverify-token')
+        self.assertEqual(first.status_code, 401, first.data)
+        replay = self.login(
+            'jaka-lozinka-123', '203.0.113.32', 'same-siteverify-token',
+            email='second@example.com',
+        )
+        self.assertEqual(replay.status_code, 429, replay.data)
+        self.assertEqual(str(replay.data['code']), 'login_verification_required')
+        self.assertEqual(verify.call_count, 2)
+
+    @patch('accounts.throttles.verify_login_recovery', side_effect=[False, True])
+    def test_failed_siteverify_does_not_consume_token(self, verify):
+        self.exhaust_account_without_owning_any_credentials()
+        first = self.login('jaka-lozinka-123', '203.0.113.42', 'temporarily-unavailable-token')
+        self.assertEqual(first.status_code, 429)
+        second = self.login('jaka-lozinka-123', '203.0.113.42', 'temporarily-unavailable-token')
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(verify.call_count, 2)
+
     def test_oversized_token_fails_closed_without_network_request(self):
         self.exhaust_account_without_owning_any_credentials()
         with patch('accounts.throttles.verify_login_recovery') as verify:
@@ -142,3 +175,37 @@ class SiteverifyTests(APITestCase):
             self.assertFalse(verify_login_recovery('token123', '192.0.2.22'))
         with patch('accounts.turnstile.urlopen', return_value=self.fake_response('not-json')):
             self.assertFalse(verify_login_recovery('token123', '192.0.2.22'))
+
+
+class TurnstileReplayAtomicityTests(APITransactionTestCase):
+    """Real PostgreSQL concurrency regression; test each worker on its own connection."""
+
+    def test_two_parallel_claims_of_same_token_admit_only_one(self):
+        barrier = Barrier(2)
+
+        def claim_in_parallel():
+            close_old_connections()
+            try:
+                barrier.wait(timeout=10)
+                return claim_login_recovery_token('a-valid-replayed-turnstile-token')
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: claim_in_parallel(), range(2)))
+        self.assertEqual(sorted(results), [False, True])
+
+        token_hash = hashlib.sha256(
+            b'turnstile-recovery:a-valid-replayed-turnstile-token',
+        ).hexdigest()
+        self.assertEqual(AuthThrottleBucket.objects.filter(key=token_hash).count(), 1)
+
+    def test_expired_claim_can_be_pruned_and_does_not_block_forever(self):
+        token = 'five-minute-window-test'
+        self.assertTrue(claim_login_recovery_token(token))
+        key = hashlib.sha256(f'turnstile-recovery:{token}'.encode('utf-8')).hexdigest()
+        AuthThrottleBucket.objects.filter(key=key).update(
+            window_start=timezone.now() - timedelta(minutes=6),
+        )
+        self.assertTrue(claim_login_recovery_token(token))
+        self.assertEqual(AuthThrottleBucket.objects.filter(key=key).count(), 2)
