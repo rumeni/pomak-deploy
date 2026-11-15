@@ -15,6 +15,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .export import build_zip
 from .serializers import LoginSerializer, MeSerializer, RegisterSerializer
+from .token_transport import clear_refresh_cookie, incoming_refresh, output_tokens, web_request
 from .throttles import DatabaseAccountDeletionThrottle, DatabaseAuthThrottle, LoginRecoveryThrottle
 
 
@@ -29,6 +30,9 @@ class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     throttle_scope = 'auth'
     throttle_classes = [LoginRecoveryThrottle, AnonRateThrottle, ScopedRateThrottle]
+
+    def post(self, request, *args, **kwargs):
+        return output_tokens(request, super().post(request, *args, **kwargs))
 
     def throttled(self, request, wait):
         if getattr(self, 'login_challenge_required', False):
@@ -48,12 +52,17 @@ class RefreshView(TokenRefreshView):
     throttle_scope = 'auth'
     throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
 
+    def post(self, request, *args, **kwargs):
+        if not request.data.get('refresh') and request.COOKIES.get('pomak.refresh'):
+            request._full_data = {**request.data, 'refresh': incoming_refresh(request)}
+        return output_tokens(request, super().post(request, *args, **kwargs))
+
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        token = request.data.get('refresh')
+        token = incoming_refresh(request)
         if not isinstance(token, str) or not token:
             raise ValidationError({'refresh': _('Refresh token is required.')})
         try:
@@ -63,7 +72,8 @@ class LogoutView(APIView):
             refresh.blacklist()
         except TokenError:
             raise ValidationError({'refresh': _('Invalid refresh token.')}) from None
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        return clear_refresh_cookie(response) if web_request(request) else response
 
 
 class MeView(generics.RetrieveUpdateAPIView):
