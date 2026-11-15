@@ -114,4 +114,4 @@ class AccountEmailJob(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        indexes = [models.Index(fields=['completed_at', 'available_at'])]
+        indexes = [models.Index(fields=['completed_at', 'available_at'], name='email_job_state_idx')]
