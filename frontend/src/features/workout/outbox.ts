@@ -55,23 +55,37 @@ export function classifySendError(error: unknown): { result: Exclude<SendResult,
   return { result: 'retry-later', message: null }
 }
 
-let running: Promise<SyncReport> | null = null
+const running = new Map<string, Promise<SyncReport>>()
 
 /**
- * Šalje red za slanje za jednog korisnika, jedan po jedan, najstariji prvo.
- * Samo jedno slanje odjednom (ponovni poziv čeka isto). Zaustavlja se na prvoj
- * privremenoj grešci, da se ne troši baterija dok nema interneta.
+ * Serialises work for one owner/session only. A different user cannot inherit a
+ * previous user's in-flight promise. All IndexedDB writes are guarded when auth
+ * changes while an HTTP response is still outstanding.
  */
-export function syncOutbox(ownerId: string, send: (payload: SessionPayload) => Promise<unknown>): Promise<SyncReport> {
-  running ??= (async () => {
+export function syncOutbox(
+  ownerId: string,
+  send: (payload: SessionPayload) => Promise<unknown>,
+  isCurrent: () => boolean = () => true,
+  sessionKey = '',
+): Promise<SyncReport> {
+  const key = `${ownerId}:${sessionKey}`
+  const existing = running.get(key)
+  if (existing) return existing
+  const task = (async () => {
     const report: SyncReport = { sent: 0, rejected: 0, pending: 0 }
     const rows = (await pendingSessions(ownerId)).filter((r) => !r.error).reverse()
     for (const row of rows) {
+      if (!isCurrent()) break
+      // Rows may have been discarded while this sync was waiting for IndexedDB.
+      if (!(await db.outbox.get(row.id))) continue
+      if (!isCurrent()) break
       try {
         await send(row.payload)
+        if (!isCurrent()) break
         await db.outbox.delete(row.id)
         report.sent += 1
       } catch (error) {
+        if (!isCurrent()) break
         const { result, message } = classifySendError(error)
         if (result === 'rejected') {
           await db.outbox.update(row.id, { error: message, attempts: row.attempts + 1 })
@@ -84,10 +98,10 @@ export function syncOutbox(ownerId: string, send: (payload: SessionPayload) => P
     }
     report.pending = (await pendingSessions(ownerId)).filter((r) => !r.error).length
     return report
-  })().finally(() => {
-    running = null
-  })
-  return running
+  })()
+  const tracked = task.finally(() => { if (running.get(key) === tracked) running.delete(key) })
+  running.set(key, tracked)
+  return tracked
 }
 
 /**

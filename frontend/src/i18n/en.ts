@@ -153,6 +153,8 @@ export const en = {
     deleteConfirm: 'Delete "{{name}}"?',
   },
   diary: {
+    rejectedChanges: '{{count}} changes were rejected by the server and excluded from totals.',
+    dismissRejected: 'Discard failed changes',
     today: 'Today',
     yesterday: 'Yesterday',
     tomorrow: 'Tomorrow',

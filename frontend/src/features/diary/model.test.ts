@@ -62,6 +62,15 @@ describe('applyOps', () => {
     expect(day.statusPending).toBe(true)
   })
 
+  it('odbijen unos ne ulazi u kcal zbir; korisnik vidi gresku', () => {
+    const draft = entryFromFood('rejected', DAY, 'lunch', egg, 100, '', now)
+    const rejected = op(1, { type: 'upsert', entryId: 'rejected', body: draft.body, preview: draft.preview, error: 'Bad quantity' })
+    const day = applyOps(DAY, server, [rejected])
+    expect(day.entries.map((e) => e.id)).toEqual(['s1'])
+    expect(totals(day.entries).kcal).toBe(143)
+    expect(day.errors.get('rejected')).toBe('Bad quantity')
+  })
+
   it('radi i bez stanja sa servera, a premeštena stavka nestaje iz starog dana', () => {
     const moved = { ...server.entries[0], date: '2026-10-01' }
     const day = applyOps(DAY, server, [op(1, { type: 'upsert', entryId: 's1', body: {} as never, preview: moved })])

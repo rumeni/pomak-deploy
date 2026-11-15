@@ -10,7 +10,7 @@ import { fmtValue } from '../nutrition/MacroLine'
 import { useCreateSavedMeal } from './api'
 import { mealLabel, mealSettings, visibleMeals } from './meals'
 import { copyEntry, savedItemFromEntry, totals, type DayTotals, type DisplayDay, type MacroTotal } from './model'
-import { loadDayEntries, saveDrafts, setDayStatus, useDiaryDay } from './store'
+import { discardRejectedDayOps, loadDayEntries, saveDrafts, setDayStatus, useDiaryDay } from './store'
 import type { DayStatus, DayTarget, DiaryEntry, MealKey } from './types'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
@@ -46,6 +46,17 @@ export function DiaryPage() {
 
         {day && (
           <>
+            {day.errors.size > 0 && me && (
+              <div role="alert" className="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm">
+                <p>{t('diary.rejectedChanges', { count: day.errors.size })}</p>
+                {[...day.errors.entries()].map(([id, message]) => (
+                  <p key={id} className="mt-1 text-muted">{message}</p>
+                ))}
+                <button type="button" className="mt-2 underline" onClick={() => void discardRejectedDayOps(me.id, date)}>
+                  {t('diary.dismissRejected')}
+                </button>
+              </div>
+            )}
             <TotalsCard totals={totals(day.entries)} target={day.target ?? null} past={date < toISODate(new Date())} />
             {visibleMeals(settings, day.entries).map((m) => (
               <MealCard key={m.key} date={date} meal={m.key} label={mealLabel(m.key, settings, t)} day={day} onNotice={setNotice} />

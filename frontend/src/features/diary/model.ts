@@ -162,11 +162,16 @@ export function applyOps(date: string, server: DiaryDay | null, ops: DiaryOpRow[
   let statusPending = false
   for (const op of [...ops].sort((a, b) => a.seq - b.seq)) {
     if (op.type === 'status') {
+      if (op.error) { errors.set('__status__', op.error); continue }
       status = op.status
       statusPending = true
       continue
     }
-    if (op.error) errors.set(op.entryId, op.error)
+    if (op.error) {
+      errors.set(op.entryId, op.error)
+      // Rejected operations are not accepted data and must not affect totals.
+      continue
+    }
     pendingIds.add(op.entryId)
     if (op.type === 'upsert') {
       const i = entries.findIndex((e) => e.id === op.entryId)

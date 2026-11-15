@@ -156,6 +156,8 @@ export const sr = {
     deleteConfirm: 'Obrisati namirnicu „{{name}}“?',
   },
   diary: {
+    rejectedChanges: '{{count}} izmena nije sačuvano na serveru. Nisu uračunate u zbir.',
+    dismissRejected: 'Ukloni neuspele izmene',
     today: 'Danas',
     yesterday: 'Juče',
     tomorrow: 'Sutra',

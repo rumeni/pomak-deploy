@@ -48,6 +48,7 @@ def recompute(recipe: Food) -> None:
     """Ponovo računa vrednosti i porciju recepta (posle izmene recepta ili nekog sastojka)."""
     ingredients = [(i.food, i.grams) for i in recipe.ingredients.select_related('food')]
     result = compute(ingredients, recipe.recipe_mass_g)
+    check_plausible(result['values'])
     for field, value in result['values'].items():
         setattr(recipe, field, value)
     recipe.save()

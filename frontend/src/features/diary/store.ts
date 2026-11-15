@@ -37,8 +37,20 @@ export function saveEntry(ownerId: string, entryId: string, draft: EntryDraft, p
   return enqueue(ownerId, previousDate ?? draft.preview.date, { type: 'upsert', entryId, body: draft.body, preview: draft.preview })
 }
 
-export function deleteEntry(ownerId: string, date: string, entryId: string): Promise<void> {
-  return enqueue(ownerId, date, { type: 'delete', entryId })
+export async function deleteEntry(ownerId: string, date: string, entryId: string): Promise<void> {
+  await db.transaction('rw', db.diaryOps, async () => {
+    const rows = await db.diaryOps.where('ownerId').equals(ownerId).toArray()
+    const rejected = rows.filter((op) => op.type === 'upsert' && op.entryId === entryId && op.error)
+    await db.diaryOps.bulkDelete(rejected.map((op) => op.id))
+    await db.diaryOps.add({ type: 'delete', entryId, id: uuid(), ownerId, date, seq: nextSeq(), error: null } as DiaryOpRow)
+  })
+  requestSync()
+}
+
+/** Clear errors after the user has reviewed them, without deleting confirmed data. */
+export async function discardRejectedDayOps(ownerId: string, date: string): Promise<void> {
+  const rows = await db.diaryOps.where('ownerId').equals(ownerId).toArray()
+  await db.diaryOps.bulkDelete(rows.filter((op) => op.error && (op.date === date || (op.type === 'upsert' && op.preview.date === date))).map((op) => op.id))
 }
 
 export function setDayStatus(ownerId: string, date: string, status: DayStatus): Promise<void> {

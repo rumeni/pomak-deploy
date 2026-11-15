@@ -73,3 +73,15 @@ class Profile(models.Model):
 
     def __str__(self):
         return self.display_name or self.user.email
+
+
+class AuthThrottleBucket(models.Model):
+    """Cross-instance login rate limiting; only hashed identities are persisted."""
+    key = models.CharField(max_length=64)
+    window_start = models.DateTimeField()
+    attempts = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['key', 'window_start'], name='auth_throttle_bucket_key_window'),
+        ]

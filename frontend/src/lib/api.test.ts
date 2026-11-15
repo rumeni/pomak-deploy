@@ -46,6 +46,28 @@ describe('osvežavanje prijave', () => {
     expect(seen.at(-1)).toBe('patch /auth/me/ Bearer novi')
   })
 
+  it('kasni refresh ne moze ponovo da prijavi odjavljenog korisnika', async () => {
+    let finish!: (response: { status: number; data: unknown }) => void
+    const done = new Promise<{ status: number; data: unknown }>((resolve) => { finish = resolve })
+    const adapter = async (config: InternalAxiosRequestConfig) => {
+      const result = config.url?.endsWith('/auth/refresh/') ? await done : { status: 401, data: {} }
+      const response = { ...result, statusText: '', headers: new AxiosHeaders(), config }
+      if (result.status === 401) throw new AxiosError('401', 'ERR', config, null, response)
+      return response
+    }
+    api.defaults.adapter = adapter
+    axios.defaults.adapter = adapter
+    vi.stubGlobal('window', { dispatchEvent: vi.fn() })
+    const request = api.get('/auth/me/')
+    // Wait for the failed access request to start refreshing.
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    tokens.clear()
+    finish({ status: 200, data: { access: 'late', refresh: 'late-refresh' } })
+    await expect(request).rejects.toBeTruthy()
+    expect(tokens.access()).toBeNull()
+    expect(tokens.refresh()).toBeNull()
+  })
+
   it('neuspela prijava (pogrešna lozinka) se ne ponavlja i ne osvežava', async () => {
     const seen: string[] = []
     fakeServer((config) => {

@@ -82,6 +82,15 @@ class RecipeTests(APITestCase):
         self.client.patch(f'/api/nutrition/foods/{sauce.id}/', {'kcal': '200'}, format='json')
         self.assertEqual(self.client.get(f"{URL}{recipe['id']}/").data['kcal'], '200.0')
 
+    def test_edit_food_that_would_invalidate_recipe_is_rejected_atomically(self):
+        sauce = Food.objects.create(owner=self.user, source='custom', name='Sos', kcal=100)
+        recipe = self.create(mass_g='50', servings=1, ingredients=[{'food_id': str(sauce.id), 'grams': '100'}])
+        self.assertEqual(recipe['kcal'], '200.0')
+        res = self.client.patch(f'/api/nutrition/foods/{sauce.id}/', {'kcal': '500'}, format='json')
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertEqual(str(Food.objects.get(pk=sauce.id).kcal), '100.0')
+        self.assertEqual(self.client.get(f"{URL}{recipe['id']}/").data['kcal'], '200.0')
+
     def test_validation(self):
         post = lambda b: self.client.post(URL, b, format='json')  # noqa: E731
         self.assertEqual(post(self.body(ingredients=[])).status_code, 400)

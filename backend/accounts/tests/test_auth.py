@@ -73,3 +73,47 @@ class AuthFlowTests(APITestCase):
 
     def test_me_requires_auth(self):
         self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
+
+
+class TokenRevocationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('revoke@primer.rs', 'jaka-lozinka-123')
+
+    def test_rotated_refresh_and_logout_revoke_tokens(self):
+        login = self.client.post('/api/auth/login/', {'email': self.user.email, 'password': 'jaka-lozinka-123'})
+        self.assertEqual(login.status_code, 200, login.data)
+        initial = login.data['refresh']
+        rotate = self.client.post('/api/auth/refresh/', {'refresh': initial}, format='json')
+        self.assertEqual(rotate.status_code, 200, rotate.data)
+        self.assertEqual(self.client.post('/api/auth/refresh/', {'refresh': initial}, format='json').status_code, 401)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {rotate.data['access']}")
+        logout = self.client.post('/api/auth/logout/', {'refresh': rotate.data['refresh']}, format='json')
+        self.assertEqual(logout.status_code, 204, logout.data)
+        self.assertEqual(self.client.post('/api/auth/refresh/', {'refresh': rotate.data['refresh']}, format='json').status_code, 401)
+
+    def test_logout_wont_revoke_other_user_token(self):
+        other = User.objects.create_user('other@primer.rs', 'jaka-lozinka-123')
+        from rest_framework_simplejwt.tokens import RefreshToken
+        stolen = RefreshToken.for_user(other)
+        mine = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {mine.access_token}')
+        res = self.client.post('/api/auth/logout/', {'refresh': str(stolen)}, format='json')
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertEqual(self.client.post('/api/auth/refresh/', {'refresh': str(stolen)}, format='json').status_code, 200)
+
+
+class DatabaseAuthThrottleTests(APITestCase):
+    def test_account_limit_shared_across_ip_addresses(self):
+        from accounts.models import AuthThrottleBucket
+        from accounts.throttles import DatabaseAuthThrottle
+        from rest_framework.test import APIRequestFactory
+        from rest_framework.request import Request
+        from rest_framework.parsers import JSONParser
+
+        factory = APIRequestFactory()
+        for idx in range(10):
+            req = Request(factory.post('/api/auth/login/', {'email': 'TARGET@example.com'}, format='json', REMOTE_ADDR=f'192.0.2.{idx + 1}'), parsers=[JSONParser()])
+            self.assertTrue(DatabaseAuthThrottle().allow_request(req, None))
+        req = Request(factory.post('/api/auth/login/', {'email': 'target@example.com'}, format='json', REMOTE_ADDR='192.0.2.50'), parsers=[JSONParser()])
+        self.assertFalse(DatabaseAuthThrottle().allow_request(req, None))
+        self.assertEqual(AuthThrottleBucket.objects.filter(attempts__gte=10).count(), 1)

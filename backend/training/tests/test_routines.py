@@ -57,6 +57,11 @@ class RoutineTests(APITestCase):
         self.assertEqual(len(res.data['exercises']), 1)
         self.assertEqual(RoutineSet.objects.count(), 1)
 
+    def test_invalid_client_uuid_is_bad_request_not_server_error(self):
+        res = self.create(self.payload(id="not-a-uuid"))
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn("id", res.data)
+
     def test_validation(self):
         body = self.payload()
         body['exercises'][0]['sets'][1]['reps_min'] = 12
