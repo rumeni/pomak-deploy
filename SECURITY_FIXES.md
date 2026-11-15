@@ -42,7 +42,7 @@ Local Python compilation can run without dependencies, but full Django/Vitest te
 
 ## Targeted login lockout follow-up
 
-- A correct account password is now accepted even after someone else exhausts its email throttle bucket. The exception is restricted to the login endpoint; wrong passwords and registration remain limited. Verified credentials are checked only after the shared PostgreSQL counter transaction has released its lock.
-- Source/IP quotas (PostgreSQL + DRF anonymous limit) still apply, and the global per-email quota still returns HTTP 429 for invalid credentials. However, **no password-only mechanism can both guarantee unhindered correct login and eliminate all distributed online guessing** without additional client verification. More comprehensive bot defense (edge challenge, device binding, MFA or passkeys) remains recommended for scale.
-- All five original frontend oxlint warnings were fixed by separating shared React hooks/helpers from component files and deriving trainer consent draft state without an effect; CI now rejects any future oxlint warnings.
-- Six existing npm build-time advisories come from vite-plugin-pwa/Workbox and are tracked in GitHub Issue #9. No production npm advisories. Avoid an untested `npm audit fix --force` PWA downgrade.
+- **Still open**: Issue #6, targeted lockout via the 10/min global account email quota. The proposed password-only bypass was **reverted** after an automated P1 review: it would let distributed attackers continue checking guesses against the password hash, effectively removing the account-wide protection. Do not ship a password-only bypass.
+- Safer next step: integrate an independent challenge such as Cloudflare Turnstile with server-side Siteverify, then test end-to-end on web and Capacitor before changing the quota. A Turnstile sitekey and secret must be configured; the app deliberately remains fail-closed until it is ready.
+- All five original frontend oxlint warnings were fixed by separating shared React hooks/helpers from component files and keying the trainer consent form by current server values. CI now rejects future oxlint warnings.
+- Six npm build-time advisories come from vite-plugin-pwa/Workbox and are tracked in Issue #9. No production npm advisories. Avoid an untested `npm audit fix --force` PWA downgrade.
