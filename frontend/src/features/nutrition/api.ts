@@ -1,6 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import i18n from '../../i18n'
+import { db } from '../../lib/db'
+import { getCurrentUserId } from '../../lib/currentUser'
 import { api } from '../../lib/api'
 
 export type FoodState = 'raw' | 'cooked' | 'prepared' | 'na'
@@ -61,10 +63,21 @@ export function useUpdateFood() {
   return useMutation({
     mutationFn: async ({ id, body }: { id: string; body: NewFood }) =>
       (await api.patch<Food>(`/nutrition/foods/${id}/`, body)).data,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['foods'] })
-      void queryClient.invalidateQueries({ queryKey: ['recent-foods'] })
-      void queryClient.invalidateQueries({ queryKey: ['recipes'] })
+    onSuccess: async (food) => {
+      // Recent foods and the diary picker also read their own persisted copy
+      // from IndexedDB. Update that copy before navigating away from editing.
+      const ownerId = getCurrentUserId()
+      if (ownerId) {
+        const key = `${ownerId}:${food.id}`
+        const cached = await db.foodCache.get(key)
+        if (cached) await db.foodCache.put({ ...cached, food })
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['foods'] }),
+        queryClient.invalidateQueries({ queryKey: ['recent-foods'] }),
+        queryClient.invalidateQueries({ queryKey: ['recipes'] }),
+        queryClient.invalidateQueries({ queryKey: ['saved-meals'] }),
+      ])
     },
   })
 }
