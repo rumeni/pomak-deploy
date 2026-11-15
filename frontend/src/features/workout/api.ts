@@ -1,0 +1,64 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { api } from '../../lib/api'
+import type { Exercise } from '../training/api'
+import type { LoggedSet, PreviousPerformance, SessionPayload } from './model'
+
+export interface WorkoutSession {
+  id: string
+  routine_id: string | null
+  name: string
+  started_at: string
+  finished_at: string
+  feeling: number | null
+  notes: string
+  exercises: { exercise: Exercise; notes: string; sets: LoggedSet[] }[]
+}
+
+/** Poslednji rezultat po vežbi. Bez interneta vraća prazno: trening može da počne i tada. */
+export async function fetchPrevious(exerciseIds: string[]): Promise<Record<string, PreviousPerformance>> {
+  // Telefon zna da nema mreže: ne čekaj istek zahteva, trening kreće odmah.
+  if (!exerciseIds.length || !navigator.onLine) return {}
+  try {
+    const { data } = await api.get<Record<string, PreviousPerformance>>('/training/sessions/previous/', {
+      params: { exercise_ids: exerciseIds.join(',') },
+      timeout: 5000,
+    })
+    return data
+  } catch {
+    return {}
+  }
+}
+
+export function useSessions() {
+  return useQuery({
+    queryKey: ['sessions'],
+    queryFn: async () => (await api.get<WorkoutSession[]>('/training/sessions/')).data,
+  })
+}
+
+export function useSaveSession() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    // Isti ID pri ponovnom slanju: server vraća postojeći trening umesto duplikata.
+    mutationFn: async (body: SessionPayload) => (await api.post<WorkoutSession>('/training/sessions/', body)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+}
+
+export function useSession(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['sessions', id],
+    queryFn: async () => (await api.get<WorkoutSession>(`/training/sessions/${id}/`)).data,
+    enabled: !!id && enabled,
+    retry: false,
+  })
+}
+
+export function useDeleteSession() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => api.delete(`/training/sessions/${id}/`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+}

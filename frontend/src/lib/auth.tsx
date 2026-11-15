@@ -1,0 +1,117 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+
+import i18n, { changeLanguage, fromServerLanguage, toServerLanguage, type Language } from '../i18n'
+import { api } from './api'
+import { setCurrentUserId } from './currentUser'
+import { tokens } from './tokens'
+import type { Me } from './types'
+
+export interface RegisterData {
+  email: string
+  password: string
+  displayName: string
+  accountType: 'client' | 'coach'
+}
+
+interface AuthState {
+  me: Me | undefined
+  loading: boolean
+  /** Prijava postoji, ali server nije dostupan, a podaci o korisniku nisu sačuvani na telefonu. */
+  unreachable: boolean
+  retry: () => void
+  login: (email: string, password: string) => Promise<void>
+  register: (data: RegisterData) => Promise<void>
+  logout: () => void
+}
+
+const AuthContext = createContext<AuthState | null>(null)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
+  const [hasToken, setHasToken] = useState(() => !!tokens.access())
+
+  const { data: me, isLoading, isError, refetch } = useQuery({
+    queryKey: ['me'],
+    queryFn: async () => (await api.get<Me>('/auth/me/')).data,
+    enabled: hasToken,
+    // Bez interneta: poslednji poznati podaci, pa se aplikacija otvara normalno umesto
+    // ekrana za prijavu. Označeni su kao stari, pa se osvežavaju čim server odgovori.
+    initialData: () => (hasToken ? tokens.cachedMe<Me>() : undefined),
+    initialDataUpdatedAt: 0,
+    staleTime: 5 * 60_000,
+  })
+
+  useEffect(() => {
+    if (me) tokens.setCachedMe(me)
+  }, [me])
+
+  // Lokalni podaci (aktivan trening, red za slanje) pripadaju prijavljenom nalogu.
+  // Postavlja se odmah pri iscrtavanju, pre nego što ekrani čitaju lokalnu bazu.
+  setCurrentUserId(hasToken && me ? me.id : null)
+
+  // Jezik sa naloga važi na svakom uređaju na kome se korisnik prijavi.
+  const accountLanguage = me ? fromServerLanguage(me.profile.language) : null
+  useEffect(() => {
+    if (!accountLanguage || accountLanguage === i18n.language) return
+    // Podaci učitani na prethodnom jeziku (nazivi vežbi, namirnica, poruke) se učitavaju ponovo.
+    void changeLanguage(accountLanguage).then(() => queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'me' }))
+  }, [accountLanguage, queryClient])
+
+  const logout = useCallback(() => {
+    tokens.clear()
+    setHasToken(false)
+    queryClient.clear()
+  }, [queryClient])
+
+  useEffect(() => {
+    window.addEventListener('pomak:logout', logout)
+    return () => window.removeEventListener('pomak:logout', logout)
+  }, [logout])
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const { data } = await api.post('/auth/login/', { email, password })
+      tokens.set(data.access, data.refresh)
+      setHasToken(true)
+    },
+    [],
+  )
+
+  const register = useCallback(
+    async ({ email, password, displayName, accountType }: RegisterData) => {
+      const { data } = await api.post('/auth/register/', {
+        email,
+        password,
+        display_name: displayName,
+        account_type: accountType,
+        language: toServerLanguage(i18n.language as Language),
+      })
+      tokens.set(data.access, data.refresh)
+      setHasToken(true)
+    },
+    [],
+  )
+
+  const retry = useCallback(() => void refetch(), [refetch])
+
+  const value = useMemo(
+    () => ({
+      me: hasToken ? me : undefined,
+      loading: hasToken && isLoading,
+      unreachable: hasToken && !me && isError,
+      retry,
+      login,
+      register,
+      logout,
+    }),
+    [hasToken, me, isLoading, isError, retry, login, register, logout],
+  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth(): AuthState {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth mora biti unutar AuthProvider-a')
+  return ctx
+}

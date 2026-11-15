@@ -1,0 +1,661 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-30 12:47+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#: .\accounts\models.py:43
+msgid "Male"
+msgstr "Muški"
+
+#: .\accounts\models.py:44
+msgid "Female"
+msgstr "Ženski"
+
+#: .\accounts\models.py:47
+msgid "Beginner"
+msgstr "Početnik"
+
+#: .\accounts\models.py:48
+msgid "Intermediate"
+msgstr "Srednji"
+
+#: .\accounts\models.py:49
+msgid "Advanced"
+msgstr "Napredni"
+
+#: .\accounts\serializers.py:33 .\accounts\serializers.py:37
+msgid "Invalid meal settings."
+msgstr "Neispravna podešavanja obroka."
+
+#: .\accounts\serializers.py:40
+msgid "A meal name can have at most 40 characters."
+msgstr "Naziv obroka može imati najviše 40 znakova."
+
+#: .\accounts\serializers.py:44
+msgid "At least one meal must be enabled."
+msgstr "Bar jedan obrok mora biti uključen."
+
+#: .\accounts\serializers.py:52
+msgid "Date of birth must be in the past."
+msgstr "Datum rođenja mora biti u prošlosti."
+
+#: .\accounts\serializers.py:54
+msgid "Please check the date of birth."
+msgstr "Proveri datum rođenja."
+
+#: .\accounts\serializers.py:75
+msgid "I train for myself"
+msgstr "Vežbam za sebe"
+
+#: .\accounts\serializers.py:75
+msgid "I am a coach"
+msgstr "Trener sam"
+
+#: .\accounts\serializers.py:86
+msgid "An account with this email already exists."
+msgstr "Nalog sa ovim email-om već postoji."
+
+#: .\accounts\serializers.py:107
+msgid "Wrong email or password."
+msgstr "Pogrešan email ili lozinka."
+
+#: .\accounts\views.py:58
+#| msgid "Wrong email or password."
+msgid "Wrong password."
+msgstr "Pogrešna lozinka."
+
+#: .\core\drf_messages.py:11
+msgid "This field is required."
+msgstr "Ovo polje je obavezno."
+
+#: .\core\drf_messages.py:12
+msgid "This field may not be blank."
+msgstr "Ovo polje ne sme biti prazno."
+
+#: .\core\drf_messages.py:13
+msgid "This field may not be null."
+msgstr "Ovo polje ne sme biti prazno."
+
+#: .\core\drf_messages.py:14
+msgid "This list may not be empty."
+msgstr "Lista ne sme biti prazna."
+
+#: .\core\drf_messages.py:15
+msgid "Enter a valid email address."
+msgstr "Unesi ispravan email."
+
+#: .\core\drf_messages.py:16
+msgid "A valid number is required."
+msgstr "Unesi ispravan broj."
+
+#: .\core\drf_messages.py:17
+msgid "A valid integer is required."
+msgstr "Unesi ceo broj."
+
+#: .\core\drf_messages.py:18
+msgid "Must be a valid UUID."
+msgstr "Neispravan ID."
+
+#: .\core\drf_messages.py:19
+msgid "Must be a valid boolean."
+msgstr "Neispravna vrednost."
+
+#: .\core\drf_messages.py:20
+#, python-brace-format
+msgid "\"{input}\" is not a valid choice."
+msgstr "\"{input}\" nije dozvoljena vrednost."
+
+#: .\core\drf_messages.py:21
+#, python-brace-format
+msgid "Ensure this value is greater than or equal to {min_value}."
+msgstr "Vrednost mora biti najmanje {min_value}."
+
+#: .\core\drf_messages.py:22
+#, python-brace-format
+msgid "Ensure this value is less than or equal to {max_value}."
+msgstr "Vrednost može biti najviše {max_value}."
+
+#: .\core\drf_messages.py:23
+#, python-brace-format
+msgid "Ensure this field has no more than {max_length} characters."
+msgstr "Najviše {max_length} znakova."
+
+#: .\core\drf_messages.py:24
+#, python-brace-format
+msgid "Ensure that there are no more than {max_decimal_places} decimal places."
+msgstr "Najviše {max_decimal_places} decimale."
+
+#: .\core\drf_messages.py:25
+#, python-brace-format
+msgid "Ensure that there are no more than {max_digits} digits in total."
+msgstr "Najviše {max_digits} cifara ukupno."
+
+#: .\core\drf_messages.py:26
+#, python-brace-format
+msgid "Date has wrong format. Use one of these formats instead: {format}."
+msgstr "Datum nije u ispravnom obliku. Koristi: {format}."
+
+#: .\core\drf_messages.py:27
+#, python-brace-format
+msgid "Invalid pk \"{pk_value}\" - object does not exist."
+msgstr "Izabrana stavka ({pk_value}) ne postoji."
+
+#: .\core\drf_messages.py:28
+msgid "Not found."
+msgstr "Nije pronađeno."
+
+#: .\core\drf_messages.py:29
+msgid "Invalid input."
+msgstr "Neispravan unos."
+
+#: .\core\drf_messages.py:30
+msgid "Malformed request."
+msgstr "Neispravan zahtev."
+
+#: .\core\drf_messages.py:31
+msgid "A server error occurred."
+msgstr "Greška na serveru."
+
+#: .\core\drf_messages.py:32
+msgid "Authentication credentials were not provided."
+msgstr "Potrebna je prijava."
+
+#: .\core\drf_messages.py:33
+msgid "Incorrect authentication credentials."
+msgstr "Pogrešni podaci za prijavu."
+
+#: .\core\drf_messages.py:34
+msgid "You do not have permission to perform this action."
+msgstr "Nemaš dozvolu za ovu radnju."
+
+#: .\core\drf_messages.py:35
+#, python-brace-format
+msgid "Method \"{method}\" not allowed."
+msgstr "Radnja \"{method}\" nije dozvoljena."
+
+#: .\core\drf_messages.py:36
+msgid "Request was throttled."
+msgstr "Previše pokušaja. Sačekaj malo pa pokušaj ponovo."
+
+#: .\core\drf_messages.py:37
+msgid "Given token not valid for any token type"
+msgstr "Sesija je istekla. Prijavi se ponovo."
+
+#: .\core\drf_messages.py:38
+msgid "Token is invalid or expired"
+msgstr "Sesija je istekla. Prijavi se ponovo."
+
+#: .\core\drf_messages.py:39
+msgid "User is inactive"
+msgstr "Nalog nije aktivan."
+
+#: .\core\drf_messages.py:40
+msgid "User not found"
+msgstr "Korisnik nije pronađen."
+
+#: .\core\views.py:25
+msgid "Invalid ID."
+msgstr "Neispravan ID."
+
+#: .\core\views.py:28
+msgid "This ID is already taken."
+msgstr "ID je već zauzet."
+
+#: .\core\views.py:40
+msgid "Items from the shared library cannot be changed."
+msgstr "Zajednički zapisi ne mogu da se menjaju."
+
+#: .\nutrition\models.py:18
+msgid "Custom"
+msgstr "Lična"
+
+#: .\nutrition\models.py:20
+msgid "Recipe"
+msgstr "Recept"
+
+#: .\nutrition\models.py:23
+msgid "Raw"
+msgstr "Sirovo"
+
+#: .\nutrition\models.py:24
+msgid "Cooked"
+msgstr "Kuvano / pečeno"
+
+#: .\nutrition\models.py:25
+msgid "Prepared"
+msgstr "Pripremljeno"
+
+#: .\nutrition\models.py:26
+msgid "Not applicable"
+msgstr "Nije primenljivo"
+
+#: .\nutrition\models.py:98
+msgid "Breakfast"
+msgstr "Doručak"
+
+#: .\nutrition\models.py:99
+msgid "Lunch"
+msgstr "Ručak"
+
+#: .\nutrition\models.py:100
+msgid "Dinner"
+msgstr "Večera"
+
+#: .\nutrition\models.py:101
+msgid "Snack"
+msgstr "Užina"
+
+#: .\nutrition\models.py:102
+msgid "Meal 5"
+msgstr "Obrok 5"
+
+#: .\nutrition\models.py:103
+msgid "Meal 6"
+msgstr "Obrok 6"
+
+#: .\nutrition\models.py:152
+msgid "In progress"
+msgstr "U toku"
+
+#: .\nutrition\models.py:153
+msgid "Complete"
+msgstr "Kompletan"
+
+#: .\nutrition\models.py:154
+msgid "Incomplete"
+msgstr "Nepotpun"
+
+#: .\nutrition\models.py:205
+msgid "App estimate"
+msgstr "Predlog aplikacije"
+
+#: .\nutrition\models.py:206
+msgid "My target"
+msgstr "Moj cilj"
+
+#: .\nutrition\models.py:207
+msgid "Set by coach"
+msgstr "Postavio trener"
+
+#: .\nutrition\recipes.py:44
+msgid "The cooked mass is too small for these ingredients."
+msgstr "Masa gotovog jela je premala za ove sastojke."
+
+#: .\nutrition\serializers.py:59
+msgid "Enter the food name."
+msgstr "Unesi naziv namirnice."
+
+#: .\nutrition\serializers.py:64
+#, fuzzy, python-format
+#| msgid "At most %(count)d sets per exercise."
+msgid "At most %(count)d portions."
+msgstr "Najviše %(count)d porcija."
+
+#: .\nutrition\serializers.py:70
+msgid "A recipe is changed through its ingredients."
+msgstr "Recept se menja preko sastojaka."
+
+#: .\nutrition\serializers.py:74
+msgid "Protein, carbohydrates and fat together cannot exceed 100 g per 100 g."
+msgstr "Proteini, ugljeni hidrati i masti zajedno ne mogu biti više od 100 g na 100 g."
+"Proteini, ugljeni hidrati i masti zajedno ne mogu biti više od 100 g na 100 "
+"g.Proteini, ugljeni hidrati i masti zajedno ne mogu biti više od 100 g na "
+"100 g.Proteini, ugljeni hidrati i masti zajedno ne mogu biti više od 100 g "
+"na 100 g.Proteini, ugljeni hidrati i masti zajedno ne mogu biti više od 100 "
+"g na 100 g.Proteini, ugljeni hidrati i masti zajedno ne mogu biti više od "
+"100 g na 100 g.Proteini, ugljeni hidrati i masti zajedno ne mogu biti više "
+"od 100 g na 100 g.Proteini, ugljeni hidrati i masti zajedno ne mogu biti "
+"više od 100 g na 100 g."
+
+#: .\nutrition\serializers.py:136 .\nutrition\serializers.py:143
+msgid "The food of an entry cannot be changed."
+msgstr "Namirnica upisane stavke ne može da se promeni."
+
+#: .\nutrition\serializers.py:139 .\nutrition\serializers.py:205
+#: .\nutrition\serializers.py:258
+msgid "This food is not available."
+msgstr "Namirnica nije dostupna."
+
+#: .\nutrition\serializers.py:146 .\nutrition\serializers.py:207
+msgid "Enter the amount in grams."
+msgstr "Unesi količinu u gramima."
+
+#: .\nutrition\serializers.py:149 .\nutrition\serializers.py:228
+#: .\nutrition\serializers.py:293
+msgid "Enter a name."
+msgstr "Unesi naziv."
+
+#: .\nutrition\serializers.py:151 .\nutrition\serializers.py:392
+msgid "Enter the calories."
+msgstr "Unesi kalorije."
+
+#: .\nutrition\serializers.py:211
+msgid "A manual item needs a name and calories."
+msgstr "Ručna stavka mora imati naziv i kalorije."
+
+#: .\nutrition\serializers.py:233
+msgid "A saved meal needs at least one item."
+msgstr "Sačuvani obrok mora imati bar jednu stavku."
+
+#: .\nutrition\serializers.py:235
+#, fuzzy, python-format
+#| msgid "At most %(count)d sets per exercise."
+msgid "At most %(count)d items."
+msgstr "Najviše %(count)d stavki."
+
+#: .\nutrition\serializers.py:260
+msgid "A recipe cannot contain another recipe."
+msgstr "Recept ne može da sadrži drugi recept."
+
+#: .\nutrition\serializers.py:298
+msgid "A recipe needs at least one ingredient."
+msgstr "Recept mora da ima bar jedan sastojak."
+
+#: .\nutrition\serializers.py:300
+#, fuzzy, python-format
+#| msgid "At most %(count)d sets per exercise."
+msgid "At most %(count)d ingredients."
+msgstr "Najviše %(count)d sastojaka."
+
+#: .\nutrition\serializers.py:351
+msgid "Choose one of the offered paces."
+msgstr "Izaberi jedan od ponuđenih tempa."
+
+#: .\nutrition\serializers.py:395
+msgid "The macros add up to more calories than the target."
+msgstr "Makroi zajedno daju više kalorija od cilja."
+
+#: .\nutrition\serializers.py:398
+msgid "Choose the activity level and goal."
+msgstr "Izaberi nivo aktivnosti i cilj."
+
+#: .\nutrition\views.py:37
+msgid "Foods from the shared database cannot be changed."
+msgstr "Namirnice iz zajedničke baze ne mogu da se menjaju."
+
+#: .\nutrition\views.py:70 .\progress\views.py:69
+msgid "Invalid date."
+msgstr "Neispravan datum."
+
+#: .\nutrition\views.py:154
+msgid "A new target can start today or later."
+msgstr "Novi cilj može da važi od danas ili kasnije."
+
+#: .\progress\models.py:12 .\progress\models.py:44
+msgid "Body weight"
+msgstr "Telesna težina"
+
+#: .\progress\models.py:13 .\progress\models.py:45
+msgid "Waist"
+msgstr "Obim struka"
+
+#: .\progress\models.py:14 .\progress\models.py:46 .\training\models.py:36
+msgid "Chest"
+msgstr "Grudi"
+
+#: .\progress\models.py:15 .\progress\models.py:47
+msgid "Hips"
+msgstr "Obim kukova"
+
+#: .\progress\models.py:16 .\progress\models.py:48
+msgid "Upper arm"
+msgstr "Obim nadlaktice"
+
+#: .\progress\models.py:17 .\progress\models.py:49
+msgid "Thigh"
+msgstr "Obim butine"
+
+#: .\progress\models.py:50
+msgid "Workouts per week"
+msgstr "Treninga nedeljno"
+
+#: .\progress\models.py:53
+msgid "Active"
+msgstr "Aktivan"
+
+#: .\progress\models.py:54
+msgid "Achieved"
+msgstr "Ostvaren"
+
+#: .\progress\models.py:55
+msgid "Stopped"
+msgstr "Prekinut"
+
+#: .\progress\serializers.py:29
+msgid "A measurement cannot be in the future."
+msgstr "Merenje ne može biti u budućnosti."
+
+#: .\progress\serializers.py:38 .\progress\serializers.py:73
+#, python-format
+msgid "The value must be between %(low)s and %(high)s."
+msgstr "Vrednost mora biti između %(low)s i %(high)s."
+
+#: .\progress\serializers.py:62
+msgid "You already have an active goal of this kind."
+msgstr "Već imaš aktivan cilj ove vrste."
+
+#: .\progress\serializers.py:64
+msgid "The goal date must be in the future."
+msgstr "Rok cilja mora biti u budućnosti."
+
+#: .\progress\serializers.py:67
+msgid "Enter a whole number of workouts from 1 to 14."
+msgstr "Upiši ceo broj treninga od 1 do 14."
+
+#: .\progress\serializers.py:79
+msgid "Enter the current value."
+msgstr "Upiši trenutnu vrednost."
+
+#: .\progress\serializers.py:81
+msgid "The goal must differ from the current value."
+msgstr "Cilj mora da se razlikuje od trenutne vrednosti."
+
+#: .\training\models.py:14
+msgid "Barbell"
+msgstr "Šipka"
+
+#: .\training\models.py:15
+msgid "Dumbbells"
+msgstr "Bučice"
+
+#: .\training\models.py:16
+msgid "Machine"
+msgstr "Sprava"
+
+#: .\training\models.py:17
+msgid "Cable"
+msgstr "Sajla"
+
+#: .\training\models.py:18
+msgid "Bodyweight"
+msgstr "Sopstvena težina"
+
+#: .\training\models.py:19
+msgid "Kettlebell"
+msgstr "Girja"
+
+#: .\training\models.py:20
+msgid "Resistance band"
+msgstr "Elastična traka"
+
+#: .\training\models.py:21
+msgid "Other"
+msgstr "Ostalo"
+
+#: .\training\models.py:24
+msgid "Weight and reps"
+msgstr "Težina i ponavljanja"
+
+#: .\training\models.py:25
+msgid "Bodyweight reps"
+msgstr "Sopstvena težina"
+
+#: .\training\models.py:26
+msgid "Bodyweight + added weight"
+msgstr "Sopstvena težina + dodatni teret"
+
+#: .\training\models.py:27
+msgid "Assisted bodyweight"
+msgstr "Sopstvena težina uz pomoć"
+
+#: .\training\models.py:28
+msgid "Duration"
+msgstr "Trajanje"
+
+#: .\training\models.py:29
+msgid "Distance and duration"
+msgstr "Distanca i trajanje"
+
+#: .\training\models.py:32
+msgid "Total weight"
+msgstr "Ukupna težina"
+
+#: .\training\models.py:33
+msgid "Per dumbbell / side"
+msgstr "Po bučici / strani"
+
+#: .\training\models.py:37
+msgid "Back"
+msgstr "Leđa"
+
+#: .\training\models.py:38
+msgid "Shoulders"
+msgstr "Ramena"
+
+#: .\training\models.py:39
+msgid "Biceps"
+msgstr "Biceps"
+
+#: .\training\models.py:40
+msgid "Triceps"
+msgstr "Triceps"
+
+#: .\training\models.py:41
+msgid "Legs"
+msgstr "Noge"
+
+#: .\training\models.py:42
+msgid "Glutes"
+msgstr "Gluteus"
+
+#: .\training\models.py:43
+msgid "Core"
+msgstr "Trbuh"
+
+#: .\training\models.py:44
+msgid "Full body"
+msgstr "Celo telo"
+
+#: .\training\models.py:45
+msgid "Cardio"
+msgstr "Kardio"
+
+#: .\training\models.py:55
+msgid "Other names, separated by commas."
+msgstr "Drugi nazivi, odvojeni zarezom."
+
+#: .\training\models.py:110
+msgid "Warm-up"
+msgstr "Zagrevanje"
+
+#: .\training\models.py:111
+msgid "Working"
+msgstr "Radna"
+
+#: .\training\models.py:131
+msgid "Very hard"
+msgstr "Veoma teško"
+
+#: .\training\models.py:132
+msgid "Hard"
+msgstr "Teško"
+
+#: .\training\models.py:133
+msgid "Okay"
+msgstr "Solidno"
+
+#: .\training\models.py:134
+msgid "Good"
+msgstr "Dobro"
+
+#: .\training\models.py:135
+msgid "Great"
+msgstr "Odlično"
+
+#: .\training\serializers.py:38
+msgid "Enter the exercise name."
+msgstr "Unesi naziv vežbe."
+
+#: .\training\serializers.py:57
+msgid "The upper rep limit is lower than the lower one."
+msgstr "Gornja granica ponavljanja je manja od donje."
+
+#: .\training\serializers.py:74 .\training\serializers.py:172
+msgid "This exercise is not available."
+msgstr "Vežba nije dostupna."
+
+#: .\training\serializers.py:79
+msgid "An exercise needs at least one set."
+msgstr "Vežba mora imati bar jednu seriju."
+
+#: .\training\serializers.py:82
+#, python-format
+msgid "At most %(count)d sets per exercise."
+msgstr "Najviše %(count)d serija po vežbi."
+
+#: .\training\serializers.py:99
+msgid "Enter the routine name."
+msgstr "Unesi naziv rutine."
+
+#: .\training\serializers.py:105
+#, python-format
+msgid "At most %(count)d exercises per routine."
+msgstr "Najviše %(count)d vežbi u rutini."
+
+#: .\training\serializers.py:157
+msgid "A confirmed set needs at least one value."
+msgstr "Potvrđena serija mora imati bar jednu vrednost."
+
+#: .\training\serializers.py:193
+msgid "This routine is not available."
+msgstr "Rutina nije dostupna."
+
+#: .\training\serializers.py:199
+msgid "The workout cannot end before it started."
+msgstr "Trening ne može da se završi pre nego što je počeo."
+
+#: .\training\serializers.py:201
+msgid "A workout cannot last longer than 24 hours."
+msgstr "Trening ne može da traje duže od 24 sata."
+
+#: .\training\serializers.py:203
+msgid "The workout cannot start in the future."
+msgstr "Trening ne može da počne u budućnosti."
+
+#: .\training\serializers.py:205
+msgid "The workout has no confirmed sets."
+msgstr "Trening nema nijednu potvrđenu seriju."
+
+#: .\training\views.py:28
+msgid "Exercises from the shared library cannot be changed."
+msgstr "Vežbe iz zajedničke biblioteke ne mogu da se menjaju."
+
+#: .\training\views.py:65
+#, python-format
+msgid "%(name)s (copy)"
+msgstr "%(name)s (kopija)"

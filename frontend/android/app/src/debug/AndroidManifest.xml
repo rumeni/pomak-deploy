@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Samo za debug APK: dozvoljava http vezu ka backend-u na računaru u lokalnoj mreži.
+     Release verzija ostaje samo na https. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application android:usesCleartextTraffic="true" />
+</manifest>

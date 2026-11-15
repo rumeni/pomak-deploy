@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #15303a;
+  --color-muted: #5b6b70;
+  --color-line: #dde5e6;
+  --color-surface: #f4f7f7;
+  --color-card: #ffffff;
+  --color-brand: #0f7c7c;
+  --color-brand-dark: #0b6464;
+  --color-brand-soft: #e6f2f2;
+  --color-accent: #e3a449;
+  --color-danger: #b3403a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* Prostor za isečak kamere, status bar i sistemsku navigaciju na telefonu. */
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}

@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pomak
+      POSTGRES_USER: pomak
+      POSTGRES_PASSWORD: pomak
+    ports:
+      - "5433:5432"
+    volumes:
+      - pomak_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pomak -d pomak"]
+      interval: 3s
+      retries: 20
+
+volumes:
+  pomak_pg:

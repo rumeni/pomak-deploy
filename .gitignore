@@ -1,0 +1,40 @@
+# Tajne
+**/.env*
+!**/.env.example
+!**/.env.production.example
+*.pem
+*.p12
+*.pfx
+*.key
+*credentials*.json
+*service-account*.json
+
+# Python
+venv/
+__pycache__/
+*.pyc
+backend/staticfiles/
+backend/media/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Android (Capacitor)
+frontend/android/app/build/
+frontend/android/build/
+frontend/android/.gradle/
+frontend/android/local.properties
+*.apk
+*.keystore
+*.jks
+
+# Ostalo
+.DS_Store
+.idea/
+.vscode/
+
+# Lični fajlovi van projekta
+POMAK_Specifikacija_aplikacije_za_Claude.pdf
+*.exe
+*.pptx

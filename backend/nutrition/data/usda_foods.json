@@ -1,0 +1,2175 @@
+{
+ "source": "USDA FoodData Central, SR Legacy (2018-04)",
+ "license": "CC0 1.0 (public domain)",
+ "foods": [
+  {
+   "slug": "chicken-breast-raw",
+   "fdc_id": 171077,
+   "usda_description": "Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw",
+   "name": "Piletina, belo meso (sirovo)",
+   "name_en": "Chicken breast (raw)",
+   "aliases": "pileće grudi, file, piletina",
+   "state": "raw",
+   "kcal": 120.0,
+   "protein_g": 22.5,
+   "carbs_g": 0.0,
+   "fat_g": 2.62,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "chicken-breast-roasted",
+   "fdc_id": 171477,
+   "usda_description": "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+   "name": "Piletina, belo meso (pečeno)",
+   "name_en": "Chicken breast (roasted)",
+   "aliases": "pileće grudi, file, piletina",
+   "state": "cooked",
+   "kcal": 165.0,
+   "protein_g": 31.02,
+   "carbs_g": 0.0,
+   "fat_g": 3.57,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "chicken-drumstick-raw",
+   "fdc_id": 173614,
+   "usda_description": "Chicken, broilers or fryers, dark meat, drumstick, meat only, raw",
+   "name": "Pileći batak bez kože (sirov)",
+   "name_en": "Chicken drumstick, skinless (raw)",
+   "aliases": "batak, piletina",
+   "state": "raw",
+   "kcal": 116.0,
+   "protein_g": 19.41,
+   "carbs_g": 0.0,
+   "fat_g": 3.71,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "chicken-drumstick-roasted",
+   "fdc_id": 172376,
+   "usda_description": "Chicken, broilers or fryers, dark meat, drumstick, meat only, cooked, roasted",
+   "name": "Pileći batak bez kože (pečen)",
+   "name_en": "Chicken drumstick, skinless (roasted)",
+   "aliases": "batak, piletina",
+   "state": "cooked",
+   "kcal": 155.0,
+   "protein_g": 24.24,
+   "carbs_g": 0.0,
+   "fat_g": 5.7,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "turkey-breast-raw",
+   "fdc_id": 171098,
+   "usda_description": "Turkey, whole, breast, meat only, raw",
+   "name": "Ćuretina, belo meso (sirovo)",
+   "name_en": "Turkey breast (raw)",
+   "aliases": "ćureće grudi, curetina",
+   "state": "raw",
+   "kcal": 114.0,
+   "protein_g": 23.66,
+   "carbs_g": 0.14,
+   "fat_g": 1.48,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "beef-ground-10-raw",
+   "fdc_id": 174030,
+   "usda_description": "Beef, ground, 90% lean meat / 10% fat, raw",
+   "name": "Juneće mleveno meso, 10% masti (sirovo)",
+   "name_en": "Ground beef, 90% lean (raw)",
+   "aliases": "mleveno meso, junetina, faširano",
+   "state": "raw",
+   "kcal": 176.0,
+   "protein_g": 20.0,
+   "carbs_g": 0.0,
+   "fat_g": 10.0,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "beef-ground-10-cooked",
+   "fdc_id": 174031,
+   "usda_description": "Beef, ground, 90% lean meat / 10% fat, patty, cooked, broiled",
+   "name": "Juneće mleveno meso, 10% masti (pečeno)",
+   "name_en": "Ground beef, 90% lean (cooked)",
+   "aliases": "mleveno meso, junetina, pljeskavica",
+   "state": "cooked",
+   "kcal": 217.0,
+   "protein_g": 26.11,
+   "carbs_g": 0.0,
+   "fat_g": 11.75,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "beef-ground-20-raw",
+   "fdc_id": 174036,
+   "usda_description": "Beef, ground, 80% lean meat / 20% fat, raw",
+   "name": "Juneće mleveno meso, 20% masti (sirovo)",
+   "name_en": "Ground beef, 80% lean (raw)",
+   "aliases": "mleveno meso, junetina",
+   "state": "raw",
+   "kcal": 254.0,
+   "protein_g": 17.17,
+   "carbs_g": 0.0,
+   "fat_g": 20.0,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "pork-tenderloin-raw",
+   "fdc_id": 168249,
+   "usda_description": "Pork, fresh, loin, tenderloin, separable lean only, raw",
+   "name": "Svinjski file (sirov)",
+   "name_en": "Pork tenderloin (raw)",
+   "aliases": "svinjetina, file",
+   "state": "raw",
+   "kcal": 109.0,
+   "protein_g": 20.95,
+   "carbs_g": 0.0,
+   "fat_g": 2.17,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "pork-ground-raw",
+   "fdc_id": 167902,
+   "usda_description": "Pork, fresh, ground, raw",
+   "name": "Svinjsko mleveno meso (sirovo)",
+   "name_en": "Ground pork (raw)",
+   "aliases": "svinjetina, mleveno",
+   "state": "raw",
+   "kcal": 263.0,
+   "protein_g": 16.88,
+   "carbs_g": 0.0,
+   "fat_g": 21.19,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "bacon-raw",
+   "fdc_id": 168277,
+   "usda_description": "Pork, cured, bacon, unprepared",
+   "name": "Slanina (sirova)",
+   "name_en": "Bacon (raw)",
+   "aliases": "slanina, bacon",
+   "state": "raw",
+   "kcal": 393.0,
+   "protein_g": 13.66,
+   "carbs_g": 0.0,
+   "fat_g": 37.13,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "tuna-canned-water",
+   "fdc_id": 173709,
+   "usda_description": "Fish, tuna, light, canned in water, drained solids (Includes foods for USDA's Food Distribution Program)",
+   "name": "Tunjevina u vodi (konzerva, oceđena)",
+   "name_en": "Tuna, canned in water (drained)",
+   "aliases": "tuna, tunjevina, konzerva",
+   "state": "prepared",
+   "kcal": 86.0,
+   "protein_g": 19.44,
+   "carbs_g": 0.0,
+   "fat_g": 0.96,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "tuna-canned-oil",
+   "fdc_id": 173708,
+   "usda_description": "Fish, tuna, light, canned in oil, drained solids",
+   "name": "Tunjevina u ulju (konzerva, oceđena)",
+   "name_en": "Tuna, canned in oil (drained)",
+   "aliases": "tuna, tunjevina, konzerva",
+   "state": "prepared",
+   "kcal": 198.0,
+   "protein_g": 29.13,
+   "carbs_g": 0.0,
+   "fat_g": 8.21,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "salmon-raw",
+   "fdc_id": 175167,
+   "usda_description": "Fish, salmon, Atlantic, farmed, raw",
+   "name": "Losos (sirov)",
+   "name_en": "Salmon, farmed (raw)",
+   "aliases": "losos, riba",
+   "state": "raw",
+   "kcal": 208.0,
+   "protein_g": 20.42,
+   "carbs_g": 0.0,
+   "fat_g": 13.42,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "salmon-cooked",
+   "fdc_id": 175168,
+   "usda_description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+   "name": "Losos (pečen)",
+   "name_en": "Salmon, farmed (cooked)",
+   "aliases": "losos, riba",
+   "state": "cooked",
+   "kcal": 206.0,
+   "protein_g": 22.1,
+   "carbs_g": 0.0,
+   "fat_g": 12.35,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "trout-raw",
+   "fdc_id": 173717,
+   "usda_description": "Fish, trout, rainbow, farmed, raw",
+   "name": "Pastrmka (sirova)",
+   "name_en": "Rainbow trout (raw)",
+   "aliases": "pastrmka, riba",
+   "state": "raw",
+   "kcal": 141.0,
+   "protein_g": 19.94,
+   "carbs_g": 0.0,
+   "fat_g": 6.18,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "sardines-canned-oil",
+   "fdc_id": 175139,
+   "usda_description": "Fish, sardine, Atlantic, canned in oil, drained solids with bone",
+   "name": "Sardine u ulju (konzerva)",
+   "name_en": "Sardines, canned in oil",
+   "aliases": "sardina, konzerva",
+   "state": "prepared",
+   "kcal": 208.0,
+   "protein_g": 24.62,
+   "carbs_g": 0.0,
+   "fat_g": 11.45,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "egg-raw",
+   "fdc_id": 171287,
+   "usda_description": "Egg, whole, raw, fresh",
+   "name": "Jaje (sirovo)",
+   "name_en": "Egg (raw)",
+   "aliases": "jaja, jaje",
+   "state": "raw",
+   "kcal": 143.0,
+   "protein_g": 12.56,
+   "carbs_g": 0.72,
+   "fat_g": 9.51,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 jaje (veliko)",
+     "name_en": "1 egg (large)",
+     "grams": 50.0,
+     "usda_label": "1 large"
+    },
+    {
+     "name": "1 jaje (srednje)",
+     "name_en": "1 egg (medium)",
+     "grams": 44.0,
+     "usda_label": "1 medium"
+    }
+   ]
+  },
+  {
+   "slug": "egg-boiled",
+   "fdc_id": 173424,
+   "usda_description": "Egg, whole, cooked, hard-boiled",
+   "name": "Jaje, tvrdo kuvano",
+   "name_en": "Egg, hard-boiled",
+   "aliases": "jaja, kuvano jaje",
+   "state": "cooked",
+   "kcal": 155.0,
+   "protein_g": 12.58,
+   "carbs_g": 1.12,
+   "fat_g": 10.61,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 jaje (veliko)",
+     "name_en": "1 egg (large)",
+     "grams": 50.0,
+     "usda_label": "1 large"
+    }
+   ]
+  },
+  {
+   "slug": "egg-white-raw",
+   "fdc_id": 172183,
+   "usda_description": "Egg, white, raw, fresh",
+   "name": "Belance (sirovo)",
+   "name_en": "Egg white (raw)",
+   "aliases": "belance, belanca",
+   "state": "raw",
+   "kcal": 52.0,
+   "protein_g": 10.9,
+   "carbs_g": 0.73,
+   "fat_g": 0.17,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 belance (veliko jaje)",
+     "name_en": "1 egg white (large)",
+     "grams": 33.0,
+     "usda_label": "1 large"
+    }
+   ]
+  },
+  {
+   "slug": "milk-whole",
+   "fdc_id": 171265,
+   "usda_description": "Milk, whole, 3.25% milkfat, with added vitamin D",
+   "name": "Mleko, punomasno (3,2%)",
+   "name_en": "Milk, whole (3.25%)",
+   "aliases": "mleko",
+   "state": "na",
+   "kcal": 61.0,
+   "protein_g": 3.15,
+   "carbs_g": 4.8,
+   "fat_g": 3.25,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 šolja (240 ml)",
+     "name_en": "1 cup (240 ml)",
+     "grams": 244.0,
+     "usda_label": "1 cup"
+    }
+   ]
+  },
+  {
+   "slug": "milk-2",
+   "fdc_id": 171267,
+   "usda_description": "Milk, reduced fat, fluid, 2% milkfat, with added vitamin A and vitamin D",
+   "name": "Mleko, 2% masti",
+   "name_en": "Milk, 2% fat",
+   "aliases": "mleko",
+   "state": "na",
+   "kcal": 50.0,
+   "protein_g": 3.3,
+   "carbs_g": 4.8,
+   "fat_g": 1.98,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 šolja (240 ml)",
+     "name_en": "1 cup (240 ml)",
+     "grams": 244.0,
+     "usda_label": "1 cup"
+    }
+   ]
+  },
+  {
+   "slug": "milk-1",
+   "fdc_id": 170872,
+   "usda_description": "Milk, lowfat, fluid, 1% milkfat, with added vitamin A and vitamin D",
+   "name": "Mleko, 1% masti",
+   "name_en": "Milk, 1% fat",
+   "aliases": "mleko, posno",
+   "state": "na",
+   "kcal": 42.0,
+   "protein_g": 3.37,
+   "carbs_g": 4.99,
+   "fat_g": 0.97,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 šolja (240 ml)",
+     "name_en": "1 cup (240 ml)",
+     "grams": 244.0,
+     "usda_label": "1 cup"
+    }
+   ]
+  },
+  {
+   "slug": "yogurt-whole",
+   "fdc_id": 171284,
+   "usda_description": "Yogurt, plain, whole milk",
+   "name": "Jogurt, punomasni",
+   "name_en": "Yogurt, plain, whole milk",
+   "aliases": "jogurt, kiselo mleko",
+   "state": "na",
+   "kcal": 61.0,
+   "protein_g": 3.47,
+   "carbs_g": 4.66,
+   "fat_g": 3.25,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 šolja (240 ml)",
+     "name_en": "1 cup (240 ml)",
+     "grams": 245.0,
+     "usda_label": "1 cup (8 fl oz)"
+    }
+   ]
+  },
+  {
+   "slug": "greek-yogurt-nonfat",
+   "fdc_id": 170894,
+   "usda_description": "Yogurt, Greek, plain, nonfat (Includes foods for USDA's Food Distribution Program)",
+   "name": "Grčki jogurt, bez masti",
+   "name_en": "Greek yogurt, nonfat",
+   "aliases": "grčki jogurt, skyr",
+   "state": "na",
+   "kcal": 59.0,
+   "protein_g": 10.19,
+   "carbs_g": 3.6,
+   "fat_g": 0.39,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "greek-yogurt-whole",
+   "fdc_id": 171304,
+   "usda_description": "Yogurt, Greek, plain, whole milk",
+   "name": "Grčki jogurt, punomasni",
+   "name_en": "Greek yogurt, whole milk",
+   "aliases": "grčki jogurt",
+   "state": "na",
+   "kcal": 97.0,
+   "protein_g": 9.0,
+   "carbs_g": 3.98,
+   "fat_g": 5.0,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "feta",
+   "fdc_id": 173420,
+   "usda_description": "Cheese, feta",
+   "name": "Beli sir (feta)",
+   "name_en": "Feta cheese",
+   "aliases": "sir, beli sir, feta, sitni sir",
+   "state": "na",
+   "kcal": 265.0,
+   "protein_g": 14.21,
+   "carbs_g": 3.88,
+   "fat_g": 21.49,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "cottage-cheese-2",
+   "fdc_id": 172182,
+   "usda_description": "Cheese, cottage, lowfat, 2% milkfat",
+   "name": "Posni mladi sir (cottage, 2%)",
+   "name_en": "Cottage cheese, 2%",
+   "aliases": "mladi sir, cottage, posni sir",
+   "state": "na",
+   "kcal": 81.0,
+   "protein_g": 10.45,
+   "carbs_g": 4.76,
+   "fat_g": 2.27,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "gouda",
+   "fdc_id": 171241,
+   "usda_description": "Cheese, gouda",
+   "name": "Sir gauda",
+   "name_en": "Gouda cheese",
+   "aliases": "gauda, kačkavalj, sir",
+   "state": "na",
+   "kcal": 356.0,
+   "protein_g": 24.94,
+   "carbs_g": 2.22,
+   "fat_g": 27.44,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "mozzarella",
+   "fdc_id": 170845,
+   "usda_description": "Cheese, mozzarella, whole milk",
+   "name": "Mocarela",
+   "name_en": "Mozzarella",
+   "aliases": "mocarela, sir",
+   "state": "na",
+   "kcal": 299.0,
+   "protein_g": 22.17,
+   "carbs_g": 2.4,
+   "fat_g": 22.14,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "parmesan",
+   "fdc_id": 170848,
+   "usda_description": "Cheese, parmesan, hard",
+   "name": "Parmezan",
+   "name_en": "Parmesan",
+   "aliases": "parmezan, sir",
+   "state": "na",
+   "kcal": 392.0,
+   "protein_g": 35.75,
+   "carbs_g": 3.22,
+   "fat_g": 25.0,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "sour-cream",
+   "fdc_id": 171257,
+   "usda_description": "Cream, sour, cultured",
+   "name": "Kisela pavlaka",
+   "name_en": "Sour cream",
+   "aliases": "pavlaka, kisela pavlaka",
+   "state": "na",
+   "kcal": 198.0,
+   "protein_g": 2.44,
+   "carbs_g": 4.63,
+   "fat_g": 19.35,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 kašika",
+     "name_en": "1 tablespoon",
+     "grams": 12.0,
+     "usda_label": "1 tbsp"
+    }
+   ]
+  },
+  {
+   "slug": "butter",
+   "fdc_id": 173430,
+   "usda_description": "Butter, without salt",
+   "name": "Maslac",
+   "name_en": "Butter",
+   "aliases": "puter, maslac",
+   "state": "na",
+   "kcal": 717.0,
+   "protein_g": 0.85,
+   "carbs_g": 0.06,
+   "fat_g": 81.11,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 kašika",
+     "name_en": "1 tablespoon",
+     "grams": 14.2,
+     "usda_label": "1 tbsp"
+    }
+   ]
+  },
+  {
+   "slug": "whey-isolate",
+   "fdc_id": 173177,
+   "usda_description": "Beverages, Whey protein powder isolate",
+   "name": "Protein u prahu (whey izolat)",
+   "name_en": "Whey protein isolate powder",
+   "aliases": "protein, whey, surutka",
+   "state": "na",
+   "kcal": 359.0,
+   "protein_g": 58.14,
+   "carbs_g": 29.07,
+   "fat_g": 1.16,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "3 merice",
+     "name_en": "3 scoops",
+     "grams": 86.0,
+     "usda_label": "3 scoop"
+    }
+   ]
+  },
+  {
+   "slug": "rice-white-raw",
+   "fdc_id": 168877,
+   "usda_description": "Rice, white, long-grain, regular, raw, enriched",
+   "name": "Pirinač, beli (suv)",
+   "name_en": "White rice (dry)",
+   "aliases": "pirinač, riža",
+   "state": "raw",
+   "kcal": 365.0,
+   "protein_g": 7.13,
+   "carbs_g": 79.95,
+   "fat_g": 0.66,
+   "fiber_g": 1.3,
+   "portions": []
+  },
+  {
+   "slug": "rice-white-cooked",
+   "fdc_id": 168878,
+   "usda_description": "Rice, white, long-grain, regular, enriched, cooked",
+   "name": "Pirinač, beli (kuvan)",
+   "name_en": "White rice (cooked)",
+   "aliases": "pirinač, riža",
+   "state": "cooked",
+   "kcal": 130.0,
+   "protein_g": 2.69,
+   "carbs_g": 28.17,
+   "fat_g": 0.28,
+   "fiber_g": 0.4,
+   "portions": []
+  },
+  {
+   "slug": "rice-brown-raw",
+   "fdc_id": 169703,
+   "usda_description": "Rice, brown, long-grain, raw (Includes foods for USDA's Food Distribution Program)",
+   "name": "Pirinač, integralni (suv)",
+   "name_en": "Brown rice (dry)",
+   "aliases": "integralni pirinač, riža",
+   "state": "raw",
+   "kcal": 367.0,
+   "protein_g": 7.54,
+   "carbs_g": 76.25,
+   "fat_g": 3.2,
+   "fiber_g": 3.6,
+   "portions": []
+  },
+  {
+   "slug": "rice-brown-cooked",
+   "fdc_id": 169704,
+   "usda_description": "Rice, brown, long-grain, cooked (Includes foods for USDA's Food Distribution Program)",
+   "name": "Pirinač, integralni (kuvan)",
+   "name_en": "Brown rice (cooked)",
+   "aliases": "integralni pirinač, riža",
+   "state": "cooked",
+   "kcal": 123.0,
+   "protein_g": 2.74,
+   "carbs_g": 25.58,
+   "fat_g": 0.97,
+   "fiber_g": 1.6,
+   "portions": []
+  },
+  {
+   "slug": "oats",
+   "fdc_id": 173904,
+   "usda_description": "Cereals, oats, regular and quick, not fortified, dry",
+   "name": "Ovsene pahuljice",
+   "name_en": "Rolled oats",
+   "aliases": "ovsene, zob, ovas",
+   "state": "raw",
+   "kcal": 379.0,
+   "protein_g": 13.15,
+   "carbs_g": 67.7,
+   "fat_g": 6.52,
+   "fiber_g": 10.1,
+   "portions": [
+    {
+     "name": "1 šolja",
+     "name_en": "1 cup",
+     "grams": 81.0,
+     "usda_label": "1 cup"
+    }
+   ]
+  },
+  {
+   "slug": "pasta-dry",
+   "fdc_id": 169736,
+   "usda_description": "Pasta, dry, enriched",
+   "name": "Testenina (suva)",
+   "name_en": "Pasta (dry)",
+   "aliases": "testenina, špagete, makarone",
+   "state": "raw",
+   "kcal": 371.0,
+   "protein_g": 13.04,
+   "carbs_g": 74.67,
+   "fat_g": 1.51,
+   "fiber_g": 3.2,
+   "portions": []
+  },
+  {
+   "slug": "pasta-cooked",
+   "fdc_id": 169737,
+   "usda_description": "Pasta, cooked, enriched, without added salt",
+   "name": "Testenina (kuvana)",
+   "name_en": "Pasta (cooked)",
+   "aliases": "testenina, špagete, makarone",
+   "state": "cooked",
+   "kcal": 158.0,
+   "protein_g": 5.8,
+   "carbs_g": 30.86,
+   "fat_g": 0.93,
+   "fiber_g": 1.8,
+   "portions": []
+  },
+  {
+   "slug": "bread-white",
+   "fdc_id": 174924,
+   "usda_description": "Bread, white, commercially prepared (includes soft bread crumbs)",
+   "name": "Hleb, beli",
+   "name_en": "White bread",
+   "aliases": "hleb, beli hleb",
+   "state": "prepared",
+   "kcal": 266.0,
+   "protein_g": 8.85,
+   "carbs_g": 49.42,
+   "fat_g": 3.33,
+   "fiber_g": 2.7,
+   "portions": [
+    {
+     "name": "1 kriška",
+     "name_en": "1 slice",
+     "grams": 30.0,
+     "usda_label": "1 slice, large"
+    }
+   ]
+  },
+  {
+   "slug": "bread-whole-wheat",
+   "fdc_id": 172688,
+   "usda_description": "Bread, whole-wheat, commercially prepared",
+   "name": "Hleb, integralni",
+   "name_en": "Whole wheat bread",
+   "aliases": "hleb, integralni hleb",
+   "state": "prepared",
+   "kcal": 252.0,
+   "protein_g": 12.45,
+   "carbs_g": 42.71,
+   "fat_g": 3.5,
+   "fiber_g": 6.0,
+   "portions": [
+    {
+     "name": "1 kriška",
+     "name_en": "1 slice",
+     "grams": 32.0,
+     "usda_label": "1 slice"
+    }
+   ]
+  },
+  {
+   "slug": "bread-rye",
+   "fdc_id": 172684,
+   "usda_description": "Bread, rye",
+   "name": "Hleb, raženi",
+   "name_en": "Rye bread",
+   "aliases": "hleb, raž",
+   "state": "prepared",
+   "kcal": 259.0,
+   "protein_g": 8.5,
+   "carbs_g": 48.3,
+   "fat_g": 3.3,
+   "fiber_g": 5.8,
+   "portions": [
+    {
+     "name": "1 kriška",
+     "name_en": "1 slice",
+     "grams": 32.0,
+     "usda_label": "1 slice, regular"
+    }
+   ]
+  },
+  {
+   "slug": "flour-white",
+   "fdc_id": 168894,
+   "usda_description": "Wheat flour, white, all-purpose, enriched, bleached",
+   "name": "Pšenično brašno, belo (T-500)",
+   "name_en": "Wheat flour, white",
+   "aliases": "brašno",
+   "state": "raw",
+   "kcal": 364.0,
+   "protein_g": 10.33,
+   "carbs_g": 76.31,
+   "fat_g": 0.98,
+   "fiber_g": 2.7,
+   "portions": []
+  },
+  {
+   "slug": "cornmeal",
+   "fdc_id": 168867,
+   "usda_description": "Cornmeal, degermed, enriched, yellow",
+   "name": "Kukuruzno brašno (palenta)",
+   "name_en": "Cornmeal",
+   "aliases": "palenta, kukuruzni griz, kačamak",
+   "state": "raw",
+   "kcal": 370.0,
+   "protein_g": 7.11,
+   "carbs_g": 79.45,
+   "fat_g": 1.75,
+   "fiber_g": 3.9,
+   "portions": []
+  },
+  {
+   "slug": "buckwheat",
+   "fdc_id": 170685,
+   "usda_description": "Buckwheat groats, roasted, dry",
+   "name": "Heljda (suva)",
+   "name_en": "Buckwheat groats (dry)",
+   "aliases": "heljda",
+   "state": "raw",
+   "kcal": 346.0,
+   "protein_g": 11.73,
+   "carbs_g": 74.95,
+   "fat_g": 2.71,
+   "fiber_g": 10.3,
+   "portions": []
+  },
+  {
+   "slug": "quinoa-raw",
+   "fdc_id": 168874,
+   "usda_description": "Quinoa, uncooked",
+   "name": "Kinoa (suva)",
+   "name_en": "Quinoa (dry)",
+   "aliases": "kinoa",
+   "state": "raw",
+   "kcal": 368.0,
+   "protein_g": 14.12,
+   "carbs_g": 64.16,
+   "fat_g": 6.07,
+   "fiber_g": 7.0,
+   "portions": []
+  },
+  {
+   "slug": "quinoa-cooked",
+   "fdc_id": 168917,
+   "usda_description": "Quinoa, cooked",
+   "name": "Kinoa (kuvana)",
+   "name_en": "Quinoa (cooked)",
+   "aliases": "kinoa",
+   "state": "cooked",
+   "kcal": 120.0,
+   "protein_g": 4.4,
+   "carbs_g": 21.3,
+   "fat_g": 1.92,
+   "fiber_g": 2.8,
+   "portions": []
+  },
+  {
+   "slug": "couscous-dry",
+   "fdc_id": 169699,
+   "usda_description": "Couscous, dry",
+   "name": "Kus-kus (suv)",
+   "name_en": "Couscous (dry)",
+   "aliases": "kuskus",
+   "state": "raw",
+   "kcal": 376.0,
+   "protein_g": 12.76,
+   "carbs_g": 77.43,
+   "fat_g": 0.64,
+   "fiber_g": 5.0,
+   "portions": []
+  },
+  {
+   "slug": "white-beans-raw",
+   "fdc_id": 175202,
+   "usda_description": "Beans, white, mature seeds, raw",
+   "name": "Pasulj, beli (suv)",
+   "name_en": "White beans (dry)",
+   "aliases": "pasulj, grah",
+   "state": "raw",
+   "kcal": 333.0,
+   "protein_g": 23.36,
+   "carbs_g": 60.27,
+   "fat_g": 0.85,
+   "fiber_g": 15.2,
+   "portions": []
+  },
+  {
+   "slug": "white-beans-cooked",
+   "fdc_id": 175203,
+   "usda_description": "Beans, white, mature seeds, cooked, boiled, without salt",
+   "name": "Pasulj, beli (kuvan)",
+   "name_en": "White beans (cooked)",
+   "aliases": "pasulj, grah, prebranac",
+   "state": "cooked",
+   "kcal": 139.0,
+   "protein_g": 9.73,
+   "carbs_g": 25.09,
+   "fat_g": 0.35,
+   "fiber_g": 6.3,
+   "portions": []
+  },
+  {
+   "slug": "lentils-raw",
+   "fdc_id": 172420,
+   "usda_description": "Lentils, raw",
+   "name": "Sočivo (suvo)",
+   "name_en": "Lentils (dry)",
+   "aliases": "sočivo, leća",
+   "state": "raw",
+   "kcal": 352.0,
+   "protein_g": 24.63,
+   "carbs_g": 63.35,
+   "fat_g": 1.06,
+   "fiber_g": 10.7,
+   "portions": []
+  },
+  {
+   "slug": "lentils-cooked",
+   "fdc_id": 172421,
+   "usda_description": "Lentils, mature seeds, cooked, boiled, without salt",
+   "name": "Sočivo (kuvano)",
+   "name_en": "Lentils (cooked)",
+   "aliases": "sočivo, leća",
+   "state": "cooked",
+   "kcal": 116.0,
+   "protein_g": 9.02,
+   "carbs_g": 20.13,
+   "fat_g": 0.38,
+   "fiber_g": 7.9,
+   "portions": []
+  },
+  {
+   "slug": "chickpeas-raw",
+   "fdc_id": 173756,
+   "usda_description": "Chickpeas (garbanzo beans, bengal gram), mature seeds, raw",
+   "name": "Leblebije (suve)",
+   "name_en": "Chickpeas (dry)",
+   "aliases": "leblebije, slanutak, naut",
+   "state": "raw",
+   "kcal": 378.0,
+   "protein_g": 20.47,
+   "carbs_g": 62.95,
+   "fat_g": 6.04,
+   "fiber_g": 12.2,
+   "portions": []
+  },
+  {
+   "slug": "chickpeas-cooked",
+   "fdc_id": 173757,
+   "usda_description": "Chickpeas (garbanzo beans, bengal gram), mature seeds, cooked, boiled, without salt",
+   "name": "Leblebije (kuvane)",
+   "name_en": "Chickpeas (cooked)",
+   "aliases": "leblebije, slanutak, naut",
+   "state": "cooked",
+   "kcal": 164.0,
+   "protein_g": 8.86,
+   "carbs_g": 27.42,
+   "fat_g": 2.59,
+   "fiber_g": 7.6,
+   "portions": []
+  },
+  {
+   "slug": "peas-frozen",
+   "fdc_id": 170016,
+   "usda_description": "Peas, green, frozen, unprepared (Includes foods for USDA's Food Distribution Program)",
+   "name": "Grašak (smrznut)",
+   "name_en": "Green peas (frozen)",
+   "aliases": "grašak",
+   "state": "raw",
+   "kcal": 77.0,
+   "protein_g": 5.22,
+   "carbs_g": 13.62,
+   "fat_g": 0.4,
+   "fiber_g": 4.5,
+   "portions": []
+  },
+  {
+   "slug": "tofu-firm",
+   "fdc_id": 172475,
+   "usda_description": "Tofu, raw, firm, prepared with calcium sulfate",
+   "name": "Tofu, čvrst",
+   "name_en": "Tofu, firm",
+   "aliases": "tofu, soja",
+   "state": "na",
+   "kcal": 144.0,
+   "protein_g": 17.27,
+   "carbs_g": 2.78,
+   "fat_g": 8.72,
+   "fiber_g": 2.3,
+   "portions": []
+  },
+  {
+   "slug": "potato-raw",
+   "fdc_id": 170026,
+   "usda_description": "Potatoes, flesh and skin, raw",
+   "name": "Krompir (sirov)",
+   "name_en": "Potato (raw)",
+   "aliases": "krompir",
+   "state": "raw",
+   "kcal": 77.0,
+   "protein_g": 2.05,
+   "carbs_g": 17.49,
+   "fat_g": 0.09,
+   "fiber_g": 2.1,
+   "portions": [
+    {
+     "name": "1 krompir (srednji)",
+     "name_en": "1 potato (medium)",
+     "grams": 213.0,
+     "usda_label": "1 Potato medium (2-1/4\" to 3-1/4\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "potato-boiled",
+   "fdc_id": 170440,
+   "usda_description": "Potatoes, boiled, cooked without skin, flesh, without salt",
+   "name": "Krompir (kuvan, oljušten)",
+   "name_en": "Potato (boiled, peeled)",
+   "aliases": "krompir, kuvani krompir",
+   "state": "cooked",
+   "kcal": 86.0,
+   "protein_g": 1.71,
+   "carbs_g": 20.01,
+   "fat_g": 0.1,
+   "fiber_g": 1.8,
+   "portions": []
+  },
+  {
+   "slug": "potato-baked",
+   "fdc_id": 170093,
+   "usda_description": "Potatoes, baked, flesh and skin, without salt",
+   "name": "Krompir (pečen, sa korom)",
+   "name_en": "Potato (baked, with skin)",
+   "aliases": "krompir, pečeni krompir",
+   "state": "cooked",
+   "kcal": 93.0,
+   "protein_g": 2.5,
+   "carbs_g": 21.15,
+   "fat_g": 0.13,
+   "fiber_g": 2.2,
+   "portions": []
+  },
+  {
+   "slug": "sweet-potato-raw",
+   "fdc_id": 168482,
+   "usda_description": "Sweet potato, raw, unprepared (Includes foods for USDA's Food Distribution Program)",
+   "name": "Batat (sirov)",
+   "name_en": "Sweet potato (raw)",
+   "aliases": "batat, slatki krompir",
+   "state": "raw",
+   "kcal": 86.0,
+   "protein_g": 1.57,
+   "carbs_g": 20.12,
+   "fat_g": 0.05,
+   "fiber_g": 3.0,
+   "portions": []
+  },
+  {
+   "slug": "tomato",
+   "fdc_id": 170457,
+   "usda_description": "Tomatoes, red, ripe, raw, year round average",
+   "name": "Paradajz",
+   "name_en": "Tomato",
+   "aliases": "paradajz, rajčica",
+   "state": "raw",
+   "kcal": 18.0,
+   "protein_g": 0.88,
+   "carbs_g": 3.89,
+   "fat_g": 0.2,
+   "fiber_g": 1.2,
+   "portions": [
+    {
+     "name": "1 paradajz (srednji)",
+     "name_en": "1 tomato (medium)",
+     "grams": 123.0,
+     "usda_label": "1 medium whole (2-3/5\" dia)"
+    },
+    {
+     "name": "1 čeri paradajz",
+     "name_en": "1 cherry tomato",
+     "grams": 17.0,
+     "usda_label": "1 cherry"
+    }
+   ]
+  },
+  {
+   "slug": "cucumber",
+   "fdc_id": 168409,
+   "usda_description": "Cucumber, with peel, raw",
+   "name": "Krastavac",
+   "name_en": "Cucumber",
+   "aliases": "krastavac",
+   "state": "raw",
+   "kcal": 15.0,
+   "protein_g": 0.65,
+   "carbs_g": 3.63,
+   "fat_g": 0.11,
+   "fiber_g": 0.5,
+   "portions": [
+    {
+     "name": "1 krastavac",
+     "name_en": "1 cucumber",
+     "grams": 301.0,
+     "usda_label": "1 cucumber (8-1/4\")"
+    }
+   ]
+  },
+  {
+   "slug": "pepper-red",
+   "fdc_id": 170108,
+   "usda_description": "Peppers, sweet, red, raw",
+   "name": "Paprika, crvena",
+   "name_en": "Red bell pepper",
+   "aliases": "paprika",
+   "state": "raw",
+   "kcal": 26.0,
+   "protein_g": 0.99,
+   "carbs_g": 6.03,
+   "fat_g": 0.3,
+   "fiber_g": 2.1,
+   "portions": [
+    {
+     "name": "1 paprika (srednja)",
+     "name_en": "1 pepper (medium)",
+     "grams": 119.0,
+     "usda_label": "1 medium (approx 2-3/4\" long, 2-1/2 dia.)"
+    }
+   ]
+  },
+  {
+   "slug": "pepper-green",
+   "fdc_id": 170427,
+   "usda_description": "Peppers, sweet, green, raw",
+   "name": "Paprika, zelena",
+   "name_en": "Green bell pepper",
+   "aliases": "paprika",
+   "state": "raw",
+   "kcal": 20.0,
+   "protein_g": 0.86,
+   "carbs_g": 4.64,
+   "fat_g": 0.17,
+   "fiber_g": 1.7,
+   "portions": []
+  },
+  {
+   "slug": "onion",
+   "fdc_id": 170000,
+   "usda_description": "Onions, raw",
+   "name": "Crni luk",
+   "name_en": "Onion",
+   "aliases": "luk, crni luk",
+   "state": "raw",
+   "kcal": 40.0,
+   "protein_g": 1.1,
+   "carbs_g": 9.34,
+   "fat_g": 0.1,
+   "fiber_g": 1.7,
+   "portions": [
+    {
+     "name": "1 glavica luka (srednja)",
+     "name_en": "1 onion (medium)",
+     "grams": 110.0,
+     "usda_label": "1 medium (2-1/2\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "garlic",
+   "fdc_id": 169230,
+   "usda_description": "Garlic, raw",
+   "name": "Beli luk",
+   "name_en": "Garlic",
+   "aliases": "beli luk, češnjak",
+   "state": "raw",
+   "kcal": 149.0,
+   "protein_g": 6.36,
+   "carbs_g": 33.06,
+   "fat_g": 0.5,
+   "fiber_g": 2.1,
+   "portions": [
+    {
+     "name": "1 čen",
+     "name_en": "1 clove",
+     "grams": 3.0,
+     "usda_label": "1 clove"
+    }
+   ]
+  },
+  {
+   "slug": "carrot",
+   "fdc_id": 170393,
+   "usda_description": "Carrots, raw",
+   "name": "Šargarepa",
+   "name_en": "Carrot",
+   "aliases": "šargarepa, mrkva",
+   "state": "raw",
+   "kcal": 41.0,
+   "protein_g": 0.93,
+   "carbs_g": 9.58,
+   "fat_g": 0.24,
+   "fiber_g": 2.8,
+   "portions": [
+    {
+     "name": "1 šargarepa (srednja)",
+     "name_en": "1 carrot (medium)",
+     "grams": 61.0,
+     "usda_label": "1 medium"
+    }
+   ]
+  },
+  {
+   "slug": "cabbage",
+   "fdc_id": 169975,
+   "usda_description": "Cabbage, raw",
+   "name": "Kupus",
+   "name_en": "Cabbage",
+   "aliases": "kupus",
+   "state": "raw",
+   "kcal": 25.0,
+   "protein_g": 1.28,
+   "carbs_g": 5.8,
+   "fat_g": 0.1,
+   "fiber_g": 2.5,
+   "portions": []
+  },
+  {
+   "slug": "sauerkraut",
+   "fdc_id": 169279,
+   "usda_description": "Sauerkraut, canned, solids and liquids",
+   "name": "Kiseli kupus",
+   "name_en": "Sauerkraut",
+   "aliases": "kiseli kupus, rasol",
+   "state": "prepared",
+   "kcal": 19.0,
+   "protein_g": 0.91,
+   "carbs_g": 4.28,
+   "fat_g": 0.14,
+   "fiber_g": 2.9,
+   "portions": []
+  },
+  {
+   "slug": "broccoli",
+   "fdc_id": 170379,
+   "usda_description": "Broccoli, raw",
+   "name": "Brokoli",
+   "name_en": "Broccoli",
+   "aliases": "brokoli",
+   "state": "raw",
+   "kcal": 34.0,
+   "protein_g": 2.82,
+   "carbs_g": 6.64,
+   "fat_g": 0.37,
+   "fiber_g": 2.6,
+   "portions": []
+  },
+  {
+   "slug": "cauliflower",
+   "fdc_id": 169986,
+   "usda_description": "Cauliflower, raw",
+   "name": "Karfiol",
+   "name_en": "Cauliflower",
+   "aliases": "karfiol",
+   "state": "raw",
+   "kcal": 25.0,
+   "protein_g": 1.92,
+   "carbs_g": 4.97,
+   "fat_g": 0.28,
+   "fiber_g": 2.0,
+   "portions": []
+  },
+  {
+   "slug": "spinach",
+   "fdc_id": 168462,
+   "usda_description": "Spinach, raw",
+   "name": "Spanać",
+   "name_en": "Spinach",
+   "aliases": "spanać",
+   "state": "raw",
+   "kcal": 23.0,
+   "protein_g": 2.86,
+   "carbs_g": 3.63,
+   "fat_g": 0.39,
+   "fiber_g": 2.2,
+   "portions": []
+  },
+  {
+   "slug": "lettuce",
+   "fdc_id": 169249,
+   "usda_description": "Lettuce, green leaf, raw",
+   "name": "Zelena salata",
+   "name_en": "Lettuce",
+   "aliases": "salata, zelena salata",
+   "state": "raw",
+   "kcal": 15.0,
+   "protein_g": 1.36,
+   "carbs_g": 2.87,
+   "fat_g": 0.15,
+   "fiber_g": 1.3,
+   "portions": []
+  },
+  {
+   "slug": "zucchini",
+   "fdc_id": 169291,
+   "usda_description": "Squash, summer, zucchini, includes skin, raw",
+   "name": "Tikvica",
+   "name_en": "Zucchini",
+   "aliases": "tikvica",
+   "state": "raw",
+   "kcal": 17.0,
+   "protein_g": 1.21,
+   "carbs_g": 3.11,
+   "fat_g": 0.32,
+   "fiber_g": 1.0,
+   "portions": [
+    {
+     "name": "1 tikvica (srednja)",
+     "name_en": "1 zucchini (medium)",
+     "grams": 196.0,
+     "usda_label": "1 medium"
+    }
+   ]
+  },
+  {
+   "slug": "eggplant",
+   "fdc_id": 169228,
+   "usda_description": "Eggplant, raw",
+   "name": "Plavi patlidžan",
+   "name_en": "Eggplant",
+   "aliases": "patlidžan",
+   "state": "raw",
+   "kcal": 25.0,
+   "protein_g": 0.98,
+   "carbs_g": 5.88,
+   "fat_g": 0.18,
+   "fiber_g": 3.0,
+   "portions": []
+  },
+  {
+   "slug": "mushrooms",
+   "fdc_id": 169251,
+   "usda_description": "Mushrooms, white, raw",
+   "name": "Šampinjoni",
+   "name_en": "White mushrooms",
+   "aliases": "pečurke, gljive, šampinjoni",
+   "state": "raw",
+   "kcal": 22.0,
+   "protein_g": 3.09,
+   "carbs_g": 3.26,
+   "fat_g": 0.34,
+   "fiber_g": 1.0,
+   "portions": []
+  },
+  {
+   "slug": "sweet-corn-canned",
+   "fdc_id": 169214,
+   "usda_description": "Corn, sweet, yellow, canned, whole kernel, drained solids",
+   "name": "Kukuruz šećerac (konzerva)",
+   "name_en": "Sweet corn, canned",
+   "aliases": "kukuruz, šećerac",
+   "state": "prepared",
+   "kcal": 67.0,
+   "protein_g": 2.29,
+   "carbs_g": 14.34,
+   "fat_g": 1.22,
+   "fiber_g": 2.0,
+   "portions": []
+  },
+  {
+   "slug": "green-beans",
+   "fdc_id": 169961,
+   "usda_description": "Beans, snap, green, raw",
+   "name": "Boranija",
+   "name_en": "Green beans",
+   "aliases": "boranija, mahune",
+   "state": "raw",
+   "kcal": 31.0,
+   "protein_g": 1.83,
+   "carbs_g": 6.97,
+   "fat_g": 0.22,
+   "fiber_g": 2.7,
+   "portions": []
+  },
+  {
+   "slug": "beets",
+   "fdc_id": 169145,
+   "usda_description": "Beets, raw",
+   "name": "Cvekla",
+   "name_en": "Beets",
+   "aliases": "cvekla, repa",
+   "state": "raw",
+   "kcal": 43.0,
+   "protein_g": 1.61,
+   "carbs_g": 9.56,
+   "fat_g": 0.17,
+   "fiber_g": 2.8,
+   "portions": []
+  },
+  {
+   "slug": "apple",
+   "fdc_id": 171688,
+   "usda_description": "Apples, raw, with skin (Includes foods for USDA's Food Distribution Program)",
+   "name": "Jabuka",
+   "name_en": "Apple",
+   "aliases": "jabuka",
+   "state": "raw",
+   "kcal": 52.0,
+   "protein_g": 0.26,
+   "carbs_g": 13.81,
+   "fat_g": 0.17,
+   "fiber_g": 2.4,
+   "portions": [
+    {
+     "name": "1 jabuka (srednja)",
+     "name_en": "1 apple (medium)",
+     "grams": 182.0,
+     "usda_label": "1 medium (3\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "banana",
+   "fdc_id": 173944,
+   "usda_description": "Bananas, raw",
+   "name": "Banana",
+   "name_en": "Banana",
+   "aliases": "banana",
+   "state": "raw",
+   "kcal": 89.0,
+   "protein_g": 1.09,
+   "carbs_g": 22.84,
+   "fat_g": 0.33,
+   "fiber_g": 2.6,
+   "portions": [
+    {
+     "name": "1 banana (srednja)",
+     "name_en": "1 banana (medium)",
+     "grams": 118.0,
+     "usda_label": "1 medium (7\" to 7-7/8\" long)"
+    }
+   ]
+  },
+  {
+   "slug": "orange",
+   "fdc_id": 169097,
+   "usda_description": "Oranges, raw, all commercial varieties",
+   "name": "Pomorandža",
+   "name_en": "Orange",
+   "aliases": "pomorandža, narandža",
+   "state": "raw",
+   "kcal": 47.0,
+   "protein_g": 0.94,
+   "carbs_g": 11.75,
+   "fat_g": 0.12,
+   "fiber_g": 2.4,
+   "portions": [
+    {
+     "name": "1 pomorandža",
+     "name_en": "1 orange",
+     "grams": 131.0,
+     "usda_label": "1 fruit (2-5/8\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "tangerine",
+   "fdc_id": 169105,
+   "usda_description": "Tangerines, (mandarin oranges), raw",
+   "name": "Mandarina",
+   "name_en": "Tangerine",
+   "aliases": "mandarina",
+   "state": "raw",
+   "kcal": 53.0,
+   "protein_g": 0.81,
+   "carbs_g": 13.34,
+   "fat_g": 0.31,
+   "fiber_g": 1.8,
+   "portions": [
+    {
+     "name": "1 mandarina (srednja)",
+     "name_en": "1 tangerine (medium)",
+     "grams": 88.0,
+     "usda_label": "1 medium (2-1/2\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "pear",
+   "fdc_id": 169118,
+   "usda_description": "Pears, raw",
+   "name": "Kruška",
+   "name_en": "Pear",
+   "aliases": "kruška",
+   "state": "raw",
+   "kcal": 57.0,
+   "protein_g": 0.36,
+   "carbs_g": 15.23,
+   "fat_g": 0.14,
+   "fiber_g": 3.1,
+   "portions": [
+    {
+     "name": "1 kruška (srednja)",
+     "name_en": "1 pear (medium)",
+     "grams": 178.0,
+     "usda_label": "1 medium"
+    }
+   ]
+  },
+  {
+   "slug": "plum",
+   "fdc_id": 169949,
+   "usda_description": "Plums, raw",
+   "name": "Šljiva",
+   "name_en": "Plum",
+   "aliases": "šljiva",
+   "state": "raw",
+   "kcal": 46.0,
+   "protein_g": 0.7,
+   "carbs_g": 11.42,
+   "fat_g": 0.28,
+   "fiber_g": 1.4,
+   "portions": [
+    {
+     "name": "1 šljiva",
+     "name_en": "1 plum",
+     "grams": 66.0,
+     "usda_label": "1 fruit (2-1/8\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "strawberries",
+   "fdc_id": 167762,
+   "usda_description": "Strawberries, raw",
+   "name": "Jagode",
+   "name_en": "Strawberries",
+   "aliases": "jagoda, jagode",
+   "state": "raw",
+   "kcal": 32.0,
+   "protein_g": 0.67,
+   "carbs_g": 7.68,
+   "fat_g": 0.3,
+   "fiber_g": 2.0,
+   "portions": []
+  },
+  {
+   "slug": "blueberries",
+   "fdc_id": 171711,
+   "usda_description": "Blueberries, raw",
+   "name": "Borovnice",
+   "name_en": "Blueberries",
+   "aliases": "borovnica, borovnice",
+   "state": "raw",
+   "kcal": 57.0,
+   "protein_g": 0.74,
+   "carbs_g": 14.49,
+   "fat_g": 0.33,
+   "fiber_g": 2.4,
+   "portions": []
+  },
+  {
+   "slug": "raspberries",
+   "fdc_id": 167755,
+   "usda_description": "Raspberries, raw",
+   "name": "Maline",
+   "name_en": "Raspberries",
+   "aliases": "malina, maline",
+   "state": "raw",
+   "kcal": 52.0,
+   "protein_g": 1.2,
+   "carbs_g": 11.94,
+   "fat_g": 0.65,
+   "fiber_g": 6.5,
+   "portions": []
+  },
+  {
+   "slug": "grapes",
+   "fdc_id": 174683,
+   "usda_description": "Grapes, red or green (European type, such as Thompson seedless), raw",
+   "name": "Grožđe",
+   "name_en": "Grapes",
+   "aliases": "grožđe",
+   "state": "raw",
+   "kcal": 69.0,
+   "protein_g": 0.72,
+   "carbs_g": 18.1,
+   "fat_g": 0.16,
+   "fiber_g": 0.9,
+   "portions": []
+  },
+  {
+   "slug": "watermelon",
+   "fdc_id": 167765,
+   "usda_description": "Watermelon, raw",
+   "name": "Lubenica",
+   "name_en": "Watermelon",
+   "aliases": "lubenica",
+   "state": "raw",
+   "kcal": 30.0,
+   "protein_g": 0.61,
+   "carbs_g": 7.55,
+   "fat_g": 0.15,
+   "fiber_g": 0.4,
+   "portions": []
+  },
+  {
+   "slug": "peach",
+   "fdc_id": 169928,
+   "usda_description": "Peaches, yellow, raw",
+   "name": "Breskva",
+   "name_en": "Peach",
+   "aliases": "breskva",
+   "state": "raw",
+   "kcal": 39.0,
+   "protein_g": 0.91,
+   "carbs_g": 9.54,
+   "fat_g": 0.25,
+   "fiber_g": 1.5,
+   "portions": [
+    {
+     "name": "1 breskva (srednja)",
+     "name_en": "1 peach (medium)",
+     "grams": 150.0,
+     "usda_label": "1 medium (2-2/3\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "kiwi",
+   "fdc_id": 168153,
+   "usda_description": "Kiwifruit, green, raw",
+   "name": "Kivi",
+   "name_en": "Kiwi",
+   "aliases": "kivi",
+   "state": "raw",
+   "kcal": 61.0,
+   "protein_g": 1.14,
+   "carbs_g": 14.66,
+   "fat_g": 0.52,
+   "fiber_g": 3.0,
+   "portions": [
+    {
+     "name": "1 kivi",
+     "name_en": "1 kiwi",
+     "grams": 69.0,
+     "usda_label": "1 fruit (2\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "lemon",
+   "fdc_id": 167746,
+   "usda_description": "Lemons, raw, without peel",
+   "name": "Limun",
+   "name_en": "Lemon",
+   "aliases": "limun",
+   "state": "raw",
+   "kcal": 29.0,
+   "protein_g": 1.1,
+   "carbs_g": 9.32,
+   "fat_g": 0.3,
+   "fiber_g": 2.8,
+   "portions": [
+    {
+     "name": "1 limun",
+     "name_en": "1 lemon",
+     "grams": 58.0,
+     "usda_label": "1 fruit (2-1/8\" dia)"
+    }
+   ]
+  },
+  {
+   "slug": "avocado",
+   "fdc_id": 171705,
+   "usda_description": "Avocados, raw, all commercial varieties",
+   "name": "Avokado",
+   "name_en": "Avocado",
+   "aliases": "avokado",
+   "state": "raw",
+   "kcal": 160.0,
+   "protein_g": 2.0,
+   "carbs_g": 8.53,
+   "fat_g": 14.66,
+   "fiber_g": 6.7,
+   "portions": [
+    {
+     "name": "1 avokado",
+     "name_en": "1 avocado",
+     "grams": 201.0,
+     "usda_label": "1 avocado, NS as to Florida or California"
+    }
+   ]
+  },
+  {
+   "slug": "prunes",
+   "fdc_id": 168162,
+   "usda_description": "Plums, dried (prunes), uncooked",
+   "name": "Suve šljive",
+   "name_en": "Prunes",
+   "aliases": "suva šljiva, suve šljive",
+   "state": "na",
+   "kcal": 240.0,
+   "protein_g": 2.18,
+   "carbs_g": 63.88,
+   "fat_g": 0.38,
+   "fiber_g": 7.1,
+   "portions": []
+  },
+  {
+   "slug": "dates",
+   "fdc_id": 168191,
+   "usda_description": "Dates, medjool",
+   "name": "Urme",
+   "name_en": "Dates (medjool)",
+   "aliases": "urma, urme",
+   "state": "na",
+   "kcal": 277.0,
+   "protein_g": 1.81,
+   "carbs_g": 74.97,
+   "fat_g": 0.15,
+   "fiber_g": 6.7,
+   "portions": [
+    {
+     "name": "1 urma",
+     "name_en": "1 date",
+     "grams": 24.0,
+     "usda_label": "1 date, pitted"
+    }
+   ]
+  },
+  {
+   "slug": "raisins",
+   "fdc_id": 168165,
+   "usda_description": "Raisins, dark, seedless (Includes foods for USDA's Food Distribution Program)",
+   "name": "Suvo grožđe",
+   "name_en": "Raisins",
+   "aliases": "suvo grožđe, grožđice",
+   "state": "na",
+   "kcal": 299.0,
+   "protein_g": 3.3,
+   "carbs_g": 79.32,
+   "fat_g": 0.25,
+   "fiber_g": 4.5,
+   "portions": []
+  },
+  {
+   "slug": "sour-cherries",
+   "fdc_id": 173954,
+   "usda_description": "Cherries, sour, red, raw",
+   "name": "Višnje",
+   "name_en": "Sour cherries",
+   "aliases": "višnja, višnje",
+   "state": "raw",
+   "kcal": 50.0,
+   "protein_g": 1.0,
+   "carbs_g": 12.18,
+   "fat_g": 0.3,
+   "fiber_g": 1.6,
+   "portions": []
+  },
+  {
+   "slug": "sweet-cherries",
+   "fdc_id": 171719,
+   "usda_description": "Cherries, sweet, raw",
+   "name": "Trešnje",
+   "name_en": "Sweet cherries",
+   "aliases": "trešnja, trešnje",
+   "state": "raw",
+   "kcal": 63.0,
+   "protein_g": 1.06,
+   "carbs_g": 16.01,
+   "fat_g": 0.2,
+   "fiber_g": 2.1,
+   "portions": []
+  },
+  {
+   "slug": "almonds",
+   "fdc_id": 170567,
+   "usda_description": "Nuts, almonds",
+   "name": "Bademi",
+   "name_en": "Almonds",
+   "aliases": "badem, bademi",
+   "state": "na",
+   "kcal": 579.0,
+   "protein_g": 21.15,
+   "carbs_g": 21.55,
+   "fat_g": 49.93,
+   "fiber_g": 12.5,
+   "portions": [
+    {
+     "name": "1 šaka (23 badema)",
+     "name_en": "1 handful (23 almonds)",
+     "grams": 28.35,
+     "usda_label": "1 oz (23 whole kernels)"
+    }
+   ]
+  },
+  {
+   "slug": "walnuts",
+   "fdc_id": 170187,
+   "usda_description": "Nuts, walnuts, english",
+   "name": "Orasi",
+   "name_en": "Walnuts",
+   "aliases": "orah, orasi",
+   "state": "na",
+   "kcal": 654.0,
+   "protein_g": 15.23,
+   "carbs_g": 13.71,
+   "fat_g": 65.21,
+   "fiber_g": 6.7,
+   "portions": [
+    {
+     "name": "1 šaka (14 polovina)",
+     "name_en": "1 handful (14 halves)",
+     "grams": 28.35,
+     "usda_label": "1 oz (14 halves)"
+    }
+   ]
+  },
+  {
+   "slug": "hazelnuts",
+   "fdc_id": 170581,
+   "usda_description": "Nuts, hazelnuts or filberts",
+   "name": "Lešnici",
+   "name_en": "Hazelnuts",
+   "aliases": "lešnik, lešnici",
+   "state": "na",
+   "kcal": 628.0,
+   "protein_g": 14.95,
+   "carbs_g": 16.7,
+   "fat_g": 60.75,
+   "fiber_g": 9.7,
+   "portions": []
+  },
+  {
+   "slug": "peanuts",
+   "fdc_id": 172430,
+   "usda_description": "Peanuts, all types, raw",
+   "name": "Kikiriki",
+   "name_en": "Peanuts",
+   "aliases": "kikiriki",
+   "state": "raw",
+   "kcal": 567.0,
+   "protein_g": 25.8,
+   "carbs_g": 16.13,
+   "fat_g": 49.24,
+   "fiber_g": 8.5,
+   "portions": []
+  },
+  {
+   "slug": "peanut-butter",
+   "fdc_id": 172470,
+   "usda_description": "Peanut butter, smooth style, without salt",
+   "name": "Puter od kikirikija",
+   "name_en": "Peanut butter",
+   "aliases": "kikiriki puter, puter od kikirikija",
+   "state": "na",
+   "kcal": 598.0,
+   "protein_g": 22.21,
+   "carbs_g": 22.31,
+   "fat_g": 51.36,
+   "fiber_g": 5.0,
+   "portions": [
+    {
+     "name": "2 kašike",
+     "name_en": "2 tablespoons",
+     "grams": 32.0,
+     "usda_label": "2 tbsp"
+    }
+   ]
+  },
+  {
+   "slug": "sunflower-seeds",
+   "fdc_id": 170562,
+   "usda_description": "Seeds, sunflower seed kernels, dried",
+   "name": "Semenke suncokreta (oljuštene)",
+   "name_en": "Sunflower seeds (kernels)",
+   "aliases": "semenke, suncokret",
+   "state": "na",
+   "kcal": 584.0,
+   "protein_g": 20.78,
+   "carbs_g": 20.0,
+   "fat_g": 51.46,
+   "fiber_g": 8.6,
+   "portions": []
+  },
+  {
+   "slug": "sesame",
+   "fdc_id": 170150,
+   "usda_description": "Seeds, sesame seeds, whole, dried",
+   "name": "Susam",
+   "name_en": "Sesame seeds",
+   "aliases": "susam",
+   "state": "na",
+   "kcal": 573.0,
+   "protein_g": 17.73,
+   "carbs_g": 23.45,
+   "fat_g": 49.67,
+   "fiber_g": 11.8,
+   "portions": []
+  },
+  {
+   "slug": "flaxseed",
+   "fdc_id": 169414,
+   "usda_description": "Seeds, flaxseed",
+   "name": "Laneno seme",
+   "name_en": "Flaxseed",
+   "aliases": "lan, laneno seme",
+   "state": "na",
+   "kcal": 534.0,
+   "protein_g": 18.29,
+   "carbs_g": 28.88,
+   "fat_g": 42.16,
+   "fiber_g": 27.3,
+   "portions": []
+  },
+  {
+   "slug": "chia",
+   "fdc_id": 170554,
+   "usda_description": "Seeds, chia seeds, dried",
+   "name": "Čia semenke",
+   "name_en": "Chia seeds",
+   "aliases": "čia, chia",
+   "state": "na",
+   "kcal": 486.0,
+   "protein_g": 16.54,
+   "carbs_g": 42.12,
+   "fat_g": 30.74,
+   "fiber_g": 34.4,
+   "portions": []
+  },
+  {
+   "slug": "olive-oil",
+   "fdc_id": 171413,
+   "usda_description": "Oil, olive, salad or cooking",
+   "name": "Maslinovo ulje",
+   "name_en": "Olive oil",
+   "aliases": "ulje, maslinovo",
+   "state": "na",
+   "kcal": 884.0,
+   "protein_g": 0.0,
+   "carbs_g": 0.0,
+   "fat_g": 100.0,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 kašika",
+     "name_en": "1 tablespoon",
+     "grams": 13.5,
+     "usda_label": "1 tablespoon"
+    },
+    {
+     "name": "1 kašičica",
+     "name_en": "1 teaspoon",
+     "grams": 4.5,
+     "usda_label": "1 tsp"
+    }
+   ]
+  },
+  {
+   "slug": "sunflower-oil",
+   "fdc_id": 171025,
+   "usda_description": "Oil, sunflower, linoleic, (approx. 65%)",
+   "name": "Suncokretovo ulje",
+   "name_en": "Sunflower oil",
+   "aliases": "ulje, suncokretovo",
+   "state": "na",
+   "kcal": 884.0,
+   "protein_g": 0.0,
+   "carbs_g": 0.0,
+   "fat_g": 100.0,
+   "fiber_g": 0.0,
+   "portions": []
+  },
+  {
+   "slug": "honey",
+   "fdc_id": 169640,
+   "usda_description": "Honey",
+   "name": "Med",
+   "name_en": "Honey",
+   "aliases": "med",
+   "state": "na",
+   "kcal": 304.0,
+   "protein_g": 0.3,
+   "carbs_g": 82.4,
+   "fat_g": 0.0,
+   "fiber_g": 0.2,
+   "portions": [
+    {
+     "name": "1 kašika",
+     "name_en": "1 tablespoon",
+     "grams": 21.0,
+     "usda_label": "1 tbsp"
+    }
+   ]
+  },
+  {
+   "slug": "sugar",
+   "fdc_id": 169655,
+   "usda_description": "Sugars, granulated",
+   "name": "Šećer",
+   "name_en": "Sugar",
+   "aliases": "šećer",
+   "state": "na",
+   "kcal": 387.0,
+   "protein_g": 0.0,
+   "carbs_g": 99.98,
+   "fat_g": 0.0,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 kašičica",
+     "name_en": "1 teaspoon",
+     "grams": 4.2,
+     "usda_label": "1 tsp"
+    },
+    {
+     "name": "1 kocka",
+     "name_en": "1 cube",
+     "grams": 2.3,
+     "usda_label": "1 serving 1 cube"
+    }
+   ]
+  },
+  {
+   "slug": "dark-chocolate",
+   "fdc_id": 170273,
+   "usda_description": "Chocolate, dark, 70-85% cacao solids",
+   "name": "Crna čokolada (70–85% kakaa)",
+   "name_en": "Dark chocolate (70–85%)",
+   "aliases": "čokolada, crna čokolada",
+   "state": "na",
+   "kcal": 598.0,
+   "protein_g": 7.79,
+   "carbs_g": 45.9,
+   "fat_g": 42.63,
+   "fiber_g": 10.9,
+   "portions": []
+  },
+  {
+   "slug": "milk-chocolate",
+   "fdc_id": 167587,
+   "usda_description": "Candies, milk chocolate",
+   "name": "Mlečna čokolada",
+   "name_en": "Milk chocolate",
+   "aliases": "čokolada",
+   "state": "na",
+   "kcal": 535.0,
+   "protein_g": 7.65,
+   "carbs_g": 59.4,
+   "fat_g": 29.66,
+   "fiber_g": 3.4,
+   "portions": []
+  },
+  {
+   "slug": "ketchup",
+   "fdc_id": 168556,
+   "usda_description": "Catsup",
+   "name": "Kečap",
+   "name_en": "Ketchup",
+   "aliases": "kečap",
+   "state": "na",
+   "kcal": 101.0,
+   "protein_g": 1.04,
+   "carbs_g": 27.4,
+   "fat_g": 0.1,
+   "fiber_g": 0.3,
+   "portions": [
+    {
+     "name": "1 kašika",
+     "name_en": "1 tablespoon",
+     "grams": 17.0,
+     "usda_label": "1 tbsp"
+    }
+   ]
+  },
+  {
+   "slug": "mayonnaise",
+   "fdc_id": 171009,
+   "usda_description": "Salad dressing, mayonnaise, regular",
+   "name": "Majonez",
+   "name_en": "Mayonnaise",
+   "aliases": "majonez",
+   "state": "na",
+   "kcal": 680.0,
+   "protein_g": 0.96,
+   "carbs_g": 0.57,
+   "fat_g": 74.85,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 kašika",
+     "name_en": "1 tablespoon",
+     "grams": 13.8,
+     "usda_label": "1 tbsp"
+    }
+   ]
+  },
+  {
+   "slug": "coffee-brewed",
+   "fdc_id": 171890,
+   "usda_description": "Beverages, coffee, brewed, prepared with tap water",
+   "name": "Kafa, skuvana (bez šećera)",
+   "name_en": "Coffee, brewed",
+   "aliases": "kafa, espreso",
+   "state": "na",
+   "kcal": 1.0,
+   "protein_g": 0.12,
+   "carbs_g": 0.0,
+   "fat_g": 0.02,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 šolja (240 ml)",
+     "name_en": "1 cup (240 ml)",
+     "grams": 237.0,
+     "usda_label": "1 cup (8 fl oz)"
+    }
+   ]
+  },
+  {
+   "slug": "orange-juice",
+   "fdc_id": 169098,
+   "usda_description": "Orange juice, raw (Includes foods for USDA's Food Distribution Program)",
+   "name": "Sok od pomorandže (ceđen)",
+   "name_en": "Orange juice (fresh)",
+   "aliases": "sok, ceđena pomorandža",
+   "state": "na",
+   "kcal": 45.0,
+   "protein_g": 0.7,
+   "carbs_g": 10.4,
+   "fat_g": 0.2,
+   "fiber_g": 0.2,
+   "portions": [
+    {
+     "name": "1 čaša (240 ml)",
+     "name_en": "1 glass (240 ml)",
+     "grams": 248.0,
+     "usda_label": "1 cup"
+    }
+   ]
+  },
+  {
+   "slug": "beer",
+   "fdc_id": 168746,
+   "usda_description": "Alcoholic beverage, beer, regular, all",
+   "name": "Pivo",
+   "name_en": "Beer",
+   "aliases": "pivo",
+   "state": "na",
+   "kcal": 43.0,
+   "protein_g": 0.46,
+   "carbs_g": 3.55,
+   "fat_g": 0.0,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 limenka (355 ml)",
+     "name_en": "1 can (355 ml)",
+     "grams": 356.0,
+     "usda_label": "1 can"
+    }
+   ]
+  },
+  {
+   "slug": "red-wine",
+   "fdc_id": 173190,
+   "usda_description": "Alcoholic beverage, wine, table, red",
+   "name": "Vino, crno",
+   "name_en": "Red wine",
+   "aliases": "vino, crno vino",
+   "state": "na",
+   "kcal": 85.0,
+   "protein_g": 0.07,
+   "carbs_g": 2.61,
+   "fat_g": 0.0,
+   "fiber_g": 0.0,
+   "portions": [
+    {
+     "name": "1 čaša (150 ml)",
+     "name_en": "1 glass (150 ml)",
+     "grams": 147.0,
+     "usda_label": "1 serving (5 fl oz)"
+    }
+   ]
+  }
+ ]
+}
