@@ -205,11 +205,12 @@ class ConnectView(APIView):
 
 
 class ConnectionView(APIView):
+    @transaction.atomic
     def patch(self, request):
         client_only(request)
         serializer = SharingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        connection = CoachConnection.objects.select_related('coach__profile', 'client__profile').filter(client=request.user).first()
+        connection = CoachConnection.objects.select_for_update().filter(client=request.user).first()
         if connection is None:
             raise NotFound()
         for key, value in serializer.validated_data.items():
@@ -218,11 +219,13 @@ class ConnectionView(APIView):
             connection.save(update_fields=[*serializer.validated_data.keys(), 'updated_at'])
         return Response(connection_summary(connection))
 
+    @transaction.atomic
     def delete(self, request):
         client_only(request)
-        deleted, _ = CoachConnection.objects.filter(client=request.user).delete()
-        if not deleted:
+        connection = CoachConnection.objects.select_for_update().filter(client=request.user).first()
+        if connection is None:
             raise NotFound()
+        connection.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -275,8 +278,12 @@ class CoachClientView(APIView):
             ]
         return Response(data)
 
+    @transaction.atomic
     def delete(self, request, client_id):
-        connection = connection_for_coach(request, client_id)
+        coach_only(request)
+        connection = CoachConnection.objects.select_for_update().filter(coach=request.user, client_id=client_id).first()
+        if connection is None:
+            raise NotFound()
         connection.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -284,9 +291,11 @@ class CoachClientView(APIView):
 class AssignRoutineView(APIView):
     @transaction.atomic
     def post(self, request, client_id):
-        connection = connection_for_coach(request, client_id)
-        # Lock the connection against concurrent disconnects while creating the copy.
-        connection = CoachConnection.objects.select_for_update().get(pk=connection.pk)
+        coach_only(request)
+        # Serialize all writes on this relationship with disconnects and messages.
+        connection = CoachConnection.objects.select_for_update().filter(coach=request.user, client_id=client_id).first()
+        if connection is None:
+            raise NotFound()
         serializer = AssignSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         source = Routine.objects.filter(
@@ -322,10 +331,14 @@ class MessagesView(APIView):
         items = list(CoachMessage.objects.filter(connection=connection).order_by('-created_at', '-id')[:MAX_MESSAGES_RETURNED])
         return Response([message_summary(x) for x in reversed(items)])
 
+    @transaction.atomic
     def post(self, request):
-        connection = connection_for_messages(request)
+        relation = connection_for_messages(request)
         serializer = MessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        connection = CoachConnection.objects.select_for_update().filter(pk=relation.pk).first()
+        if connection is None:
+            raise NotFound()
         message = CoachMessage.objects.create(
             connection=connection, sender=request.user, text=serializer.validated_data['text'],
         )
