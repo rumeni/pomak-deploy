@@ -165,11 +165,10 @@ describe('osvežavanje prijave', () => {
         expect(config.headers['X-Pomak-Client']).toBe('web')
         return { status: 200, data: { access: 'migrated-access' } }
       }
-      return { status: 200, data: { ok: true } }
+      return config.headers.Authorization === 'Bearer migrated-access'
+        ? { status: 200, data: { ok: true } }
+        : { status: 401, data: {} }
     })
-    await tokens.rotate('reset', null, tokens.session(), 'legacy-refresh').catch(() => undefined)
-    // Legacy refresh must remain until the real migration response arrives.
-    localStorage.setItem('pomak.refresh', 'legacy-refresh')
     await api.get('/auth/me/')
     expect(saw).toContain('legacy-refresh')
     expect(localStorage.getItem('pomak.access')).toBeNull()
