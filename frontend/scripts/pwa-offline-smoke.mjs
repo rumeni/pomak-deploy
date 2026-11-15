@@ -30,7 +30,7 @@ async function waitForPreview() {
 
 try {
   await waitForPreview()
-  browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] })
+  browser = await chromium.launch({ headless: true, args: ['--no-sandbox'], ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) })
   const context = await browser.newContext({ serviceWorkers: 'allow' })
   const page = await context.newPage()
   await page.goto(url, { waitUntil: 'domcontentloaded' })
