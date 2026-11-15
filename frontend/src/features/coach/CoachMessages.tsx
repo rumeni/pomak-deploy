@@ -22,7 +22,7 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
         {messages.isLoading && <p className="text-sm text-muted">{t('common.loading')}</p>}
         {messages.isError && <FormError message={t('errors.loadFailed')} />}
         {messages.data?.length === 0 && <p className="text-sm text-muted">{t('coach.noMessages')}</p>}
-        {messages.data?.map((message) => (
+        {!messages.isError && messages.data?.map((message) => (
           <div key={message.id} className={`max-w-[90%] rounded-xl px-3 py-2 ${message.sender_id === selfId ? 'self-end bg-brand-soft' : 'self-start bg-surface'}`}>
             <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
             <p className="mt-1 text-right text-xs text-muted">
