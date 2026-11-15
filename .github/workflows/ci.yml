@@ -62,6 +62,11 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: python -m pip install -r requirements.txt
-      - run: python manage.py check --deploy
+      - name: Check Vercel production security settings (fail on warnings)
+        env:
+          VERCEL: '1'
+          # This is a CI-only key; actual production secret stays in Vercel.
+          SECRET_KEY: 'CI-only-vT6Zx9qnP3Km7Yw2hR4Ld8Fj1Ue5NgC0sQp9Ax2Vk7BWm6'
+        run: python manage.py check --deploy --fail-level WARNING
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test
