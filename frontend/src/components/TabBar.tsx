@@ -9,29 +9,31 @@ const tabs = [
   { to: '/trener', label: 'tabs.coach', icon: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0' },
 ]
 
+/** Same destinations: mobile floating dock / desktop sidebar. Also used by Capacitor Android. */
 export function TabBar() {
   const { t } = useTranslation()
   return (
-    <nav className="pb-safe fixed inset-x-0 bottom-0 z-10 border-t border-line bg-card/95 backdrop-blur">
-      <ul className="mx-auto flex max-w-xl">
+    <nav className="app-nav" aria-label={t('common.appName')}>
+      <div className="app-nav-brand" aria-hidden>
+        <span className="app-nav-brand-mark">P</span>
+        <span><strong>POMAK</strong><small>EVERY DAY COUNTS</small></span>
+      </div>
+      <ul className="app-nav-list">
         {tabs.map((tab) => (
-          <li key={tab.to} className="flex-1">
+          <li key={tab.to}>
             <NavLink
               to={tab.to}
-              className={({ isActive }) =>
-                `flex min-h-16 flex-col items-center justify-center gap-1 text-xs font-medium ${
-                  isActive ? 'text-brand' : 'text-muted'
-                }`
-              }
+              className={({ isActive }) => `app-nav-link ${isActive ? 'is-active' : ''}`}
             >
-              <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d={tab.icon} />
               </svg>
-              {t(tab.label)}
+              <span>{t(tab.label)}</span>
             </NavLink>
           </li>
         ))}
       </ul>
+      <div className="app-nav-footer" aria-hidden>POMAK © 2026</div>
     </nav>
   )
 }
