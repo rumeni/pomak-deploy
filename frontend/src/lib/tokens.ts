@@ -10,6 +10,7 @@ const isNative = () => Capacitor.isNativePlatform()
 let accessToken: string | null = null
 let accessSession: string | null = null
 let nativeQueue = Promise.resolve()
+let loginIntent = 0
 
 async function nativeOperation<T>(run: () => Promise<T>): Promise<T> {
   const job = nativeQueue.then(run)
@@ -83,6 +84,7 @@ export const tokens = {
   isCurrent: (session: TokenSession): boolean => !!session.id && session.id === currentSessionId(),
   /** Fresh login changes identity; rotation preserves it across requests/tabs. */
   async set(access: string, refresh: string | null) {
+    const intent = ++loginIntent
     const publish = () => {
       discardLegacy()
       localStorage.removeItem(ME)
@@ -96,7 +98,12 @@ export const tokens = {
     // Include the session publication in the same queue as secure writes.
     await nativeOperation(async () => {
       const { SecureStorage } = await import('@aparajita/capacitor-secure-storage')
+      if (intent !== loginIntent) throw new Error('Login superseded before secure write')
       await SecureStorage.setItem(REFRESH, refresh)
+      if (intent !== loginIntent) {
+        await SecureStorage.removeItem(REFRESH)
+        throw new Error('Login canceled during secure write')
+      }
       publish()
     })
   },
@@ -143,6 +150,7 @@ export const tokens = {
     }
   },
   clear(): Promise<void> {
+    ++loginIntent // Invalidate pending native login publication before queued deletion.
     accessToken = null
     accessSession = null
     discardLegacy()
