@@ -153,6 +153,7 @@ export const sr = {
     state_na: 'Ostalo',
     notFound: 'Namirnica nije pronađena.',
     deleteFood: 'Obriši namirnicu',
+    editFood: 'Izmeni namirnicu',
     addToDiary: 'Dodaj u dnevnik (danas)',
     newRecipe: '+ Novi recept',
     recipeBadge: 'recept',
@@ -350,6 +351,7 @@ export const sr = {
   },
   newFood: {
     title: 'Nova namirnica',
+    editTitle: 'Izmena namirnice',
     name: 'Naziv',
     nameExample: 'npr. Domaći ajvar',
     state: 'Vrsta',
