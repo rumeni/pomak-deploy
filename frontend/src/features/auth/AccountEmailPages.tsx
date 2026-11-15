@@ -6,6 +6,7 @@ import { Button, Field, FormError } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { AuthLayout } from './AuthLayout'
+import { resetPasswordAndClearSession } from './resetPassword'
 
 export function ForgotPasswordPage() {
   const { t } = useTranslation()
@@ -43,6 +44,7 @@ export function ForgotPasswordPage() {
 
 export function ResetPasswordPage() {
   const { t } = useTranslation()
+  const { logout } = useAuth()
   const [params] = useSearchParams()
   const uid = params.get('uid')
   const token = params.get('token')
@@ -60,7 +62,7 @@ export function ResetPasswordPage() {
     setPending(true)
     setError(null)
     try {
-      await api.post('/auth/password/reset/confirm/', { uid, token, new_password: password })
+      await resetPasswordAndClearSession(uid, token, password, logout)
       setDone(true)
     } catch (cause) {
       setError(errorMessage(cause))
