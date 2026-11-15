@@ -1,0 +1,153 @@
+"""Account email recovery and session revocation behavior, with in-memory mail."""
+
+from urllib.parse import parse_qs, urlparse
+
+from django.core import mail
+from django.test import override_settings
+from rest_framework.test import APITestCase
+
+from accounts.models import User
+
+
+EMAIL_TEST_SETTINGS = {
+    'ACCOUNT_EMAIL_ENABLED': True,
+    'ACCOUNT_EMAIL_BASE_URL': 'https://pomak-web.example',
+    'EMAIL_BACKEND': 'django.core.mail.backends.locmem.EmailBackend',
+    'DEFAULT_FROM_EMAIL': 'POMAK <noreply@pomak.example>',
+}
+
+
+def email_params(message):
+    link = next(part for part in message.body.split() if part.startswith('https://'))
+    return {key: values[0] for key, values in parse_qs(urlparse(link).query).items()}
+
+
+@override_settings(**EMAIL_TEST_SETTINGS)
+class PasswordRecoveryTests(APITestCase):
+    def setUp(self):
+        mail.outbox.clear()
+        self.user = User.objects.create_user('recover@example.com', 'strong-old-password-123')
+
+    def request_reset(self, email):
+        return self.client.post('/api/auth/password/reset/request/', {'email': email}, format='json')
+
+    def test_unknown_address_uses_identical_public_response(self):
+        known = self.request_reset('recover@example.com')
+        unknown = self.request_reset('unknown@example.com')
+        self.assertEqual(known.status_code, 202)
+        self.assertEqual(unknown.status_code, 202)
+        self.assertEqual(known.data, unknown.data)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_reset_changes_password_and_invalidates_access_and_refresh(self):
+        login = self.client.post('/api/auth/login/', {
+            'email': 'recover@example.com', 'password': 'strong-old-password-123',
+        }, format='json')
+        self.assertEqual(login.status_code, 200, login.data)
+        old_access, old_refresh = login.data['access'], login.data['refresh']
+
+        self.assertEqual(self.request_reset('recover@example.com').status_code, 202)
+        self.assertEqual(len(mail.outbox), 1)
+        params = email_params(mail.outbox[0])
+        self.assertEqual(self.client.post('/api/auth/password/reset/confirm/', {
+            **params, 'new_password': 'strong-new-password-456',
+        }, format='json').status_code, 204)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {old_access}')
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
+        self.client.credentials()
+        self.assertEqual(self.client.post('/api/auth/refresh/', {
+            'refresh': old_refresh,
+        }, format='json').status_code, 401)
+        self.assertEqual(self.client.post('/api/auth/login/', {
+            'email': 'recover@example.com', 'password': 'strong-old-password-123',
+        }, format='json').status_code, 401)
+        relogin = self.client.post('/api/auth/login/', {
+            'email': 'recover@example.com', 'password': 'strong-new-password-456',
+        }, format='json')
+        self.assertEqual(relogin.status_code, 200, relogin.data)
+        self.assertEqual(self.client.post('/api/auth/password/reset/confirm/', {
+            **params, 'new_password': 'another-secure-password-789',
+        }, format='json').status_code, 400)
+
+    def test_change_password_rejects_wrong_old_password_then_revokes_sessions(self):
+        login = self.client.post('/api/auth/login/', {
+            'email': 'recover@example.com', 'password': 'strong-old-password-123',
+        }, format='json')
+        access = login.data['access']
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access}')
+        invalid = self.client.post('/api/auth/password/change/', {
+            'old_password': 'incorrect',
+            'new_password': 'strong-new-password-456',
+        }, format='json')
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 200)
+        valid = self.client.post('/api/auth/password/change/', {
+            'old_password': 'strong-old-password-123',
+            'new_password': 'strong-new-password-456',
+        }, format='json')
+        self.assertEqual(valid.status_code, 204, valid.data)
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
+
+    def test_bad_uid_or_token_cannot_change_password(self):
+        invalid = self.client.post('/api/auth/password/reset/confirm/', {
+            'uid': 'not-valid', 'token': 'bad-token',
+            'new_password': 'strong-new-password-456',
+        }, format='json')
+        self.assertEqual(invalid.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('strong-old-password-123'))
+
+
+@override_settings(**EMAIL_TEST_SETTINGS)
+class EmailConfirmationTests(APITestCase):
+    def setUp(self):
+        mail.outbox.clear()
+
+    def test_unverified_signup_is_gated_until_one_time_confirmation(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            registered = self.client.post('/api/auth/register/', {
+                'email': 'verify@example.com',
+                'password': 'strong-password-123',
+            }, format='json')
+        self.assertEqual(registered.status_code, 201, registered.data)
+        self.assertEqual(len(mail.outbox), 1)
+        access = registered.data['access']
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access}')
+        me = self.client.get('/api/auth/me/')
+        self.assertEqual(me.status_code, 200)
+        self.assertTrue(me.data['email_verification_required'])
+        self.assertFalse(me.data['email_verified'])
+        self.assertEqual(self.client.get('/api/nutrition/foods/').status_code, 403)
+
+        self.client.credentials()
+        token = email_params(mail.outbox[0])['token']
+        self.assertEqual(self.client.post('/api/auth/email/verify/', {
+            'token': token,
+        }, format='json').status_code, 200)
+        self.assertEqual(self.client.post('/api/auth/email/verify/', {
+            'token': token,
+        }, format='json').status_code, 400)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access}')
+        self.assertEqual(self.client.get('/api/nutrition/foods/').status_code, 200)
+
+    def test_expired_or_tampered_email_link_is_rejected(self):
+        user = User.objects.create_user(
+            'verify-bad@example.com', 'strong-password-123',
+            email_verification_required=True,
+        )
+        from accounts.email_security import email_verification_token
+        token = email_verification_token(user)
+        invalid = self.client.post('/api/auth/email/verify/', {
+            'token': token + 'tampered',
+        }, format='json')
+        self.assertEqual(invalid.status_code, 400)
+
+
+class DisabledAccountEmailsTests(APITestCase):
+    @override_settings(ACCOUNT_EMAIL_ENABLED=False)
+    def test_no_false_promise_when_email_provider_is_disabled(self):
+        res = self.client.post('/api/auth/password/reset/request/', {
+            'email': 'someone@example.com',
+        }, format='json')
+        self.assertEqual(res.status_code, 503)
