@@ -110,7 +110,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(
     async ({ email, password, displayName, accountType }: RegisterData) => {
       await withAuthLock(async () => {
-        await revokePendingWebLogout()
+        const previousLogout = tokens.pendingWebLogout()
+        if (previousLogout) {
+          try {
+            await revokePendingWebLogout()
+          } catch {
+            // Registration revokes any previous refresh cookie on the server
+            // before replacing it. A failed offline-logout retry may not
+            // prevent a new registration, but a failed registration must
+            // leave the pending marker intact.
+          }
+        }
         const { data } = await api.post('/auth/register/', {
           email,
           password,
@@ -118,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_type: accountType,
           language: toServerLanguage(i18n.language as Language),
         })
+        if (previousLogout) tokens.completeWebLogout(previousLogout)
         if (Object.keys(webHeaders()).length) {
           if (data.refresh) {
             // Backwards compatibility with older server versions which still
