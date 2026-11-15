@@ -93,25 +93,3 @@ class AuthThrottleBucket(models.Model):
             models.UniqueConstraint(fields=['key', 'window_start'], name='auth_throttle_bucket_key_window'),
         ]
 
-
-class AccountEmailJob(models.Model):
-    """Transactional outbox: no SMTP work on anonymous HTTP request paths."""
-
-    class Kind(models.TextChoices):
-        RESET = 'reset', 'Password reset'
-        VERIFY = 'verify', 'Email verification'
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    kind = models.CharField(max_length=10, choices=Kind.choices)
-    # Unrecognized addresses are queued too, so requests cannot be timed by
-    # SMTP or the presence of a database record. Delete after processing.
-    email = models.EmailField(max_length=254)
-    requested_at = models.DateTimeField(default=timezone.now, db_index=True)
-    available_at = models.DateTimeField(default=timezone.now, db_index=True)
-    attempts = models.PositiveSmallIntegerField(default=0)
-    claimed_at = models.DateTimeField(null=True, blank=True)
-    claim_id = models.UUIDField(null=True, blank=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        indexes = [models.Index(fields=['completed_at', 'available_at'], name='email_job_state_idx')]
