@@ -41,6 +41,8 @@ export const en = {
     loggingIn: 'Logging in…',
     verificationPrompt: 'Too many attempts. Complete the security check, then try again.',
     verificationLabel: 'Sign-in security check',
+    verificationRetry: 'Retry security verification',
+    verificationTryNormal: 'Try signing in normally again',
     verificationUnavailable: 'Security verification is unavailable. Try again later.',
     register: 'Create account',
     registering: 'Creating account…',
