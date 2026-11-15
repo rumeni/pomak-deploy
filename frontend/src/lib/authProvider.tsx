@@ -2,9 +2,10 @@ import axios from 'axios'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
-import i18n, { changeLanguage, fromServerLanguage, toServerLanguage, type Language } from '../i18n'
+import i18n, { changeLanguage, fromServerLanguage } from '../i18n'
 import { api, revokePendingWebLogout, webHeaders, withAuthLock } from './api'
 import { performLogin } from './login'
+import { performRegistration } from './registration'
 import { AuthContext, type RegisterData } from './authContext'
 import { setCurrentUserId } from './currentUser'
 import { tokens } from './tokens'
@@ -108,30 +109,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const register = useCallback(
-    async ({ email, password, displayName, accountType }: RegisterData) => {
+    async (data: RegisterData) => {
       await withAuthLock(async () => {
-        await revokePendingWebLogout()
-        const { data } = await api.post('/auth/register/', {
-          email,
-          password,
-          display_name: displayName,
-          account_type: accountType,
-          language: toServerLanguage(i18n.language as Language),
-        })
-        if (Object.keys(webHeaders()).length) {
-          if (data.refresh) {
-            // Backwards compatibility with older server versions which still
-            // return JSON refresh on registration even with the web header.
-            const migrated = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {
-              refresh: data.refresh,
-            }, { headers: webHeaders(), timeout: 15000 })
-            await tokens.set(migrated.data.access, null)
-          } else {
-            await tokens.set(data.access, null)
-          }
-        } else {
-          await tokens.set(data.access, data.refresh)
-        }
+        await performRegistration(data)
         setHasToken(true)
       })
     },

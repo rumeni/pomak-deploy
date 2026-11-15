@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.http import HttpResponse
 from django.utils.encoding import force_str
 from django.utils import timezone
@@ -26,9 +27,26 @@ class RegisterView(generics.CreateAPIView):
     throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
 
     def create(self, request, *args, **kwargs):
-        # New web registrations get an HttpOnly refresh cookie directly;
-        # older Android clients still receive the legacy refresh JSON body.
-        return output_tokens(request, super().create(request, *args, **kwargs))
+        # Native/legacy registration retains refresh in the JSON response.
+        if not web_request(request):
+            return output_tokens(request, super().create(request, *args, **kwargs))
+
+        # A previous offline logout might have failed to reach the backend.
+        # Do not allow a new web registration to keep the old account's
+        # refresh token alive while issuing a fresh HttpOnly cookie.
+        # Roll back account creation if token revocation fails unexpectedly.
+        with transaction.atomic():
+            response = super().create(request, *args, **kwargs)
+            if response.status_code < 400:
+                previous = request.COOKIES.get('pomak.refresh')
+                if previous:
+                    try:
+                        RefreshToken(previous).blacklist()
+                    except TokenError:
+                        # Expired, malformed or previously revoked cookies are
+                        # harmless; DB failures must propagate and roll back.
+                        pass
+            return output_tokens(request, response)
 
 
 class LoginView(TokenObtainPairView):
