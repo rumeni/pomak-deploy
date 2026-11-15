@@ -136,6 +136,23 @@ class PasswordRecoveryTests(APITestCase):
         self.assertEqual(self.request_reset('unknown@example.com').status_code, 429)
         self.assertEqual(len(mail.outbox), 0)
 
+    def test_reset_daily_ip_limit_is_independent_of_email(self):
+        from rest_framework.parsers import JSONParser
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+        from accounts.throttles import PasswordResetThrottle
+
+        factory = APIRequestFactory()
+        with patch('accounts.throttles.RESET_PER_IP_PER_DAY', 3):
+            for n in range(4):
+                request = Request(factory.post(
+                    '/api/auth/password/reset/request/',
+                    {'email': f'different{n}@example.com'},
+                    format='json', REMOTE_ADDR='192.0.2.99',
+                ), parsers=[JSONParser()])
+                allowed = PasswordResetThrottle().allow_request(request, None)
+                self.assertEqual(allowed, n < 3)
+
     def test_reset_daily_global_and_source_budgets_are_atomic(self):
         from rest_framework.parsers import JSONParser
         from rest_framework.request import Request
