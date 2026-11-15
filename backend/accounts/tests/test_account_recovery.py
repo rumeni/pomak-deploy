@@ -126,6 +126,38 @@ class PasswordRecoveryTests(APITestCase):
         self.assertEqual(valid.status_code, 204, valid.data)
         self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
 
+    def test_reset_daily_limits_apply_to_known_and_unknown_emails(self):
+        for _ in range(3):
+            self.assertEqual(self.request_reset('recover@example.com').status_code, 202)
+        # A fourth request is rejected by the daily email limit, not SMTP.
+        self.assertEqual(self.request_reset('recover@example.com').status_code, 429)
+        for _ in range(3):
+            self.assertEqual(self.request_reset('unknown@example.com').status_code, 202)
+        self.assertEqual(self.request_reset('unknown@example.com').status_code, 429)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_reset_daily_global_and_source_budgets_are_atomic(self):
+        from rest_framework.parsers import JSONParser
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+        from accounts.throttles import PasswordResetThrottle
+
+        factory = APIRequestFactory()
+
+        def try_throttle(ip, email):
+            request = Request(factory.post(
+                '/api/auth/password/reset/request/', {'email': email},
+                format='json', REMOTE_ADDR=ip,
+            ), parsers=[JSONParser()])
+            return PasswordResetThrottle().allow_request(request, None)
+
+        with patch('accounts.throttles.RESET_GLOBAL_PER_DAY', 3):
+            for n in range(3):
+                self.assertTrue(try_throttle(f'192.0.2.{n+1}', f'user{n}@example.com'))
+            # Each sender below has a fresh IP and address. The shared queue
+            # budget still refuses the fourth publication.
+            self.assertFalse(try_throttle('192.0.2.10', 'user10@example.com'))
+
     def test_qstash_worker_requires_valid_signature_and_body_hash(self):
         raw = b'{"email":"recover@example.com"}'
         unsigned = self.client.post('/api/internal/password-reset-email/', data=raw,
