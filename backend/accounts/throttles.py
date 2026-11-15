@@ -76,12 +76,18 @@ class LoginRecoveryThrottle(DatabaseAuthThrottle):
         # endpoint. Invalid/unverified tokens never consume the account's
         # precious VERIFIED-recovery quota, preventing easy lockouts.
         if not self.consume_limit('login-challenge-verification-ip', ip, 8, now):
+            if view is not None:
+                view.login_challenge_required = False
             return False
         if not verify_login_recovery(token, ip):
             return False
         if not self.consume_limit('login-verified-account', email, 2, now):
+            if view is not None:
+                view.login_challenge_required = False
             return False
         if not self.consume_limit('login-verified-ip', ip, 3, now):
+            if view is not None:
+                view.login_challenge_required = False
             return False
 
         if view is not None:
