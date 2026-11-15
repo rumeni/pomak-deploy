@@ -11,7 +11,7 @@ def web_request(request):
 
 
 def incoming_refresh(request):
-    return request.data.get('refresh') or request.COOKIES.get(COOKIE)
+    return request.data.get('refresh') or (request.COOKIES.get(COOKIE) if web_request(request) else None)
 
 
 def output_tokens(request, response):
