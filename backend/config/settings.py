@@ -121,6 +121,9 @@ STORAGES = {
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
+    # Vercel overwrites X-Forwarded-For, so the last forwarded address is trusted there.
+    # Direct/local Django must ignore client-supplied forwarding headers instead.
+    'NUM_PROXIES': config('DRF_NUM_PROXIES', default=1 if is_vercel else 0, cast=int),
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
@@ -158,6 +161,10 @@ CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Enforce HTTPS at the Django layer only behind Vercel's trusted TLS proxy.
+    # Do not include subdomains/preload: deployment aliases may be shared.
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=is_vercel, cast=bool)
+    SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000 if is_vercel else 0, cast=int)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 

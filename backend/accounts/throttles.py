@@ -24,8 +24,9 @@ class DatabaseAuthThrottle(BaseThrottle):
         now = timezone.now()
         bucket_start = now.replace(second=0, microsecond=0)
         email = str(request.data.get('email', '')).strip().casefold() if isinstance(request.data, dict) else ''
-        # Never trust arbitrary user-provided X-Forwarded-For values as a throttle bypass.
-        ip = str(request.META.get('REMOTE_ADDR', 'unknown'))
+        # DRF NUM_PROXIES is 1 on Vercel (which overwrites X-Forwarded-For),
+        # and 0 for direct/local Django. Keep the global DB and DRF IP limits aligned.
+        ip = self.get_ident(request)
         limits = [('ip', ip, 120)]
         if email:
             limits.append(('account', email, 10))
@@ -44,3 +45,31 @@ class DatabaseAuthThrottle(BaseThrottle):
 
     def wait(self):
         return getattr(self, 'remaining', 60)
+
+
+class DatabaseAccountDeletionThrottle(BaseThrottle):
+    """Limit password checks during account deletion across serverless instances.
+
+    Each authenticated account gets five attempts per hour, regardless of IP.
+    Counters live in PostgreSQL (not per-instance LocMemCache).
+    """
+
+    def allow_request(self, request, view):
+        if request.method != 'POST' or not request.user.is_authenticated:
+            return True
+        now = timezone.now()
+        hour_start = now.replace(minute=0, second=0, microsecond=0)
+        key = hashlib.sha256(f'account-delete:{request.user.pk}'.encode('utf-8')).hexdigest()
+        with transaction.atomic():
+            bucket, _ = AuthThrottleBucket.objects.get_or_create(
+                key=key, window_start=hour_start, defaults={'attempts': 0},
+            )
+            AuthThrottleBucket.objects.filter(pk=bucket.pk).update(attempts=F('attempts') + 1)
+            bucket.refresh_from_db(fields=['attempts'])
+            if bucket.attempts > 5:
+                self.remaining = max(1, int((hour_start + timedelta(hours=1) - now).total_seconds()))
+                return False
+        return True
+
+    def wait(self):
+        return getattr(self, 'remaining', 3600)

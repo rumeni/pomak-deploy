@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -14,7 +14,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .export import build_zip
 from .serializers import LoginSerializer, MeSerializer, RegisterSerializer
-from .throttles import DatabaseAuthThrottle
+from .throttles import DatabaseAccountDeletionThrottle, DatabaseAuthThrottle
 
 
 class RegisterView(generics.CreateAPIView):
@@ -80,6 +80,7 @@ class ExportView(APIView):
 
 class DeleteAccountView(APIView):
     """POST {password}: trajno briše nalog i sve lične podatke (treninge, dnevnik, merenja, recepte...)."""
+    throttle_classes = [DatabaseAccountDeletionThrottle, UserRateThrottle]
 
     def post(self, request):
         password = request.data.get('password', '')

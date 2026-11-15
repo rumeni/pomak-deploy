@@ -32,7 +32,7 @@ def compute(ingredients: list[tuple[Food, Decimal]], mass_g: Decimal | None) -> 
         if any(v is None for v in per_food):
             values[field] = None
             continue
-        total = sum((v * grams / 100 for v, (_, grams) in zip(per_food, ingredients)), Decimal(0))
+        total = sum((v * grams / 100 for v, (_, grams) in zip(per_food, ingredients, strict=True)), Decimal(0))
         values[field] = (total * 100 / mass).quantize(PLACES[field])
     return {'values': values, 'mass_g': mass}
 

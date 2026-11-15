@@ -27,3 +27,14 @@ This branch addresses the 2026-11-15 audit. **Do not deploy the backend before m
 - P3-11: coach-client collaboration is an unimplemented product feature, not a regression. Building it is outside a bug-fix PR.
 
 Local Python compilation can run without dependencies, but full Django/Vitest tests require installed project dependencies and PostgreSQL. CI runs them on an isolated test DB, not the production Neon database.
+
+
+## Follow-up hardening (15 November 2026)
+
+- Updated djangorestframework 3.18.1 → 3.18.3 (includes 3.18.2 security fixes plus upstream compatibility bugfix) for CVE-2026-114136/114137/114138.
+- Configured DRF NUM_PROXIES=1 only on Vercel, where the platform overwrites X-Forwarded-For; local/direct Django defaults to 0. Change this setting if deploying behind a different trusted proxy chain. PostgreSQL auth throttles now use the same DRF client identity.
+- Added database-backed five account-deletion password attempts per hour, shared by all Vercel functions.
+- Added HSTS (31536000 seconds, no includeSubDomains/preload) and Django HTTPS redirects when Vercel is detected; non-Vercel local HTTP remains usable. This assumes SECURE_PROXY_SSL_HEADER is set to Vercel's trusted x-forwarded-proto value.
+- Known limitation: the email-account pre-auth rate limit can deny legitimate login after deliberate false attempts by another party. A future redesign needs a mechanism that still slows distributed password guessing without hard-locking a valid user.
+- Known limitation: authentication tokens are still stored in localStorage for the PWA/offline use case. Moving to HttpOnly cookies requires coordinated API, CSRF, PWA and mobile changes.
+- Six npm dev dependency advisories were previously reported and are not resolved by this backend PR.
