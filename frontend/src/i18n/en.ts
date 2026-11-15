@@ -178,6 +178,7 @@ export const en = {
     notFound: 'Food not found.',
     addToDiary: 'Add to diary (today)',
     deleteFood: 'Delete food',
+    editFood: 'Edit food',
     newRecipe: '+ New recipe',
     recipeBadge: 'recipe',
     sourceRecipe: 'Your recipe (values calculated from the ingredients)',
@@ -371,6 +372,7 @@ export const en = {
   },
   newFood: {
     title: 'New food',
+    editTitle: 'Edit food',
     name: 'Name',
     nameExample: 'e.g. Homemade ajvar',
     state: 'Type',

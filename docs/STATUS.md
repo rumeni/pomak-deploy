@@ -1,6 +1,37 @@
 # POMAK — status rada
 
-Poslednje ažuriranje: **30.09.2026.** · Detaljan plan i odluke: [`PLAN_FAZA_1.md`](PLAN_FAZA_1.md)
+**Aktuelno: 15.11.2026. — spremno za zatvoreno testiranje, ne još za javnu Play Store objavu.**
+
+## Aktuelno stanje
+
+- Web PWA i Django API su objavljeni na Vercelu; poslednji produkcioni auth-fix je merge #19 (commit `f43b72c`).
+- Prijava i registracija koriste web HttpOnly refresh cookie, a Android koristi native Keystore; migracije naloga i rad bez interneta imaju regresione testove.
+- CI proverava Django, frontend testove/build/lint i Android debug APK. APK još treba ručno testirati na telefonu.
+- Personalni treninzi, rutine, dnevnik hrane, recepti, ciljevi, napredak, trener/klijent, izvoz i brisanje naloga postoje.
+- QA prijavio 81/81 API i 33/33 Chrome provera (eksterni izveštaj; nezavisna ručna end-to-end verifikacija nije obavljena u ovom PR-u).
+- Turnstile login-recovery je implementiran, ali je produkcioni feature flag namerno isključen dok se ne potvrdi E2E ponašanje.
+- `CRON_SECRET` postoji u Vercel produkcionom projektu (vrednost nije u repozitorijumu); uspeh svakog dnevnog izvođenja se proverava zasebno.
+- Zaštićena API identifikacija IP-ja testirana je na QA sa direktnom i rewrite putanjom; WAF zaštita od distribuiranog napada i dalje je operativni zadatak.
+
+## Blokatori za javno objavljivanje
+
+1. **Nalog:** korisnički tok za resetovanje lozinke, promenu lozinke i potvrdu email adrese, uz ispravno podešen email servis, testove i rollout.
+2. **Privatnost:** javna politika privatnosti, uslovi korišćenja i dosledna Google Play Data Safety deklaracija. Ne objavljivati pravne tekstove bez verifikacije odgovornog lica.
+3. **Android:** originalna ikona/splash, potpisani release AAB (ključ van Git-a), closed-track test na fizičkom telefonu.
+4. **Hosting:** komercijalna upotreba zahteva odgovarajući Vercel plan i proveru Neon kvota/cena.
+5. **Ishrana:** stručna revizija `msj-v1` procene i ograničenja pre javnih preporuka (videti `KALORIJSKI_METOD.md`).
+
+## Manji poslovi
+
+- Produkcioni error monitoring, zaštita Django admin prijave i operativni WAF/cron audit.
+- Preostali dizajn/UX detalji i dodatno mobilno testiranje.
+- U aktuelnoj radnoj grani uvode se korekcija formata trenerovih serija i uređivanje sopstvenih namirnica kroz UI.
+
+---
+
+## Istorijski zapis: stanje 30.09.2026.
+
+*Tekst ispod je arhivski presek razvoja, a ne aktuelna lista urađenih i neurađenih zadataka. Za današnje stanje koristi odeljke iznad.*
 
 ## Gde smo
 
@@ -63,7 +94,7 @@ i nova migracija koja učitava `usda_foods.json` (vrednosti se nikad ne unose ru
 - Istorija sa servera se ne vidi kad je aplikacija pokrenuta bez interneta (vide se samo treninzi koji čekaju slanje). Rešenje kasnije: čuvanje keša upita na telefonu.
 - Aplikacija ima podrazumevanu Capacitor ikonicu; POMAK ikonicu i početni ekran napraviti pre objavljivanja.
 - Emulator na ovom računaru: pokretati sa `-gpu swiftshader_indirect`, inače je prozor crn.
-- Kod još nije u git-u / nije postavljen na server (odluka vlasnika — za sada lokalno).
+- [Istorijski zapis 30.09] Kod tada nije bio u Git repozitorijumu; danas je objavljen.
 
 ## Kako nastaviti (za sledeću sesiju)
 

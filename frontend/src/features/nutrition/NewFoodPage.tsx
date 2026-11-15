@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
-import { Button, Field, FormError, ScreenHeader, SelectField } from '../../components/ui'
+import { Button, Field, FormError, LoadingScreen, ScreenHeader, SelectField } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
-import { useCreateFood, type FoodState, type NewFood } from './api'
+import { useCreateFood, useFood, useUpdateFood, type Food, type FoodState, type NewFood } from './api'
 
 const STATES: FoodState[] = ['prepared', 'raw', 'cooked', 'na']
 type ValueField = 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'
@@ -19,15 +19,38 @@ class FormInputError extends Error {
   }
 }
 
-/** Lična namirnica, npr. sa deklaracije. Prazna vrednost = nepoznato (null), ne 0. */
+/** Editor shared by creation and editing; keyed to the food ID so fetched
+ * initial values are read only once and query refetch cannot reset dirty form. */
 export function NewFoodPage() {
+  const { id } = useParams()
+  const existing = useFood(id)
+  const { t } = useTranslation()
+  if (id && existing.isLoading) return <LoadingScreen />
+  if (id && (!existing.data || existing.data.source !== 'custom' || !existing.data.is_custom)) {
+    return <p className="p-6 text-center text-danger">{t('nutrition.notFound')}</p>
+  }
+  return <FoodForm key={id ?? 'new'} initialFood={id ? existing.data : undefined} />
+}
+
+function FoodForm({ initialFood }: { initialFood?: Food }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const id = initialFood?.id
+  const editing = Boolean(id)
   const create = useCreateFood()
-  const [name, setName] = useState('')
-  const [state, setState] = useState<FoodState>('prepared')
-  const [values, setValues] = useState<Record<ValueField, string>>({ kcal: '', protein_g: '', carbs_g: '', fat_g: '', fiber_g: '' })
-  const [portions, setPortions] = useState<{ key: string; name: string; grams: string }[]>([])
+  const update = useUpdateFood()
+  const [name, setName] = useState(initialFood?.name ?? '')
+  const [state, setState] = useState<FoodState>(initialFood?.state ?? 'prepared')
+  const [values, setValues] = useState<Record<ValueField, string>>(() => ({
+    kcal: initialFood?.kcal ?? '',
+    protein_g: initialFood?.protein_g ?? '',
+    carbs_g: initialFood?.carbs_g ?? '',
+    fat_g: initialFood?.fat_g ?? '',
+    fiber_g: initialFood?.fiber_g ?? '',
+  }))
+  const [portions, setPortions] = useState<{ key: string; name: string; grams: string }[]>(
+    () => initialFood?.portions.map((portion) => ({ ...portion, key: uuid() })) ?? [],
+  )
   const [error, setError] = useState<string | null>(null)
 
   const fields: [ValueField, string][] = [
@@ -71,7 +94,10 @@ export function NewFoodPage() {
     e.preventDefault()
     setError(null)
     try {
-      create.mutate(toBody(), { onSuccess: (food) => navigate(`/ishrana/namirnice/${food.id}`, { replace: true }) })
+      const body = toBody()
+      const success = (food: { id: string }) => navigate(`/ishrana/namirnice/${food.id}`, { replace: true })
+      if (id) update.mutate({ id, body }, { onSuccess: success })
+      else create.mutate(body, { onSuccess: success })
     } catch (err) {
       if (err instanceof FormInputError) setError(t(`newFood.errors.${err.message}`, err.params))
       else throw err
@@ -80,7 +106,7 @@ export function NewFoodPage() {
 
   return (
     <div className="min-h-full pb-10">
-      <ScreenHeader title={t('newFood.title')} onBack={() => navigate(-1)} />
+      <ScreenHeader title={t(editing ? 'newFood.editTitle' : 'newFood.title')} onBack={() => navigate(-1)} />
       <form className="mx-auto flex max-w-xl flex-col gap-4 p-4" onSubmit={onSubmit} noValidate>
         <Field label={t('newFood.name')} name="name" placeholder={t('newFood.nameExample')} value={name} onChange={(e) => setName(e.target.value)} />
         <SelectField label={t('newFood.state')} name="state" value={state} onChange={(e) => setState(e.target.value as FoodState)}>
@@ -140,9 +166,9 @@ export function NewFoodPage() {
           </Button>
         </fieldset>
 
-        <FormError message={error ?? (create.isError ? errorMessage(create.error) : null)} />
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? t('common.saving') : t('newFood.save')}
+        <FormError message={error ?? (update.isError ? errorMessage(update.error) : create.isError ? errorMessage(create.error) : null)} />
+        <Button type="submit" disabled={create.isPending || update.isPending}>
+          {create.isPending || update.isPending ? t('common.saving') : t('newFood.save')}
         </Button>
       </form>
     </div>
