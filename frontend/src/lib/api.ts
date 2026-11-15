@@ -21,6 +21,17 @@ export function withAuthLock<T>(fn: () => Promise<T>): Promise<T> {
     ? locks.request('pomak:jwt-refresh', fn) : fn()
 }
 
+/** Call under withAuthLock: no JWT is persisted while offline logout is pending. */
+export async function revokePendingWebLogout(legacyRefresh: string | null = null): Promise<void> {
+  const marker = tokens.pendingWebLogout()
+  if (!marker || Capacitor.isNativePlatform()) return
+  await axios.post(`${api.defaults.baseURL}/auth/logout/`,
+    legacyRefresh ? { refresh: legacyRefresh } : {},
+    { headers: webHeaders(), timeout: 5000 },
+  )
+  tokens.completeWebLogout(marker)
+}
+
 export const api = axios.create({
   // Web is same-origin in development (Vite proxy) and production (Vercel rewrite).
   // Native Capacitor intentionally uses an absolute HTTPS API URL.
