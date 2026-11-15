@@ -90,7 +90,7 @@ async function refreshAccess(session: TokenSession, rejectedAccess: string | nul
           // An independently rotated cookie succeeds here; a truly expired
           // cookie rejects twice. Never clear the session on network failure.
           try {
-            const retry = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {}, { headers: webHeaders() })
+            const retry = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, {}, { headers: webHeaders(), timeout: 15000 })
             if (tokens.isCurrent(session) && await tokens.rotate(retry.data.access, null, session, null)) {
               return retry.data.access
             }
