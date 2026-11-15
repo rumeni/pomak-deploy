@@ -2,7 +2,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import Throttled, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 from rest_framework_simplejwt.exceptions import TokenError
@@ -14,7 +14,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .export import build_zip
 from .serializers import LoginSerializer, MeSerializer, RegisterSerializer
-from .throttles import DatabaseAccountDeletionThrottle, DatabaseAuthThrottle
+from .throttles import DatabaseAccountDeletionThrottle, DatabaseAuthThrottle, LoginRecoveryThrottle
 
 
 class RegisterView(generics.CreateAPIView):
@@ -27,7 +27,15 @@ class RegisterView(generics.CreateAPIView):
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     throttle_scope = 'auth'
-    throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
+    throttle_classes = [LoginRecoveryThrottle, AnonRateThrottle, ScopedRateThrottle]
+
+    def throttled(self, request, wait):
+        if getattr(self, 'login_challenge_required', False):
+            raise Throttled(wait=wait, detail={
+                'detail': _('Too many sign-in attempts. Complete verification to try again.'),
+                'code': 'login_verification_required',
+            })
+        return super().throttled(request, wait)
 
 
 class RefreshView(TokenRefreshView):
