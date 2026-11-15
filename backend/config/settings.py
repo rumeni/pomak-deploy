@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'core',
     'accounts',
+    'coaching',
     'progress',
     'training',
     'nutrition',

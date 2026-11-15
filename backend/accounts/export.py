@@ -9,10 +9,11 @@ import json
 import zipfile
 
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from nutrition.models import Food, MealEntry, NutritionDay, NutritionTarget, SavedMeal
+from coaching.models import CoachConnection, CoachMessage, CoachAssignment
 from progress.models import Goal, Measurement
 from training.models import Exercise, Routine, SessionExercise, WorkoutSession
 
@@ -35,8 +36,22 @@ def collect(user) -> dict:
     )
     routines = Routine.objects.filter(owner=user).prefetch_related('exercises__exercise', 'exercises__sets')
     foods = Food.objects.filter(owner=user).prefetch_related('portions', 'ingredients__food')
+    connections = CoachConnection.objects.filter(Q(client=user) | Q(coach=user)).select_related('coach__profile', 'client__profile')
     return {
         'exported_at': timezone.now(),
+        'coaching': {
+            'connections': [
+                {'coach': c.coach.profile.display_name or c.coach.email.split('@')[0], 'client': c.client.profile.display_name or c.client.email.split('@')[0],
+                 'share_measurements': c.share_measurements, 'share_nutrition': c.share_nutrition, 'connected_at': c.created_at}
+                for c in connections
+            ],
+            'messages': [
+                {'sender_role': 'coach' if m.sender_id == m.connection.coach_id else 'client',
+                 'text': m.text, 'created_at': m.created_at}
+                for m in CoachMessage.objects.filter(connection__in=connections).select_related('connection').order_by('created_at')
+            ],
+            'assigned_routines': list(CoachAssignment.objects.filter(connection__client=user).values('routine__name', 'created_at')),
+        },
         'account': {'email': user.email, 'date_joined': user.date_joined, 'profile': {f: getattr(profile, f) for f in PROFILE_FIELDS}},
         'measurements': list(Measurement.objects.filter(user=user).order_by('measured_on').values('kind', 'value', 'measured_on', 'note')),
         'goals': list(Goal.objects.filter(user=user).values(

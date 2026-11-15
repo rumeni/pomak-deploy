@@ -8,6 +8,7 @@ urlpatterns = [
     path('api/ready/', ready, name='ready'),
     path('admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
+    path('api/coach/', include('coaching.urls')),
     path('api/progress/', include('progress.urls')),
     path('api/training/', include('training.urls')),
     path('api/nutrition/', include('nutrition.urls')),

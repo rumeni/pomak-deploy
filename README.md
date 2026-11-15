@@ -8,7 +8,7 @@ veb aplikacija (PWA) i kao Android aplikacija (Capacitor), na srpskom (latinica)
 > *EN: POMAK is a workout and nutrition tracker with optional coach collaboration — a React PWA packaged
 > as an Android app via Capacitor, backed by Django REST Framework. Bilingual (Serbian / English), offline-first.*
 
-**Status:** faza 1 (lični deo aplikacije) je funkcionalno gotova; deo za trenera dolazi u sledećim fazama.
+**Status:** lični trening i ishrana + osnovna saradnja trener–klijent (pozivnice, deljenje uz saglasnost, dodela rutina, poruke). Termini i naplata nisu implementirani.
 Detalji: [`docs/STATUS.md`](docs/STATUS.md) · plan i model podataka: [`docs/PLAN_FAZA_1.md`](docs/PLAN_FAZA_1.md)
 
 ## Mogućnosti
@@ -153,3 +153,5 @@ APK: `frontend/android/app/build/outputs/apk/debug/app-debug.apk`
 - **Crteži vežbi:** [Everkinetic](https://github.com/everkinetic/data), licenca CC BY-SA 4.0, bez izmena —
   [`frontend/public/exercises/README.md`](frontend/public/exercises/README.md).
 - **Uputstva za vežbe:** sopstveni tekst (`backend/training/data/instructions.py`).
+
+Detalji saradnje sa trenerom: [docs/COACH_COLLABORATION.md](docs/COACH_COLLABORATION.md).
