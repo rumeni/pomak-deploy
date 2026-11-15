@@ -1,9 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://pomak-pr13-staging-api.vercel.app/api/:path*"
-    }
-  ]
-}
