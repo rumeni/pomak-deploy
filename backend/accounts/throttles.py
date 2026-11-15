@@ -3,6 +3,7 @@
 import hashlib
 from datetime import timedelta
 
+from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
@@ -38,10 +39,27 @@ class DatabaseAuthThrottle(BaseThrottle):
                 )
                 AuthThrottleBucket.objects.filter(pk=bucket.pk).update(attempts=F('attempts') + 1)
                 bucket.refresh_from_db(fields=['attempts'])
-                if bucket.attempts > limit:
-                    self.remaining = max(1, int((bucket_start + timedelta(minutes=1) - now).total_seconds()))
-                    return False
+                exceeded = bucket.attempts > limit
+            if exceeded:
+                # Do not let an attacker lock out a victim merely by supplying
+                # that victim's email. A valid password may bypass *only* the
+                # email quota; client/IP quotas still apply.
+                if kind == 'account' and self._verified_login(request, view, email):
+                    continue
+                self.remaining = max(1, int((bucket_start + timedelta(minutes=1) - now).total_seconds()))
+                return False
         return True
+
+    @staticmethod
+    def _verified_login(request, view, email):
+        if not getattr(view, 'allow_correct_password_when_limited', False):
+            return False
+        password = request.data.get('password')
+        if not isinstance(password, str) or not password:
+            return False
+        # Authentication must happen *after* the counter transaction commits
+        # to avoid holding an email-wide row lock during password hashing.
+        return authenticate(request=request._request, username=email, password=password) is not None
 
     def wait(self):
         return getattr(self, 'remaining', 60)
