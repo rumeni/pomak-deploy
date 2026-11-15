@@ -175,6 +175,29 @@ describe('osvežavanje prijave', () => {
     expect(localStorage.getItem('pomak.refresh')).toBeNull()
   })
 
+  it('bez Web Locks neuspešna paralelna rotacija ne odjavljuje drugi tab', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    let attempts = 0
+    fakeServer((config) => {
+      if (config.url?.endsWith('/auth/refresh/')) {
+        attempts += 1
+        if (attempts === 1) {
+          // Another tab won the cookie rotation; only a non-secret epoch is shared.
+          localStorage.setItem('pomak.refresh-epoch', 'other-tab-won')
+          return { status: 401, data: {} }
+        }
+        return { status: 200, data: { access: 'recovered-access' } }
+      }
+      return config.headers.Authorization === 'Bearer recovered-access'
+        ? { status: 200, data: { ok: true } } : { status: 401, data: {} }
+    })
+    const session = tokens.session()
+    const response = await api.get('/auth/me/')
+    expect(response.status).toBe(200)
+    expect(tokens.isCurrent(session)).toBe(true)
+    expect(attempts).toBe(2)
+  })
+
   it('neuspela prijava (pogrešna lozinka) se ne ponavlja i ne osvežava', async () => {
     const seen: string[] = []
     fakeServer((config) => {
