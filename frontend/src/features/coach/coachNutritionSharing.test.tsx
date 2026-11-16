@@ -2,15 +2,19 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: { count?: number }) => {
-      if (key === 'diary.unknownMacro') return `${opts?.count} without data`
-      if (key === 'diary.unknownNote') return 'Only known values are summed'
-      return key
-    },
-  }),
-}))
+vi.mock('react-i18next', async (importOriginal) => {
+  const original = await importOriginal<typeof import('react-i18next')>()
+  return {
+    ...original,
+    useTranslation: () => ({
+      t: (key: string, opts?: { count?: number }) => {
+        if (key === 'diary.unknownMacro') return `${opts?.count} without data`
+        if (key === 'diary.unknownNote') return 'Only known values are summed'
+        return key
+      },
+    }),
+  }
+})
 vi.mock('../../lib/auth', () => ({
   useAuth: () => ({ me: { id: 'coach', profile: { is_coach: true } } }),
 }))
