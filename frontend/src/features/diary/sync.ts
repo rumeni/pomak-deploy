@@ -1,9 +1,14 @@
 import { db, type DiaryOpRow } from '../../lib/db'
+import { withDiarySyncLock } from './syncLock'
 import { classifySendError } from '../workout/outbox'
 
 const running = new Map<string, Promise<Set<string>>>()
 
-/** Never mix concurrent syncs of separate users or auth sessions. */
+/**
+ * Serialize the entire HTTP + IndexedDB batch across independent browser tabs.
+ * A per-module promise protects repeat calls within one tab, but cannot
+ * protect another tab, which is why the cross-tab lock is also required.
+ */
 export function syncDiary(
   ownerId: string, send: (op: DiaryOpRow) => Promise<unknown>,
   isCurrent: () => boolean = () => true, sessionKey = '',
@@ -11,29 +16,32 @@ export function syncDiary(
   const key = `${ownerId}:${sessionKey}`
   const existing = running.get(key)
   if (existing) return existing
-  const task = (async () => {
+  const task = withDiarySyncLock(ownerId, isCurrent, async (stillCurrent) => {
     const changed = new Set<string>()
+    // IMPORTANT: load the queue AFTER taking the owner lock, so another tab
+    // cannot replay a stale snapshot after its predecessor finished.
     const ops = (await db.diaryOps.where('ownerId').equals(ownerId).sortBy('seq')).filter((o) => !o.error)
     for (const op of ops) {
-      if (!isCurrent()) break
-      if (!(await db.diaryOps.get(op.id))) continue
-      if (!isCurrent()) break
+      if (!stillCurrent()) break
+      const latest = await db.diaryOps.get(op.id)
+      if (!latest || latest.ownerId !== ownerId || latest.error) continue
+      if (!stillCurrent()) break
       try {
-        await send(op)
-        if (!isCurrent()) break
-        await db.diaryOps.delete(op.id)
-        changed.add(op.date)
-        if (op.type === 'upsert') changed.add(op.preview.date)
+        await send(latest)
+        if (!stillCurrent()) break
+        await db.diaryOps.delete(latest.id)
+        changed.add(latest.date)
+        if (latest.type === 'upsert') changed.add(latest.preview.date)
       } catch (error) {
-        if (!isCurrent()) break
+        if (!stillCurrent()) break
         const { result, message } = classifySendError(error)
         if (result === 'retry-later') break
-        await db.diaryOps.update(op.id, { error: message })
-        changed.add(op.date)
+        await db.diaryOps.update(latest.id, { error: message })
+        changed.add(latest.date)
       }
     }
     return changed
-  })()
+  }, () => new Set<string>())
   const tracked = task.finally(() => { if (running.get(key) === tracked) running.delete(key) })
   running.set(key, tracked)
   return tracked
