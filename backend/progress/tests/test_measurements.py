@@ -47,3 +47,26 @@ class MeasurementTests(APITestCase):
         res = self.client.post('/api/progress/measurements/', {'kind': 'weight', 'value': '80', 'measured_on': future})
         self.assertEqual(res.status_code, 400)
         self.assertIn('measured_on', res.data)
+
+    def test_patch_cannot_rekey_owned_measurement_to_another_users_uuid(self):
+        other = User.objects.create_user('other@example.test', 'jaka-lozinka-123')
+        own = Measurement.objects.create(
+            user=self.user, kind='weight', value=80, measured_on='2026-09-24',
+        )
+        victim = Measurement.objects.create(
+            user=other, kind='weight', value=70, measured_on='2026-09-24',
+        )
+        result = self.client.patch(
+            f'/api/progress/measurements/{own.pk}/',
+            {'id': str(victim.pk), 'value': '81'},
+            format='json',
+        )
+        self.assertEqual(result.status_code, 200, result.data)
+        self.assertEqual(result.data['id'], str(own.pk))
+        own.refresh_from_db()
+        victim.refresh_from_db()
+        self.assertEqual(own.user_id, self.user.pk)
+        self.assertEqual(own.value, 81)
+        self.assertEqual(victim.user_id, other.pk)
+        self.assertEqual(victim.value, 70)
+        self.assertEqual(Measurement.objects.count(), 2)

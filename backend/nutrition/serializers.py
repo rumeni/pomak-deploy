@@ -319,6 +319,9 @@ class RecipeSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, recipe, validated_data):
+        # The URL selects the owned recipe. Never permit a body-supplied UUID
+        # to re-key it onto a shared or another user's Food record.
+        validated_data.pop('id', None)
         ingredients = validated_data.pop('ingredients', None)
         recipe = super().update(recipe, validated_data)
         if ingredients is not None:
