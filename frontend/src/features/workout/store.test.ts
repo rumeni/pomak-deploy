@@ -6,7 +6,7 @@ import { setCurrentUserId } from '../../lib/currentUser'
 import { db } from '../../lib/db'
 import { emptyActiveSet, startEmpty, type ActiveExercise, type ActiveWorkout, type SessionPayload } from './model'
 import { finishWorkout } from './outbox'
-import { applyActiveWorkoutEdit, clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout, shouldApplyWorkoutRefresh, StaleWorkoutError, startWorkoutIfUnchanged } from './store'
+import { applyActiveWorkoutEdit, clearActiveWorkout, getActiveWorkoutRow, matchesDisplayedWorkout, persistActiveWorkoutIfCurrent, saveActiveWorkout, shouldApplyWorkoutRefresh, StaleWorkoutError, startWorkoutIfUnchanged } from './store'
 import { ConcurrentWorkoutEditError } from './mergeWorkout'
 
 beforeEach(async () => {
@@ -214,6 +214,14 @@ describe('atomic same-workout edits across browser tabs', () => {
 
 describe('cross-tab edit merge limits and refresh fencing', () => {
   const now = new Date('2026-11-16T13:00:00Z')
+
+  it('does not silently switch a finishing screen from workout A to B', () => {
+    const a = startEmpty('A', now)
+    const b = startEmpty('B', now)
+    expect(matchesDisplayedWorkout(a.id, { slot: 'u1', ownerId: 'u1', workout: a })).toBe(true)
+    expect(matchesDisplayedWorkout(a.id, { slot: 'u1', ownerId: 'u1', workout: b })).toBe(false)
+    expect(matchesDisplayedWorkout(a.id, null)).toBe(false)
+  })
 
   it('never overwrites an optimistic keystroke with a late refresh', () => {
     expect(shouldApplyWorkoutRefresh(0, false)).toBe(true)

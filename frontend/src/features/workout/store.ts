@@ -108,6 +108,10 @@ export function shouldApplyWorkoutRefresh(pendingCount: number, conflict: boolea
   return pendingCount === 0 && !conflict
 }
 
+export function matchesDisplayedWorkout(viewedId: string | null, row: ActiveWorkoutRow | null): boolean {
+  return viewedId === null || row?.workout.id === viewedId
+}
+
 export function usePersistentWorkout() {
   type State = { loaded: boolean; row: ActiveWorkoutRow | null }
   const [state, setState] = useState<State>({ loaded: false, row: null })
@@ -116,10 +120,17 @@ export function usePersistentWorkout() {
   const pending = useRef(0)
   const queue = useRef<Promise<void>>(Promise.resolve())
   const hasConflict = useRef(false)
+  const displayedWorkoutId = useRef<string | null>(null)
   const [conflict, setConflict] = useState(false)
 
   useEffect(() => {
     if (live === undefined || pending.current || hasConflict.current) return
+    if (!matchesDisplayedWorkout(displayedWorkoutId.current, live)) {
+      hasConflict.current = true
+      setConflict(true)
+      return
+    }
+    if (live) displayedWorkoutId.current = live.workout.id
     const next = { loaded: true, row: live }
     latestState.current = next
     setState(next)
@@ -151,6 +162,12 @@ export function usePersistentWorkout() {
             // never roll it back with the stale snapshot.
             if (shouldApplyWorkoutRefresh(pending.current, hasConflict.current) &&
                 getCurrentUserId() === original.ownerId) {
+              if (!matchesDisplayedWorkout(displayedWorkoutId.current, fresh)) {
+                hasConflict.current = true
+                setConflict(true)
+                return
+              }
+              if (fresh) displayedWorkoutId.current = fresh.workout.id
               const next = { loaded: true, row: fresh }
               latestState.current = next
               setState(next)
