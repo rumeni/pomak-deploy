@@ -72,6 +72,11 @@ export function LoginPage() {
           {formState.isSubmitting ? t('auth.loggingIn') : t('auth.login')}
         </Button>
       </form>
+      {import.meta.env.VITE_ACCOUNT_EMAIL_ENABLED === 'true' && (
+        <Link to="/lozinka/zaboravljena" className="mt-4 text-center text-sm font-semibold text-brand-dark">
+          {t('accountSecurity.forgotLink')}
+        </Link>
+      )}
       <p className="mt-6 text-center text-muted">
         {t('auth.noAccount')}{' '}
         <Link to="/registracija" className="font-semibold text-brand-dark">

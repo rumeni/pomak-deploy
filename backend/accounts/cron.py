@@ -22,3 +22,4 @@ def cleanup_auth_throttle_cron(request):
         return JsonResponse({'detail': 'Unauthorized'}, status=401)
     deleted, more = cleanup_expired_auth_throttle_buckets()
     return JsonResponse({'status': 'ok', 'deleted': deleted, 'more_expired': more})
+

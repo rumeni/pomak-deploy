@@ -57,11 +57,21 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 class MeSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer()
+    email_verified = serializers.SerializerMethodField()
+    email_verification_required = serializers.SerializerMethodField()
+
+    def get_email_verified(self, obj):
+        return obj.email_verified_at is not None
+
+    def get_email_verification_required(self, obj):
+        # Explicitly disabled email delivery must also unlock the frontend
+        # during a staged rollout rollback, without changing stored user state.
+        return settings.ACCOUNT_EMAIL_ENABLED and obj.email_verification_required
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'profile']
-        read_only_fields = ['id', 'email']
+        fields = ['id', 'email', 'email_verified', 'email_verification_required', 'profile']
+        read_only_fields = ['id', 'email', 'email_verification_required']
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})
@@ -96,14 +106,28 @@ class RegisterSerializer(serializers.Serializer):
         user.profile.is_coach = validated_data['account_type'] == 'coach'
         user.profile.language = validated_data['language']
         user.profile.save()
+        if settings.ACCOUNT_EMAIL_ENABLED:
+            from django.db import transaction
+            from .email_security import send_verification_email_safe
+
+            user.email_verification_required = True
+            user.save(update_fields=['email_verification_required'])
+            transaction.on_commit(lambda pk=user.pk: send_verification_email_safe(pk))
         return user
 
     def to_representation(self, user):
         refresh = RefreshToken.for_user(user)
+        refresh['session_version'] = user.session_version
         return {'access': str(refresh.access_token), 'refresh': str(refresh)}
 
 
 class LoginSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        refresh = super().get_token(user)
+        refresh['session_version'] = user.session_version
+        return refresh
+
     default_error_messages = {'no_active_account': _('Wrong email or password.')}
 
     def validate(self, attrs):

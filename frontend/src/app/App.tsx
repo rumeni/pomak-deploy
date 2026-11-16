@@ -2,11 +2,13 @@ import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import { CoachPage } from '../features/coach/CoachPage'
 import { CoachClientPage } from '../features/coach/CoachClientPage'
 import { LoginPage } from '../features/auth/LoginPage'
+import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage, EmailVerificationPendingPage } from '../features/auth/AccountEmailPages'
+import { ChangePasswordPage } from '../features/auth/ChangePasswordPage'
 import { DeleteAccountPage } from '../features/auth/DeleteAccountPage'
 import { ProfilePage } from '../features/auth/ProfilePage'
 import { RegisterPage } from '../features/auth/RegisterPage'
@@ -38,6 +40,7 @@ import { AppLayout } from './AppLayout'
 
 export function App() {
   const { me, loading, unreachable, retry } = useAuth()
+  const location = useLocation()
   const { t } = useTranslation()
   useOutboxSync(me?.id)
 
@@ -47,14 +50,26 @@ export function App() {
 
   if (unreachable) return <UnreachableScreen onRetry={retry} />
 
+  // Recovery links must work even when the browser still has an old session
+  // or is paused in onboarding.
+  if (location.pathname === '/lozinka/reset') return <ResetPasswordPage />
+  if (location.pathname === '/potvrda-emaila') return <VerifyEmailPage />
+
   if (!me) {
     return (
       <Routes>
         <Route path="/prijava" element={<LoginPage />} />
         <Route path="/registracija" element={<RegisterPage />} />
+        <Route path="/lozinka/zaboravljena" element={<ForgotPasswordPage />} />
         <Route path="*" element={<Navigate to="/prijava" replace />} />
       </Routes>
     )
+  }
+
+  if (me.email_verification_required && !me.email_verified) {
+    return <Routes>
+      <Route path="*" element={<EmailVerificationPendingPage />} />
+    </Routes>
   }
 
   if (!me.profile.onboarding_completed_at) {
@@ -74,6 +89,7 @@ export function App() {
       <Route path="/trening/aktivan" element={<ActiveWorkoutPage />} />
       <Route path="/trening/istorija/:id" element={<SessionDetailPage />} />
       <Route path="/profil" element={<ProfilePage />} />
+      <Route path="/profil/lozinka" element={<ChangePasswordPage />} />
       <Route path="/profil/obroci" element={<MealSettingsPage />} />
       <Route path="/profil/obrisi-nalog" element={<DeleteAccountPage />} />
       <Route path="/ishrana/dodaj" element={<AddEntryPage />} />
