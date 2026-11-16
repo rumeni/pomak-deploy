@@ -194,6 +194,7 @@ class PasswordResetConfirmView(APIView):
 
 
 class PasswordChangeView(APIView):
+    sensitive_action_scope = 'password-change'
     throttle_classes = [DatabaseAccountDeletionThrottle]
 
     def post(self, request):
@@ -245,6 +246,7 @@ class EmailVerificationView(APIView):
 
 class EmailVerificationResendView(APIView):
     permission_classes = [IsAuthenticated]
+    sensitive_action_scope = 'email-verification-resend'
     # Explicit authentication lets an unverified user request a new email.
     throttle_classes = [DatabaseAccountDeletionThrottle]
 

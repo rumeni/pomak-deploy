@@ -6,7 +6,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from nutrition.models import MealEntry, NutritionDay, NutritionTarget
-from progress.models import Measurement
+from progress.models import Goal, Measurement
 from training.models import WorkoutSession
 
 TODAY = timezone.localdate
@@ -49,6 +49,27 @@ class GoalTests(Base):
         self.assertEqual(res.status_code, 201, res.data)
         self.assertTrue(Measurement.objects.filter(user=self.user, kind='arm', value=36).exists())
         self.assertEqual(res.data['state']['progress'], 0.0)
+
+    def test_first_goal_rejects_out_of_bounds_initial_measurement(self):
+        for kind, start, target in [
+            ('weight', '785', '78'),
+            ('weight', '24.99', '78'),
+            ('arm', '251', '40'),
+            ('arm', '9', '40'),
+        ]:
+            with self.subTest(kind=kind, start=start):
+                response = self.post(kind=kind, target_value=target, start_value=start)
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertIn('start_value', response.data)
+                self.assertFalse(Measurement.objects.filter(user=self.user, kind=kind).exists())
+                self.assertFalse(Goal.objects.filter(user=self.user, kind=kind).exists())
+
+    def test_first_goal_accepts_measurement_boundaries(self):
+        for kind, start, target in [('weight', '350', '75'), ('arm', '10', '40')]:
+            with self.subTest(kind=kind):
+                response = self.post(kind=kind, start_value=start, target_value=target)
+                self.assertEqual(response.status_code, 201, response.data)
+                self.assertTrue(Measurement.objects.filter(user=self.user, kind=kind).exists())
 
     def test_workouts_goal_counts_this_week_and_recent_weeks(self):
         monday = TODAY() - datetime.timedelta(days=TODAY().weekday())

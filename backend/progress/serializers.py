@@ -83,6 +83,11 @@ class GoalSerializer(serializers.ModelSerializer):
                 attrs['start_value'] = latest.value
             elif attrs.get('start_value') is None:
                 raise serializers.ValidationError({'start_value': _('Enter the current value.')})
+            # A first goal can create a measurement; apply identical bounds.
+            if not low <= attrs['start_value'] <= high:
+                raise serializers.ValidationError({
+                    'start_value': _('The value must be between %(low)s and %(high)s.') % {'low': low, 'high': high},
+                })
             if attrs['start_value'] == target:
                 raise serializers.ValidationError({'target_value': _('The goal must differ from the current value.')})
         attrs['start_date'] = today
