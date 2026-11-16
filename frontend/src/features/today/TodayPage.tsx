@@ -18,7 +18,7 @@ import { fromOutbox, fromServer } from '../workout/history'
 import { usePendingSessions } from '../workout/outbox'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { nextRoutine } from './next'
-import { weekActivity } from './week'
+import { weekActivity, workoutCountWithPending } from './week'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
 const linkClass = 'flex min-h-11 items-center text-sm font-semibold text-brand-dark'
@@ -86,7 +86,7 @@ function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: stri
         {tracksTraining && (
           <div className="today-stat">
             <span className="stat-value">
-              {workouts ? workouts.count + unsentThisWeek : '–'}
+              {workoutCountWithPending(workouts?.count, unsentThisWeek) ?? '–'}
               {workouts?.target ? <small>/{workouts.target}</small> : null}
             </span>
             <span className="stat-label">{t('today.statWorkouts')}</span>

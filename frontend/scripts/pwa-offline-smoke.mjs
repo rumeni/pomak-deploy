@@ -36,6 +36,22 @@ try {
   page.on('pageerror', error => console.error('PAGE ERROR:', error.message))
   page.on('console', message => { if (message.type() === 'error') console.error('PAGE CONSOLE:', message.text()) })
   await page.goto(url, { waitUntil: 'domcontentloaded' })
+
+  // Safari on iPhone relies on Apple-specific standalone metadata and PNG icon.
+  const ios = await page.evaluate(() => ({
+    capable: document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.getAttribute('content'),
+    title: document.querySelector('meta[name="apple-mobile-web-app-title"]')?.getAttribute('content'),
+    icon: document.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href'),
+  }))
+  assert.deepEqual(ios, { capable: 'yes', title: 'POMAK', icon: '/apple-touch-icon.png' })
+  const iconResponse = await fetch(url + ios.icon)
+  assert.equal(iconResponse.status, 200, 'iOS home-screen icon must exist')
+  assert.match(iconResponse.headers.get('content-type') ?? '', /image\/png/, 'iOS touch icon must be a PNG')
+
+  const releaseResponse = await fetch(url + '/build.json')
+  assert.equal(releaseResponse.status, 200, 'Built web release metadata missing')
+  assert.match((await releaseResponse.json()).sha, /^[a-f0-9]{40}$/, 'Build SHA must be a commit')
+
   await page.waitForFunction(async () => {
     if (!('serviceWorker' in navigator)) return false
     return (await navigator.serviceWorker.getRegistrations()).length > 0

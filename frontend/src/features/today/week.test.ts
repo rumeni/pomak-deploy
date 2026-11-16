@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { weekActivity } from './week'
+import { weekActivity, workoutCountWithPending } from './week'
 
 // Podne po lokalnom vremenu, da datum ne zavisi od vremenske zone na kojoj test radi.
 const at = (day: string) => new Date(`${day}T12:00:00`).toISOString()
@@ -26,5 +26,18 @@ describe('weekActivity', () => {
 
   it('neposlat trening iz prethodne nedelje se ne dodaje ovoj', () => {
     expect(weekActivity([], [s('b', '2026-11-08', 'pending')], '2026-11-09').unsentThisWeek).toBe(0)
+  })
+})
+
+describe('workout count with offline pending sessions', () => {
+  it('shows pending workouts without a server summary', () => {
+    expect(workoutCountWithPending(undefined, 2)).toBe(2)
+  })
+  it('keeps the placeholder if neither server data nor local workouts are available', () => {
+    expect(workoutCountWithPending(undefined, 0)).toBeNull()
+  })
+  it('combines a server count and unsent sessions without dropping zero', () => {
+    expect(workoutCountWithPending(3, 2)).toBe(5)
+    expect(workoutCountWithPending(0, 0)).toBe(0)
   })
 })

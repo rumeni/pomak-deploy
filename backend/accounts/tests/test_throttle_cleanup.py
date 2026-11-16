@@ -1,6 +1,6 @@
 import io
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as utc_timezone
 from unittest.mock import patch
 
 from django.core.management import call_command
@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from accounts.maintenance import cleanup_expired_auth_throttle_buckets
 from accounts.models import AuthThrottleBucket
+from accounts.throttles import PasswordResetThrottle
 
 
 class AuthThrottleCleanupTests(TestCase):
@@ -86,3 +87,38 @@ class AuthThrottleCleanupTests(TestCase):
                 ).status_code,
                 405,
             )
+
+
+class PasswordResetDailyCounterRetentionTests(TestCase):
+    def test_four_am_cron_does_not_reset_daily_email_queue_budget(self):
+        """Reproduce the 04:00 UTC cron finding with real database buckets."""
+        start = datetime(2026, 11, 15, 0, 10, tzinfo=utc_timezone.utc)
+        after_cron = datetime(2026, 11, 15, 4, 1, tzinfo=utc_timezone.utc)
+        next_day = datetime(2026, 11, 16, 0, 1, tzinfo=utc_timezone.utc)
+        sender = '192.0.2.21'
+
+        # Exhaust the day's IP quota before cron fires.
+        self.assertTrue(PasswordResetThrottle()._daily_limit('ip', sender, 2, start))
+        self.assertTrue(PasswordResetThrottle()._daily_limit('ip', sender, 2, start))
+        self.assertFalse(PasswordResetThrottle()._daily_limit('ip', sender, 2, start))
+
+        bucket = AuthThrottleBucket.objects.get()
+        self.assertEqual(
+            bucket.window_start,
+            datetime(2026, 11, 16, 0, 0, tzinfo=utc_timezone.utc),
+        )
+        deleted, more = cleanup_expired_auth_throttle_buckets(
+            now=datetime(2026, 11, 15, 4, 0, tzinfo=utc_timezone.utc),
+        )
+        self.assertEqual((deleted, more), (0, False))
+        self.assertFalse(PasswordResetThrottle()._daily_limit('ip', sender, 2, after_cron))
+
+        # Next UTC day gets a fresh bucket. The expired previous day's
+        # bucket may be cleared by the following 04:00 cron, not sooner.
+        self.assertTrue(PasswordResetThrottle()._daily_limit('ip', sender, 2, next_day))
+        self.assertEqual(AuthThrottleBucket.objects.count(), 2)
+        deleted, more = cleanup_expired_auth_throttle_buckets(
+            now=datetime(2026, 11, 16, 4, 0, tzinfo=utc_timezone.utc),
+        )
+        self.assertEqual((deleted, more), (1, False))
+        self.assertEqual(AuthThrottleBucket.objects.count(), 1)

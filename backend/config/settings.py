@@ -125,10 +125,10 @@ REST_FRAMEWORK = {
     # Direct/local Django must ignore client-supplied forwarding headers instead.
     'NUM_PROXIES': config('DRF_NUM_PROXIES', default=1 if is_vercel else 0, cast=int),
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'accounts.authentication.SessionVersionJWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'accounts.permissions.VerifiedEmailPermission',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
@@ -141,6 +141,41 @@ REST_FRAMEWORK = {
         'auth': '10/min',
     },
 }
+
+# Account emails are disabled until the transactional email provider and
+# the web/Android verification flows are tested. SMTP secrets stay in Vercel.
+ACCOUNT_EMAIL_ENABLED = config('ACCOUNT_EMAIL_ENABLED', default=False, cast=bool)
+ACCOUNT_EMAIL_BASE_URL = config('ACCOUNT_EMAIL_BASE_URL', default='')
+# Signed, durable queue: submit all syntactically valid reset addresses before any account lookup.
+ACCOUNT_EMAIL_WORKER_URL = config('ACCOUNT_EMAIL_WORKER_URL', default='')
+QSTASH_TOKEN = config('QSTASH_TOKEN', default='')
+QSTASH_CURRENT_SIGNING_KEY = config('QSTASH_CURRENT_SIGNING_KEY', default='')
+QSTASH_NEXT_SIGNING_KEY = config('QSTASH_NEXT_SIGNING_KEY', default='')
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+# Bound synchronous signup/verification SMTP latency on serverless workers.
+EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=10, cast=int)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='')
+PASSWORD_RESET_TIMEOUT = 30 * 60  # 30 minutes
+EMAIL_VERIFICATION_TIMEOUT = 24 * 60 * 60  # 24 hours
+if ACCOUNT_EMAIL_ENABLED and not DEBUG:
+    from urllib.parse import urlsplit
+
+    base = urlsplit(ACCOUNT_EMAIL_BASE_URL)
+    worker = urlsplit(ACCOUNT_EMAIL_WORKER_URL)
+    if (base.scheme != 'https' or not base.hostname or base.username or base.password
+            or base.query or base.fragment or base.path not in ('', '/')
+            or worker.scheme != 'https' or not worker.hostname or worker.username or worker.password
+            or worker.query or worker.fragment or worker.path != '/api/internal/password-reset-email/'
+            or not QSTASH_TOKEN or not QSTASH_CURRENT_SIGNING_KEY or not QSTASH_NEXT_SIGNING_KEY
+            or not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD or not DEFAULT_FROM_EMAIL):
+        raise ImproperlyConfigured(
+            'Account email rollout requires HTTPS sender/worker URLs, QStash queue signing keys and SMTP sender credentials.'
+        )
 
 # The recovery path is OFF until the web/Android widget and Siteverify
 # credentials have been manually tested and deployed together.

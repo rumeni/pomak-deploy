@@ -15,3 +15,9 @@ export function weekActivity(server: Session[], local: Session[], monday: string
   const unsentThisWeek = unsent.filter((s) => days.includes(dayOf(s))).length
   return { days, trained, unsentThisWeek }
 }
+
+/** Shows locally queued workouts even when the server weekly summary is unavailable. */
+export function workoutCountWithPending(serverCount: number | undefined, pendingCount: number): number | null {
+  if (serverCount === undefined) return pendingCount > 0 ? pendingCount : null
+  return serverCount + pendingCount
+}

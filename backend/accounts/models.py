@@ -29,6 +29,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
+    # Changing the password invalidates JWT access AND refresh tokens from all
+    # prior sessions, including older APKs which have no session_version claim.
+    session_version = models.PositiveIntegerField(default=0, db_default=0)
+    # Existing accounts remain supported. New signups require verification
+    # only when account emails are enabled and the clients can show the flow.
+    email_verification_required = models.BooleanField(default=False, db_default=False)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 
@@ -85,3 +92,4 @@ class AuthThrottleBucket(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['key', 'window_start'], name='auth_throttle_bucket_key_window'),
         ]
+

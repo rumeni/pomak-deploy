@@ -5,5 +5,11 @@
       "path": "/api/internal/cleanup-auth-throttle/",
       "schedule": "0 4 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "main": true
+    }
+  }
 }
