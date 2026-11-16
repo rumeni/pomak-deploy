@@ -592,6 +592,7 @@ export const en = {
     sources: 'Data sources',
     sourceFoods: 'Foods: USDA FoodData Central (public domain, CC0).',
     sourceExercises: 'Exercise illustrations: Everkinetic (everkinetic.com), unmodified,',
+    sourcePhotos: 'Photos: Unsplash (Jason Grant, Brett Jordan, Marta Filipczyk, Paweł Bulwan, Salman Sidheek, Andrii Solok, Andrew Valdivia, Katie Smith), Unsplash License.',
     logout: 'Log out',
   },
   deleteAccount: {

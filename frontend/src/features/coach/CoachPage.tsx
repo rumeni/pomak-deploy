@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { LanguageMenu } from '../../components/LanguageMenu'
+import coachPhoto from '../../assets/photos/coach.webp'
 import { Button, Card, EmptyState, Field, FormError, PageHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { getFormatLocale } from '../../lib/format'
@@ -21,7 +22,7 @@ export function CoachPage() {
   const dashboard = useCoachDashboard()
   return (
     <>
-      <PageHeader title={t('coach.title')} action={<LanguageMenu />} />
+      <PageHeader title={t('coach.title')} photo={coachPhoto} action={<LanguageMenu />} />
       <div className="flex flex-col gap-3 px-4 pb-8">
         {dashboard.isLoading && <p className="text-muted">{t('common.loading')}</p>}
         {dashboard.isError && (

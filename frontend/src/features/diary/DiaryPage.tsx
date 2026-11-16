@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router-dom'
 
+import nutritionPhoto from '../../assets/photos/nutrition.webp'
 import { Button, Card, PageHeader } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { addDays, formatDecimal, formatLongDate, fromISODate, toISODate } from '../../lib/format'
@@ -29,7 +30,7 @@ export function DiaryPage() {
 
   return (
     <>
-      <PageHeader title={t('nutrition.title')} action={<LanguageMenu />} />
+      <PageHeader title={t('nutrition.title')} photo={nutritionPhoto} action={<LanguageMenu />} />
       <div className="flex flex-col gap-4 px-4 pb-8">
         <div className="flex items-center justify-between rounded-3xl bg-card p-2 shadow-sm ring-1 ring-line/60">
           <NavButton label={t('diary.prevDay')} path="M15 18l-6-6 6-6" onClick={() => go(-1)} />

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
+import trainingPhoto from '../../assets/photos/training.webp'
 import { Button, EmptyState, PageHeader } from '../../components/ui'
 import { ActiveWorkoutBanner } from '../workout/ActiveWorkoutBanner'
 import { HistoryList } from '../workout/HistoryList'
@@ -26,7 +27,7 @@ export function TrainingPage() {
 
   return (
     <>
-      <PageHeader title={t('training.title')} action={<LanguageMenu />} />
+      <PageHeader title={t('training.title')} photo={trainingPhoto} action={<LanguageMenu />} />
       <div className="flex flex-col gap-4 px-4 pb-8">
         <ActiveWorkoutBanner />
 
