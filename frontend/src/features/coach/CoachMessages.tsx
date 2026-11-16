@@ -14,6 +14,7 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
   const send = useSendCoachMessage(clientId)
   const [text, setText] = useState('')
   const items = mergeCoachMessagePages(messages.data?.pages ?? [])
+  const newestId = items.at(-1)?.id ?? null
   const listRef = useRef<HTMLDivElement>(null)
   const restoreScroll = useRef<{ top: number; height: number } | null>(null)
   const previousCount = useRef(0)
@@ -39,16 +40,16 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
       previousCount: previousCount.current,
       count: items.length,
       previousNewestId: previousNewestId.current,
-      newestId: items.at(-1)?.id ?? null,
+      newestId,
       nearBottom: readerNearBottom.current,
       scrollHeight: box.scrollHeight,
       restore: restoreScroll.current,
     })
     if (target !== null) box.scrollTop = target
     previousCount.current = items.length
-    previousNewestId.current = items.at(-1)?.id ?? null
+    previousNewestId.current = newestId
     restoreScroll.current = null
-  }, [items.length, messages.data, conversationKey])
+  }, [items.length, messages.data, conversationKey, newestId])
 
   const loadOlder = () => {
     const box = listRef.current
