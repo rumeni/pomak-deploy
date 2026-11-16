@@ -103,3 +103,9 @@ class FoodDatabaseTests(APITestCase):
         self.assertEqual(self.client.patch(url, {'name': 'Nije moja'}, format='json').status_code, 404)
         self.client.force_authenticate(self.user)
         self.assertEqual(self.client.get(url).data['name'], 'Ispravljena namirnica')
+
+    def test_existing_cyrillic_food_with_legacy_search_key_still_matches(self):
+        food = Food.objects.create(owner=self.user, source='custom', name='Моја пилетина', kcal=110)
+        # Simulate a record that predates Cyrillic transliteration.
+        Food.objects.filter(pk=food.pk).update(search_name='моја пилетина')
+        self.assertIn('Моја пилетина', self.names('пилетина'))
