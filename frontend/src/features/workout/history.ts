@@ -52,8 +52,11 @@ export function fromOutbox(row: OutboxRow): SessionView {
 
 /** Istorija: neposlati i poslati zajedno, najnoviji prvi. Poslat trening se ne ponavlja. */
 export function combineHistory(server: SessionView[], local: SessionView[]): SessionView[] {
-  const sentIds = new Set(server.map((s) => s.id))
-  return [...local.filter((l) => !sentIds.has(l.id)), ...server].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  // Even if a server page is refetched while new workouts are inserted, each
+  // session ID must appear once. Sent records supersede local pending copies.
+  const sent = new Map(server.map((s) => [s.id, s]))
+  return [...local.filter((l) => !sent.has(l.id)), ...sent.values()]
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 }
 
 export function durationSeconds(s: SessionView): number {
