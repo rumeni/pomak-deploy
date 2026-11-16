@@ -9,6 +9,7 @@ import { performRegistration } from './registration'
 import { AuthContext, type RegisterData } from './authContext'
 import { getCurrentUserId, setCurrentUserId } from './currentUser'
 import { flushPendingLanguage, pendingLanguage } from './languagePreference'
+import { mergeProfileResponse } from './profileMutation'
 import { tokens } from './tokens'
 import type { Me } from './types'
 
@@ -67,7 +68,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }, requestConfig)
           return data
         }, isCurrent)
-        if (result.synced && result.data && isCurrent()) queryClient.setQueryData(['me'], result.data)
+        if (result.synced && result.data && isCurrent()) {
+          const serverData = result.data
+          queryClient.setQueryData<Me>(['me'], (cached) => mergeProfileResponse(cached, serverData, { language: toServerLanguage(desired) }))
+        }
       } catch {
         // Keep the durable preference for the next online/relaunch attempt.
       } finally {

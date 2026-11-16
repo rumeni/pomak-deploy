@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { DateOfBirthField } from '../../components/DateOfBirthField'
 import { Button, ChoiceCards, Field, FormError, Segmented } from '../../components/ui'
 import { api, errorMessage, type ScopedRequestConfig } from '../../lib/api'
-import { acceptsProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
+import { applyOwnProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
 import type { Me, Profile } from '../../lib/types'
@@ -28,9 +28,10 @@ export function OnboardingPage() {
 
   const saveProfile = async (profile: Partial<Profile>) => {
     if (!me) throw new Error('Authentication changed')
-    const data = await patchOwnProfile(me.id, profile)
+    const scope = profileScope(me.id)
+    const data = await patchOwnProfile(me.id, profile, scope)
     if (!data) throw new Error('Authentication changed')
-    queryClient.setQueryData(['me'], data)
+    applyOwnProfileResponse(queryClient, scope, data, profile)
   }
 
   const finish = useMutation({
@@ -41,7 +42,7 @@ export function OnboardingPage() {
       return { data, scope }
     },
     onSuccess: ({ data, scope }) => {
-      if (acceptsProfileResponse(scope, data)) queryClient.setQueryData(['me'], data)
+      applyOwnProfileResponse(queryClient, scope, data, { onboarding_completed_at: data.profile.onboarding_completed_at })
     },
   })
 

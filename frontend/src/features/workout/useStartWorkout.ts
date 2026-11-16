@@ -34,7 +34,7 @@ export function useStartWorkout() {
     }
     // Cancel only after the old workout was actually replaced; a rejected
     // cross-tab race must leave the active workout's rest alarm intact.
-    if (current) await cancelRestEnd()
+    if (current) void cancelRestEnd().catch(() => undefined)
     navigate('/trening/aktivan')
   }
 }

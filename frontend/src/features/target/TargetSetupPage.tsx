@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { DateOfBirthField } from '../../components/DateOfBirthField'
 import { Button, Card, ChoiceCards, Field, FormError, LoadingScreen, ScreenHeader, Segmented } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
-import { patchOwnProfile } from '../../lib/profileMutation'
+import { applyOwnProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 import { formatDecimal, formatShortDate, parseDecimal, toISODate } from '../../lib/format'
 import type { Profile } from '../../lib/types'
@@ -127,9 +127,11 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
       // Podaci se čuvaju u profilu i kao merenje težine, pa ih vidi i ostatak aplikacije.
       if (sex !== profile.sex || birthDate !== profile.birth_date || String(heightCm) !== String(Number(profile.height_cm))) {
         if (!me) throw new Error('Authentication changed')
-        const data = await patchOwnProfile(me.id, { sex, birth_date: birthDate, height_cm: String(heightCm) })
+        const submitted = { sex, birth_date: birthDate, height_cm: String(heightCm) }
+        const scope = profileScope(me.id)
+        const data = await patchOwnProfile(me.id, submitted, scope)
         if (!data) throw new Error('Authentication changed')
-        queryClient.setQueryData(['me'], data)
+        applyOwnProfileResponse(queryClient, scope, data, submitted)
       }
       if (!weight || weightKg !== Number(weight.value)) {
         await api.post('/progress/measurements/', { id: weightId.current, kind: 'weight', value: String(weightKg), measured_on: toISODate(new Date()) })

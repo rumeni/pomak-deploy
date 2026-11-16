@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { FormError, Segmented } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
-import { patchOwnProfile } from '../../lib/profileMutation'
+import { applyOwnProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 
 type Tracking = 'both' | 'training' | 'nutrition'
@@ -22,8 +22,10 @@ export function TrackingSetting() {
   const onChange = async (next: Tracking) => {
     setError(null)
     try {
-      const data = await patchOwnProfile(me.id, { tracks_training: next !== 'nutrition', tracks_nutrition: next !== 'training' })
-      if (data) queryClient.setQueryData(['me'], data)
+      const submitted = { tracks_training: next !== 'nutrition', tracks_nutrition: next !== 'training' }
+      const scope = profileScope(me.id)
+      const data = await patchOwnProfile(me.id, submitted, scope)
+      if (data) applyOwnProfileResponse(queryClient, scope, data, submitted)
     } catch (e) {
       setError(errorMessage(e))
     }

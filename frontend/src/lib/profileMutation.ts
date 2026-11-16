@@ -1,4 +1,5 @@
 import type { AuthScope, ScopedRequestConfig } from './api'
+import type { QueryClient } from '@tanstack/react-query'
 import { api, scopeIsCurrent } from './api'
 import { tokens } from './tokens'
 import type { Me, Profile } from './types'
@@ -20,4 +21,20 @@ export async function patchOwnProfile(ownerId: string, profile: Partial<Profile>
   const config: ScopedRequestConfig = { __pomakScope: scope }
   const { data } = await api.patch<Me>('/auth/me/', { profile }, config)
   return acceptsProfileResponse(scope, data) ? data : null
+}
+
+/** Only the fields submitted by this PATCH may replace cache fields. */
+export function mergeProfileResponse(cached: Me | undefined, response: Me, submitted: Partial<Profile>): Me {
+  if (!cached || cached.id !== response.id) return response
+  const fields = Object.keys(submitted) as (keyof Profile)[]
+  const changed = Object.fromEntries(fields.map((field) => [field, response.profile[field]])) as Partial<Profile>
+  return { ...cached, profile: { ...cached.profile, ...changed } }
+}
+
+export function applyOwnProfileResponse(
+  client: QueryClient, scope: AuthScope, response: Me, submitted: Partial<Profile>,
+): boolean {
+  if (!acceptsProfileResponse(scope, response)) return false
+  client.setQueryData<Me>(['me'], (cached) => mergeProfileResponse(cached, response, submitted))
+  return true
 }

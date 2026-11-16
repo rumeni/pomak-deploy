@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { Button, FormError, ScreenHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
-import { patchOwnProfile, profileScope, acceptsProfileResponse } from '../../lib/profileMutation'
+import { applyOwnProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 import type { AuthScope } from '../../lib/api'
 import { mealSettings } from './meals'
@@ -23,13 +23,10 @@ export function MealSettingsPage() {
   const save = useMutation({
     mutationFn: async ({ list, scope }: { list: MealSetting[]; scope: AuthScope }) => {
       const data = await patchOwnProfile(scope.ownerId, { meals: list }, scope)
-      return { data, scope }
+      return { data, scope, list }
     },
-    onSuccess: ({ data, scope }) => {
-      if (data && acceptsProfileResponse(scope, data)) {
-        queryClient.setQueryData(['me'], data)
-        navigate(-1)
-      }
+    onSuccess: ({ data, scope, list }) => {
+      if (data && applyOwnProfileResponse(queryClient, scope, data, { meals: list })) navigate(-1)
     },
   })
 
