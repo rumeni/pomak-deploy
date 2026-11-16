@@ -44,6 +44,12 @@ export function classifySendError(error: unknown): { result: Exclude<SendResult,
     const status = error.response.status
     // 4xx: server je pogledao podatke i odbio ih; ponovno slanje istog neće pomoći.
     // 401/403/408/429 su privremeni (prijava, istek vremena, previše zahteva).
+    // A device clock ahead of the server can make started_at "future".
+    // Keep the workout retryable instead of permanently hiding its saved sets.
+    if (status === 400 && error.response.data && typeof error.response.data === 'object'
+      && 'started_at' in error.response.data) {
+      return { result: 'retry-later', message: null }
+    }
     if (status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status)) {
       const data = error.response.data as Record<string, unknown> | undefined
       const first = data && typeof data === 'object' ? Object.values(data)[0] : null
