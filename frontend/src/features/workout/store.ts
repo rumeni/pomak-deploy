@@ -34,6 +34,26 @@ export async function clearActiveWorkout(): Promise<void> {
 }
 
 /**
+ * Autosave must NEVER create a row. A finished/discarded workout has been
+ * removed from IndexedDB and a late React effect or previous-result fetch
+ * cannot reinsert it. A different workout started for the same owner must
+ * not be overwritten by an old in-flight write.
+ *
+ * The identity check and update run in the same read-write transaction, so
+ * finishWorkout's outbox+delete transaction cannot interleave between them.
+ */
+export async function persistActiveWorkoutIfCurrent(row: ActiveWorkoutRow): Promise<boolean> {
+  if (getCurrentUserId() !== row.ownerId || row.slot !== row.ownerId) return false
+  return db.transaction('rw', db.activeWorkout, async () => {
+    const current = await db.activeWorkout.get(row.slot)
+    if (getCurrentUserId() !== row.ownerId ||
+        current?.ownerId !== row.ownerId || current.workout.id !== row.workout.id) return false
+    await db.activeWorkout.update(row.slot, { workout: row.workout })
+    return true
+  })
+}
+
+/**
  * Trening za ekran tokom vežbanja: stanje je u memoriji (brz unos bez gubljenja znakova),
  * a svaka izmena se odmah prepisuje u lokalnu bazu.
  */
@@ -50,7 +70,7 @@ export function usePersistentWorkout() {
   }, [])
 
   useEffect(() => {
-    if (changed.current && state.row) void db.activeWorkout.put(state.row)
+    if (changed.current && state.row) void persistActiveWorkoutIfCurrent(state.row)
   }, [state.row])
 
   const update = useCallback((change: (w: ActiveWorkout) => ActiveWorkout) => {
