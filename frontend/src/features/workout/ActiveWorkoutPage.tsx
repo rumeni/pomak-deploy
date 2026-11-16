@@ -38,9 +38,11 @@ type Update = (change: (w: ActiveWorkout) => ActiveWorkout) => void
 export function ActiveWorkoutPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { loaded, row, update } = usePersistentWorkout()
+  const { loaded, row, update, flush, conflict } = usePersistentWorkout()
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [finishOpen, setFinishOpen] = useState(false)
+  // Never let a live cross-tab update swap the workout underneath an open
+  // finish form (its local feeling/notes belong to the original workout).
+  const [finishId, setFinishId] = useState<string | null>(null)
   const now = useNow()
   const workout = row?.workout
 
@@ -60,9 +62,15 @@ export function ActiveWorkoutPage() {
   if (!loaded) return <LoadingScreen />
   if (!row || !workout) return <Navigate to="/trening" replace />
 
-  if (finishOpen) {
+  if (finishId) {
+    if (conflict || workout.id !== finishId) return (
+      <div className="mx-auto max-w-xl p-4" role="alert">
+        <p>{t('workout.staleWorkout')}</p>
+        <Button variant="secondary" onClick={() => navigate('/trening', { replace: true })}>{t('common.retry')}</Button>
+      </div>
+    )
     return (
-      <FinishWorkout workout={workout} ownerId={row.ownerId} onBack={() => setFinishOpen(false)} onDone={() => navigate('/trening', { replace: true })} />
+      <FinishWorkout key={finishId} workout={workout} ownerId={row.ownerId} flush={flush} onBack={() => setFinishId(null)} onDone={() => navigate('/trening', { replace: true })} />
     )
   }
 
@@ -81,11 +89,17 @@ export function ActiveWorkoutPage() {
 
   return (
     <div className="min-h-full pb-48">
+      {conflict && (
+        <div role="alert" className="mx-auto max-w-xl rounded-xl bg-danger/10 p-3 text-danger">
+          <p>{t('workout.concurrentEdit')}</p>
+          <Button variant="secondary" onClick={() => window.location.reload()}>{t('common.retry')}</Button>
+        </div>
+      )}
       <ScreenHeader
         title={workout.name}
         onBack={() => navigate('/trening')}
         action={
-          <Button className="min-h-10 px-4 text-sm" onClick={() => setFinishOpen(true)}>
+          <Button className="min-h-10 px-4 text-sm" onClick={() => setFinishId(workout.id)}>
             {t('workout.finish')}
           </Button>
         }

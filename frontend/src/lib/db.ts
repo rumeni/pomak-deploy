@@ -11,6 +11,8 @@ export interface ActiveWorkoutRow {
   /** Nalog kome trening pripada; na istom telefonu može da se prijavi više ljudi. */
   ownerId: string
   workout: ActiveWorkout
+  /** Each committed edit increments this; legacy IndexedDB rows start at 0. */
+  revision?: number
 }
 
 /** Završen trening koji čeka slanje na server (npr. nije bilo interneta). */

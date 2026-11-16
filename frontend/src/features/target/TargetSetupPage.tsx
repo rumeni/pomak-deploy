@@ -6,9 +6,10 @@ import { useNavigate } from 'react-router-dom'
 import { DateOfBirthField } from '../../components/DateOfBirthField'
 import { Button, Card, ChoiceCards, Field, FormError, LoadingScreen, ScreenHeader, Segmented } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
+import { applyOwnProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 import { formatDecimal, formatShortDate, parseDecimal, toISODate } from '../../lib/format'
-import type { Me, Profile } from '../../lib/types'
+import type { Profile } from '../../lib/types'
 import { uuid } from '../../lib/uuid'
 import {
   ACTIVITIES,
@@ -86,6 +87,7 @@ function useSaveAndReturn() {
 function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight: WeightMeasurement | null; onManual: () => void }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { me } = useAuth()
   const [sex, setSex] = useState<Profile['sex']>(profile.sex)
   const [birthDate, setBirthDate] = useState(profile.birth_date ?? '')
   const [height, setHeight] = useState(profile.height_cm ? formatDecimal(Number(profile.height_cm)) : '')
@@ -124,8 +126,12 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
 
       // Podaci se čuvaju u profilu i kao merenje težine, pa ih vidi i ostatak aplikacije.
       if (sex !== profile.sex || birthDate !== profile.birth_date || String(heightCm) !== String(Number(profile.height_cm))) {
-        const { data } = await api.patch<Me>('/auth/me/', { profile: { sex, birth_date: birthDate, height_cm: String(heightCm) } })
-        queryClient.setQueryData(['me'], data)
+        if (!me) throw new Error('Authentication changed')
+        const submitted = { sex, birth_date: birthDate, height_cm: String(heightCm) }
+        const scope = profileScope(me.id)
+        const data = await patchOwnProfile(me.id, submitted, scope)
+        if (!data) throw new Error('Authentication changed')
+        applyOwnProfileResponse(queryClient, scope, data, submitted)
       }
       if (!weight || weightKg !== Number(weight.value)) {
         await api.post('/progress/measurements/', { id: weightId.current, kind: 'weight', value: String(weightKg), measured_on: toISODate(new Date()) })

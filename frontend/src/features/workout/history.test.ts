@@ -40,6 +40,11 @@ describe('istorija', () => {
     expect(combineHistory([...first, ...overlap], local).map((s) => s.id)).toEqual(['s1', 's2', 's3'])
   })
 
+  it('shows deletion pending even when an old server page still contains the session', () => {
+    const result = combineHistory([view('old', '2026-09-30T10:00:00Z')], [view('old', '2026-09-30T10:00:00Z', 'deleting')])
+    expect(result.map((s) => `${s.id}:${s.status}`)).toEqual(['old:deleting'])
+  })
+
   it('spaja po datumu i ne ponavlja trening koji je u međuvremenu poslat', () => {
     const server = [view('s1', '2026-09-29T10:00:00Z'), view('p1', '2026-09-30T10:00:00Z')]
     const local = [view('p1', '2026-09-30T10:00:00Z', 'pending'), view('p2', '2026-09-30T18:00:00Z', 'pending')]

@@ -18,6 +18,7 @@ export async function finishWorkout(
   payload: SessionPayload,
   exercises: Exercise[],
   now = new Date(),
+  expectedRevision?: number,
 ): Promise<void> {
   if (getCurrentUserId() !== ownerId) throw new StaleWorkoutError()
   await db.transaction('rw', db.outbox, db.activeWorkout, async () => {
@@ -25,7 +26,8 @@ export async function finishWorkout(
     // Check and delete atomically with the outbox insertion; another tab
     // may have replaced workout A with B after this screen loaded.
     if (getCurrentUserId() !== ownerId ||
-        active?.ownerId !== ownerId || active.workout.id !== payload.id) {
+        active?.ownerId !== ownerId || active.workout.id !== payload.id ||
+        (expectedRevision !== undefined && (active.revision ?? 0) !== expectedRevision)) {
       throw new StaleWorkoutError()
     }
     await db.outbox.put({ id: payload.id, ownerId, payload, exercises, queuedAt: now.toISOString(), attempts: 0, error: null })
