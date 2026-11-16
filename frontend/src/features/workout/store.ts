@@ -165,12 +165,12 @@ export function usePersistentWorkout() {
               if (!matchesDisplayedWorkout(displayedWorkoutId.current, fresh)) {
                 hasConflict.current = true
                 setConflict(true)
-                return
+              } else {
+                if (fresh) displayedWorkoutId.current = fresh.workout.id
+                const next = { loaded: true, row: fresh }
+                latestState.current = next
+                setState(next)
               }
-              if (fresh) displayedWorkoutId.current = fresh.workout.id
-              const next = { loaded: true, row: fresh }
-              latestState.current = next
-              setState(next)
             }
           } catch {
             hasConflict.current = true
