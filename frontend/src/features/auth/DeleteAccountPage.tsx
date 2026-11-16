@@ -7,6 +7,7 @@ import { Button, Field, FormError, ScreenHeader } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { clearLocalData } from '../workout/localData'
+import { forgetLanguagePreference } from '../../lib/languagePreference'
 
 /** Trajno brisanje naloga, uz lozinku. Pre toga predlaže izvoz podataka. */
 export function DeleteAccountPage() {
@@ -18,7 +19,10 @@ export function DeleteAccountPage() {
   const remove = useMutation({
     mutationFn: async () => api.post('/auth/me/delete/', { password }),
     onSuccess: async () => {
-      if (me) await clearLocalData(me.id)
+      if (me) {
+        await clearLocalData(me.id, true)
+        forgetLanguagePreference(me.id)
+      }
       logout()
     },
   })

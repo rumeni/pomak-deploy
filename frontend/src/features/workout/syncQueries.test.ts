@@ -11,5 +11,8 @@ describe('query refresh after workout sync', () => {
   })
   it('does nothing when there is no change', () => {
     expect(workoutQueriesAfterSync({ sent: 0, rejected: 0 })).toEqual([])
+    expect(workoutQueriesAfterSync({ sent: 0, rejected: 0, deleted: 1 })).toEqual([
+      ['sessions'], ['week'], ['goals'],
+    ])
   })
 })

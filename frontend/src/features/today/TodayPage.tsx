@@ -79,7 +79,7 @@ function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: stri
   const { day } = useDiaryDay(tracksNutrition ? ownerId : undefined, nutritionToday)
 
   const weekday = new Intl.DateTimeFormat(getFormatLocale(), { weekday: 'narrow' })
-  const { days, trained, unsentThisWeek } = weekActivity((sessions ?? []).map(fromServer), (pending ?? []).map(fromOutbox), monday)
+  const { days, trained, unsentThisWeek } = weekActivity((sessions ?? []).map(fromServer), (pending ?? []).filter((row) => !row.deleteRequested).map(fromOutbox), monday)
   const workouts = week.data?.workouts
   const latest = weights?.[0]
 

@@ -1,6 +1,6 @@
 import { addDays } from '../../lib/format'
 
-type Session = { id: string; startedAt: string; status: 'sent' | 'pending' | 'rejected' }
+type Session = { id: string; startedAt: string; status: 'sent' | 'pending' | 'rejected' | 'deleting' }
 
 // The backend counts workouts using Django's Europe/Belgrade timezone. A
 // device in another timezone must assign pending workouts to the same days.

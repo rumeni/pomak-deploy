@@ -14,6 +14,7 @@ import { durationSeconds, formatWorkoutDuration, fromOutbox, fromServer, type Se
 import { StatusBadge } from './HistoryList'
 import { describeLogged } from './model'
 import { discardOutboxItem, restoreRejectedWorkout } from './outbox'
+import { requestSync } from './sync'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 
 /** Detalj treninga iz istorije: sa servera ili, dok nije poslat, sa telefona. */
@@ -31,6 +32,8 @@ export function SessionDetailPage() {
   const remove = useDeleteSession()
   const [restoring, setRestoring] = useState(false)
   const [restoreError, setRestoreError] = useState<string | null>(null)
+  const [discarding, setDiscarding] = useState(false)
+  const [discardError, setDiscardError] = useState<string | null>(null)
 
   const session: SessionView | null = local ? fromOutbox(local) : remote.data ? fromServer(remote.data) : null
   const back = () => navigate('/trening')
@@ -54,9 +57,18 @@ export function SessionDetailPage() {
       if (!window.confirm(t('history.deleteConfirm', { name: session.name }))) return
       remove.mutate(session.id, { onSuccess: back })
     } else {
-      if (!window.confirm(t('history.discardConfirm'))) return
-      await discardOutboxItem(session.id)
-      back()
+      if (!me) return
+      if (session.status !== 'deleting' && !window.confirm(t('history.discardConfirm'))) return
+      setDiscardError(null)
+      setDiscarding(true)
+      try {
+        await discardOutboxItem(me.id, session.id)
+        requestSync()
+        back()
+      } catch (cause) {
+        setDiscardError(errorMessage(cause))
+        setDiscarding(false)
+      }
     }
   }
 
@@ -95,6 +107,7 @@ export function SessionDetailPage() {
         </div>
 
         {session.status === 'pending' && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.pendingHint')}</p>}
+        {session.status === 'deleting' && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.deletingHint')}</p>}
         {session.status === 'rejected' && (
           <p className="rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">{t('history.rejectedHint', { error: session.error })}</p>
         )}
@@ -133,14 +146,14 @@ export function SessionDetailPage() {
           </p>
         )}
 
-        <FormError message={restoreError ?? (remove.isError ? errorMessage(remove.error) : null)} />
+        <FormError message={restoreError ?? discardError ?? (remove.isError ? errorMessage(remove.error) : null)} />
         {session.status === 'rejected' && local && (
           <Button onClick={() => void onRestore()} disabled={restoring}>
             {t('history.restoreToEdit')}
           </Button>
         )}
-        <Button variant="ghost" className="mt-4 text-danger" onClick={() => void onDelete()} disabled={remove.isPending}>
-          {session.status === 'sent' ? t('history.delete') : t('history.discard')}
+        <Button variant="ghost" className="mt-4 text-danger" onClick={() => void onDelete()} disabled={remove.isPending || discarding}>
+          {session.status === 'sent' ? t('history.delete') : session.status === 'deleting' ? t('history.retryDelete') : t('history.discard')}
         </Button>
       </div>
     </div>

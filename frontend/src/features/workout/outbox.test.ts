@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../../lib/db'
 import type { SessionPayload } from './model'
 import type { Exercise } from '../training/api'
-import { classifySendError, finishWorkout, mergePrevious, pendingSessions, previousFromOutbox, restoreRejectedWorkout, syncOutbox } from './outbox'
+import { classifySendError, discardOutboxItem, finishWorkout, mergePrevious, pendingSessions, previousFromOutbox, restoreRejectedWorkout, syncOutbox } from './outbox'
 import { MAX_WORKOUT_SNAPSHOT_BYTES } from './model'
 
 function payload(id: string, startedAt: string, exerciseId = 'bench', weight = '60'): SessionPayload {
@@ -146,6 +146,86 @@ describe('syncOutbox', () => {
     const send = vi.fn(async () => new Promise((r) => setTimeout(r, 10)))
     await Promise.all([syncOutbox('u1', send), syncOutbox('u1', send)])
     expect(send).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('durable workout deletion reconciliation (#47)', () => {
+  it('discards a never-uploaded workout locally without contacting the server', async () => {
+    await finishWorkout('u1', payload('local', '2026-09-30T10:00:00Z'), [])
+    await discardOutboxItem('u1', 'local')
+    expect(await db.outbox.get('local')).toBeUndefined()
+  })
+
+  it('does not delete local identity until a concurrent POST is followed by DELETE', async () => {
+    await finishWorkout('u1', payload('race', '2026-09-30T10:00:00Z'), [])
+    let sendStarted!: () => void
+    let finishSend!: () => void
+    const started = new Promise<void>((resolve) => { sendStarted = resolve })
+    const continueSend = new Promise<void>((resolve) => { finishSend = resolve })
+    let posted = false
+    const send = vi.fn(async () => {
+      sendStarted()
+      await continueSend
+      posted = true
+    })
+    const remove = vi.fn(async (id: string) => {
+      expect(posted).toBe(true)
+      expect(id).toBe('race')
+    })
+    const running = syncOutbox('u1', send, () => true, 'race-session', remove)
+    await started
+    await discardOutboxItem('u1', 'race')
+    const tombstone = (await db.outbox.get('race'))!
+    expect(tombstone.deleteRequested).toBe(true)
+    expect(tombstone.payload.exercises).toEqual([])
+    expect(tombstone.exercises).toEqual([])
+    finishSend()
+    const report = await running
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(report.deleted).toBe(1)
+    expect(report.sent).toBe(0)
+    expect(await db.outbox.get('race')).toBeUndefined()
+  })
+
+  it('reconciles an upload whose HTTP response was lost and retries a failed DELETE', async () => {
+    await finishWorkout('u1', payload('uncertain', '2026-09-30T10:00:00Z'), [])
+    const send = vi.fn().mockRejectedValue(networkError())
+    expect((await syncOutbox('u1', send)).pending).toBe(1)
+    expect((await db.outbox.get('uncertain'))?.attempts).toBe(1)
+
+    await discardOutboxItem('u1', 'uncertain')
+    const remove = vi.fn().mockRejectedValueOnce(networkError()).mockResolvedValueOnce(undefined)
+    const first = await syncOutbox('u1', send, () => true, 'recovery1', remove)
+    expect(first.deleted).toBeUndefined()
+    expect((await db.outbox.get('uncertain'))?.deleteRequested).toBe(true)
+    const second = await syncOutbox('u1', send, () => true, 'recovery2', remove)
+    expect(second.deleted).toBe(1)
+    expect(await db.outbox.get('uncertain')).toBeUndefined()
+    expect(send).toHaveBeenCalledTimes(1) // Never reupload after delete intent.
+  })
+
+  it('accepts 404 as deletion confirmed and never erases a different account', async () => {
+    await finishWorkout('u1', payload('known', '2026-09-30T10:00:00Z'), [])
+    await db.outbox.update('known', { attempts: 1 })
+    await expect(discardOutboxItem('u2', 'known')).rejects.toThrow('NOT_FOUND')
+    expect((await db.outbox.get('known'))?.deleteRequested).toBeUndefined()
+    await discardOutboxItem('u1', 'known')
+    expect((await syncOutbox('u1', vi.fn(), () => true, 'delete404',
+      async () => { throw httpError(404) })).deleted).toBe(1)
+    expect(await db.outbox.get('known')).toBeUndefined()
+  })
+
+  it('recreates only a delete tombstone when POST completed just before user tapped Delete', async () => {
+    await finishWorkout('u1', payload('sent', '2026-09-30T10:00:00Z'), [])
+    await syncOutbox('u1', async () => undefined)
+    expect(await db.outbox.get('sent')).toBeUndefined()
+    await discardOutboxItem('u1', 'sent')
+    expect((await db.outbox.get('sent'))?.deleteRequested).toBe(true)
+    const remove = vi.fn().mockResolvedValue(undefined)
+    await syncOutbox('u1', vi.fn(), () => true, 'after-sent', remove)
+    expect(remove).toHaveBeenCalledWith('sent')
+    expect(await db.outbox.get('sent')).toBeUndefined()
   })
 })
 

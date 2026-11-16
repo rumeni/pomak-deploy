@@ -37,6 +37,7 @@ export function useOutboxSync(ownerId: string | undefined): void {
       if (!stillCurrent()) return
       const report = await syncOutbox(
         ownerId, (payload) => api.post('/training/sessions/', payload, requestConfig), stillCurrent, scopeKey,
+        (id) => api.delete(`/training/sessions/${id}/`, requestConfig),
       )
       if (!stillCurrent()) return
       await Promise.all(workoutQueriesAfterSync(report).map((queryKey) => queryClient.invalidateQueries({ queryKey })))

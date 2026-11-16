@@ -28,6 +28,25 @@ export async function saveActiveWorkout(workout: ActiveWorkout): Promise<void> {
   await db.activeWorkout.put({ slot: ownerId, ownerId, workout })
 }
 
+/**
+ * Compare-and-swap for starting/replacing a workout. The original workout ID
+ * observed by the caller must still be active when previous-set data finishes
+ * loading. An account switch or another tab starting a workout aborts instead
+ * of destroying already-entered sets.
+ */
+export async function startWorkoutIfUnchanged(
+  workout: ActiveWorkout, expectedId: string | null, ownerId: string,
+): Promise<boolean> {
+  if (getCurrentUserId() !== ownerId) return false
+  return db.transaction('rw', db.activeWorkout, async () => {
+    const current = await db.activeWorkout.get(ownerId)
+    if (getCurrentUserId() !== ownerId ||
+      (current?.ownerId === ownerId ? current.workout.id : null) !== expectedId) return false
+    await db.activeWorkout.put({ slot: ownerId, ownerId, workout })
+    return true
+  })
+}
+
 export async function clearActiveWorkout(): Promise<void> {
   const ownerId = getCurrentUserId()
   if (ownerId) await db.activeWorkout.delete(ownerId)
