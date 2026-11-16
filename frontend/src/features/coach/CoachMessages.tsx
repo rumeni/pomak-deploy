@@ -6,6 +6,7 @@ import { errorMessage } from '../../lib/api'
 import { getFormatLocale } from '../../lib/format'
 import { useCoachMessages, useSendCoachMessage } from './api'
 import { mergeCoachMessagePages } from './messages'
+import { chatScrollTop, nearChatBottom } from './chatScroll'
 
 export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?: string }) {
   const { t } = useTranslation()
@@ -15,16 +16,34 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
   const items = mergeCoachMessagePages(messages.data?.pages ?? [])
   const listRef = useRef<HTMLDivElement>(null)
   const restoreScroll = useRef<{ top: number; height: number } | null>(null)
+  const previousCount = useRef(0)
+  const readerNearBottom = useRef(true)
+  const conversationKey = `${selfId}:${clientId ?? 'own'}`
+  const lastConversation = useRef(conversationKey)
 
-  // Loading older messages prepends content; keep the message the user was
-  // reading in place rather than jumping to the newly inserted top.
+  // Initial load shows the newest chat message. Polling follows new messages
+  // only when the reader was already near the bottom. Loading older pages
+  // preserves the reader's original position, even across a refetch.
   useLayoutEffect(() => {
+    if (lastConversation.current !== conversationKey) {
+      lastConversation.current = conversationKey
+      previousCount.current = 0
+      readerNearBottom.current = true
+      restoreScroll.current = null
+    }
     const box = listRef.current
-    const old = restoreScroll.current
-    if (!box || !old) return
-    box.scrollTop = old.top + box.scrollHeight - old.height
+    if (!box) return
+    const target = chatScrollTop({
+      previousCount: previousCount.current,
+      count: items.length,
+      nearBottom: readerNearBottom.current,
+      scrollHeight: box.scrollHeight,
+      restore: restoreScroll.current,
+    })
+    if (target !== null) box.scrollTop = target
+    previousCount.current = items.length
     restoreScroll.current = null
-  }, [items.length])
+  }, [items.length, messages.data, conversationKey])
 
   const loadOlder = () => {
     const box = listRef.current
@@ -39,7 +58,15 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
   }
   return (
     <Card title={t('coach.messages')}>
-      <div ref={listRef} aria-live="polite" className="mb-3 flex max-h-80 flex-col gap-2 overflow-y-auto rounded-xl border border-line p-3">
+      <div
+        ref={listRef}
+        aria-live="polite"
+        onScroll={(event) => {
+          const box = event.currentTarget
+          readerNearBottom.current = nearChatBottom(box.scrollTop, box.clientHeight, box.scrollHeight)
+        }}
+        className="mb-3 flex max-h-80 flex-col gap-2 overflow-y-auto rounded-xl border border-line p-3"
+      >
         {messages.isLoading && <p className="text-sm text-muted">{t('common.loading')}</p>}
         {messages.isError && <FormError message={t('errors.loadFailed')} />}
         {messages.hasNextPage && (
