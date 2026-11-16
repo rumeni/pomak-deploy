@@ -210,6 +210,60 @@ describe('cross-tab diary sync ordering regression (#53)', () => {
     expect(await db.diaryOps.count()).toBe(0)
   })
 
+
+
+  it('refuses to resume an expired fallback lease even before heartbeat fires', async () => {
+    vi.stubGlobal('navigator', { locks: undefined })
+    await db.diaryOps.bulkAdd([diaryAmount(1, 150), diaryAmount(2, 200)])
+    let started!: () => void
+    let release!: () => void
+    const begun = new Promise<void>((resolve) => { started = resolve })
+    const pause = new Promise<void>((resolve) => { release = resolve })
+    const staleSend = vi.fn(async (op: DiaryOpRow) => {
+      if (op.id === 'op1') { started(); await pause }
+    })
+    const old = syncDiary('u1', staleSend, () => true, 'suspended-old-tab')
+    await begun
+    // Simulate a 2+ minute background suspension and takeover while timers
+    // haven't run in the old tab. Another tab acquires the expired lease.
+    const leaseKey = 'pomak:diary-sync:u1'
+    await db.diarySyncLeases.update(leaseKey, { expiresAt: Date.now() - 1 })
+    const newerSend = vi.fn(async () => undefined)
+    await syncDiary('u1', newerSend, () => true, 'new-owner-tab')
+    expect(newerSend).toHaveBeenCalledTimes(2)
+    release()
+    await old
+    // Old tab must not continue with stale second op or delete already
+    // acknowledged entries after losing ownership.
+    expect(staleSend).toHaveBeenCalledTimes(1)
+    expect(await db.diaryOps.count()).toBe(0)
+    expect(await db.diarySyncLeases.count()).toBe(0)
+  })
+
+  it('does not revive an expired lease when the suspended tab resumes before takeover', async () => {
+    vi.stubGlobal('navigator', { locks: undefined })
+    await db.diaryOps.bulkAdd([diaryAmount(1, 150), diaryAmount(2, 200)])
+    let started!: () => void
+    let release!: () => void
+    const begun = new Promise<void>((resolve) => { started = resolve })
+    const pause = new Promise<void>((resolve) => { release = resolve })
+    const staleSend = vi.fn(async (op: DiaryOpRow) => {
+      if (op.id === 'op1') { started(); await pause }
+    })
+    const old = syncDiary('u1', staleSend, () => true, 'expired-old')
+    await begun
+    await db.diarySyncLeases.update('pomak:diary-sync:u1', { expiresAt: Date.now() - 1 })
+    release()
+    await old
+    expect(staleSend).toHaveBeenCalledTimes(1)
+    // An older tab cannot flush the rest; another one can recover on retry.
+    expect(await db.diaryOps.count()).toBe(2)
+    const newerSend = vi.fn(async () => undefined)
+    await syncDiary('u1', newerSend, () => true, 'fresh-retry')
+    expect(newerSend).toHaveBeenCalledTimes(2)
+    expect(await db.diaryOps.count()).toBe(0)
+  })
+
   it('recovers an expired lease left by a crashed legacy tab', async () => {
     vi.stubGlobal('navigator', { locks: undefined })
     await db.diaryOps.add(diaryAmount(1, 150))

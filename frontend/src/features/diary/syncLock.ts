@@ -15,7 +15,7 @@ const HEARTBEAT_MS = 10_000
 export async function withDiarySyncLock<T>(
   ownerId: string,
   isCurrent: () => boolean,
-  work: (stillCurrent: () => boolean) => Promise<T>,
+  work: (stillCurrent: () => boolean, beforeSend: () => Promise<boolean>) => Promise<T>,
   skipped: () => T,
 ): Promise<T> {
   if (!isCurrent()) return skipped()
@@ -24,7 +24,7 @@ export async function withDiarySyncLock<T>(
 
   if (webLocks?.request) {
     return webLocks.request(lockKey, async () => (
-      isCurrent() ? work(isCurrent) : skipped()
+      isCurrent() ? work(isCurrent, async () => isCurrent()) : skipped()
     ))
   }
 
@@ -45,7 +45,7 @@ export async function withDiarySyncLock<T>(
   const heartbeat = setInterval(() => {
     void db.transaction('rw', db.diarySyncLeases, async () => {
       const lease = await db.diarySyncLeases.get(lockKey)
-      if (!lease || lease.holder !== holder) {
+      if (!lease || lease.holder !== holder || lease.expiresAt <= Date.now()) {
         lost = true
         return
       }
@@ -53,8 +53,27 @@ export async function withDiarySyncLock<T>(
     }).catch(() => { lost = true })
   }, HEARTBEAT_MS)
 
+  // A background tab can be suspended past the lease expiry while JavaScript
+  // timers (including the heartbeat) are paused. Recheck actual IndexedDB
+  // ownership immediately before EVERY HTTP request, and again on response.
+  // Do not allow an old holder to renew a lease that already expired.
+  const beforeSend = async (): Promise<boolean> => {
+    if (!stillCurrent()) return false
+    return db.transaction('rw', db.diarySyncLeases, async () => {
+      const lease = await db.diarySyncLeases.get(lockKey)
+      if (!lease || lease.holder !== holder || lease.expiresAt <= Date.now()) {
+        lost = true
+        return false
+      }
+      if (!isCurrent()) return false
+      await db.diarySyncLeases.update(lockKey, { expiresAt: Date.now() + LEASE_MS })
+      return true
+    })
+  }
+
   try {
-    return stillCurrent() ? await work(stillCurrent) : skipped()
+    return stillCurrent() && await beforeSend()
+      ? await work(stillCurrent, beforeSend) : skipped()
   } finally {
     clearInterval(heartbeat)
     await db.transaction('rw', db.diarySyncLeases, async () => {

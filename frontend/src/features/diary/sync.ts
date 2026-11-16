@@ -16,7 +16,7 @@ export function syncDiary(
   const key = `${ownerId}:${sessionKey}`
   const existing = running.get(key)
   if (existing) return existing
-  const task = withDiarySyncLock(ownerId, isCurrent, async (stillCurrent) => {
+  const task = withDiarySyncLock(ownerId, isCurrent, async (stillCurrent, beforeSend) => {
     const changed = new Set<string>()
     // IMPORTANT: load the queue AFTER taking the owner lock, so another tab
     // cannot replay a stale snapshot after its predecessor finished.
@@ -25,15 +25,15 @@ export function syncDiary(
       if (!stillCurrent()) break
       const latest = await db.diaryOps.get(op.id)
       if (!latest || latest.ownerId !== ownerId || latest.error) continue
-      if (!stillCurrent()) break
+      if (!stillCurrent() || !await beforeSend()) break
       try {
         await send(latest)
-        if (!stillCurrent()) break
+        if (!stillCurrent() || !await beforeSend()) break
         await db.diaryOps.delete(latest.id)
         changed.add(latest.date)
         if (latest.type === 'upsert') changed.add(latest.preview.date)
       } catch (error) {
-        if (!stillCurrent()) break
+        if (!stillCurrent() || !await beforeSend()) break
         const { result, message } = classifySendError(error)
         if (result === 'retry-later') break
         await db.diaryOps.update(latest.id, { error: message })
