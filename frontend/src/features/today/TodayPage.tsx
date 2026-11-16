@@ -64,15 +64,18 @@ export function TodayPage() {
 /** Tamni panel sa stvarnim brojevima: treninzi ove nedelje, kalorije danas, poslednja težina. */
 function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: string | undefined; tracksTraining: boolean; tracksNutrition: boolean }) {
   const { t } = useTranslation()
-  // Match /progress/week/ boundaries even when the phone is outside Serbia.
-  const today = progressDate(new Date())
-  const monday = mondayOf(today)
+  const now = new Date()
+  // Workout weeks match the server (Europe/Belgrade), but nutrition days are
+  // intentionally local, like the Diary and NutritionCard elsewhere in POMAK.
+  const workoutToday = progressDate(now)
+  const nutritionToday = toISODate(now)
+  const monday = mondayOf(workoutToday)
   const week = useWeek(monday)
   const { data: sessions } = useSessions()
   // Treninzi koji čekaju slanje (bez interneta) se vide odmah.
   const pending = usePendingSessions(tracksTraining ? ownerId : undefined)
   const { data: weights } = useMeasurements('weight')
-  const { day } = useDiaryDay(tracksNutrition ? ownerId : undefined, today)
+  const { day } = useDiaryDay(tracksNutrition ? ownerId : undefined, nutritionToday)
 
   const weekday = new Intl.DateTimeFormat(getFormatLocale(), { weekday: 'narrow' })
   const { days, trained, unsentThisWeek } = weekActivity((sessions ?? []).map(fromServer), (pending ?? []).map(fromOutbox), monday)
@@ -110,7 +113,7 @@ function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: stri
       {tracksTraining && (
         <div className="today-week" aria-hidden>
           {days.map((d) => (
-            <div key={d} className={`today-day ${trained.has(d) ? 'is-done' : ''} ${d === today ? 'is-today' : ''}`}>
+            <div key={d} className={`today-day ${trained.has(d) ? 'is-done' : ''} ${d === workoutToday ? 'is-today' : ''}`}>
               <span />
               {weekday.format(fromISODate(d))}
             </div>
