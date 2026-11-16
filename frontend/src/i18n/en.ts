@@ -742,6 +742,8 @@ export const en = {
     feeling: 'Feeling',
     notes: 'Comment',
     title: 'History',
+    loadMore: 'Load older workouts',
+    loadingMore: 'Loading…',
     empty: 'No workouts yet.',
     meta: '{{date}} · {{duration}}',
     sets_one: '{{count}} set',
