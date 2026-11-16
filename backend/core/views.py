@@ -22,6 +22,7 @@ class AlreadySavedConflict(APIException):
     default_code = 'already_saved'
 
 
+_TRIMMED_WRITE_FIELDS = frozenset({'name', 'notes', 'note', 'portion_name'})
 _NUMERIC_WRITE_FIELDS = frozenset({
     'value', 'target_value', 'start_value', 'grams', 'mass_g', 'weight_kg',
     'reps_min', 'reps_max', 'rest_seconds', 'duration_seconds', 'distance_m',
@@ -56,6 +57,11 @@ def _matches_saved_payload(incoming, saved, field=''):
         )
     if incoming is None or saved is None:
         return incoming is None and saved is None
+    # DRF CharField trims whitespace before storing, including the nested
+    # names/portion labels. An exact network retry must compare those
+    # normalized values rather than treating the original whitespace as an edit.
+    if field in _TRIMMED_WRITE_FIELDS and isinstance(incoming, str) and isinstance(saved, str):
+        return incoming.strip() == saved.strip()
     if field in _NUMERIC_WRITE_FIELDS:
         try:
             return Decimal(str(incoming)) == Decimal(str(saved))
