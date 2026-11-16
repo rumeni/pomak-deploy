@@ -38,7 +38,7 @@ type Update = (change: (w: ActiveWorkout) => ActiveWorkout) => void
 export function ActiveWorkoutPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { loaded, row, update } = usePersistentWorkout()
+  const { loaded, row, update, flush, conflict } = usePersistentWorkout()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [finishOpen, setFinishOpen] = useState(false)
   const now = useNow()
@@ -62,7 +62,7 @@ export function ActiveWorkoutPage() {
 
   if (finishOpen) {
     return (
-      <FinishWorkout workout={workout} ownerId={row.ownerId} onBack={() => setFinishOpen(false)} onDone={() => navigate('/trening', { replace: true })} />
+      <FinishWorkout workout={workout} ownerId={row.ownerId} flush={flush} onBack={() => setFinishOpen(false)} onDone={() => navigate('/trening', { replace: true })} />
     )
   }
 
@@ -81,6 +81,12 @@ export function ActiveWorkoutPage() {
 
   return (
     <div className="min-h-full pb-48">
+      {conflict && (
+        <div role="alert" className="mx-auto max-w-xl rounded-xl bg-danger/10 p-3 text-danger">
+          <p>{t('workout.concurrentEdit')}</p>
+          <Button variant="secondary" onClick={() => window.location.reload()}>{t('common.retry')}</Button>
+        </div>
+      )}
       <ScreenHeader
         title={workout.name}
         onBack={() => navigate('/trening')}

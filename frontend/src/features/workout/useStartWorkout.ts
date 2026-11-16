@@ -27,7 +27,7 @@ export function useStartWorkout() {
     const workout = routine
       ? startFromRoutine(routine, await loadPrevious(routine.exercises.map((e) => e.exercise.id)), now)
       : startEmpty(t('workout.emptyName'), now)
-    const started = await startWorkoutIfUnchanged(workout, current?.workout.id ?? null, ownerId)
+    const started = await startWorkoutIfUnchanged(workout, current?.workout.id ?? null, ownerId, current?.revision ?? 0)
     if (!started) {
       window.alert(t('workout.startConflict'))
       return

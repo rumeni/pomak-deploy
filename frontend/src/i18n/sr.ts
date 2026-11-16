@@ -690,6 +690,7 @@ export const sr = {
     resume: 'Nastavi trening',
     replaceConfirm: 'Već imaš započet trening „{{name}}“. Odbaciti ga i započeti novi?',
     startConflict: 'Drugi trening je u međuvremenu pokrenut. Trenutni trening je sačuvan; pokušaj ponovo.',
+    concurrentEdit: 'Druga kartica je promenila iste podatke treninga. Tvoja poslednja izmena nije sačuvana; osveži trening i unesi je ponovo.',
     staleWorkout: 'Ovaj trening više nije aktivan (možda je zamenjen ili završen u drugoj kartici). Novi trening je sačuvan. Vrati se na listu treninga i otvori aktuelni.',
     finish: 'Završi',
     setHint: 'Dodir na broj serije: zagrevanje. Dugo držanje: ukloni seriju.',

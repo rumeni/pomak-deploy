@@ -5,6 +5,8 @@ import { Button, FormError, ScreenHeader } from '../../components/ui'
 import { formatDecimal } from '../../lib/format'
 import { formatDuration } from '../training/labels'
 import { finishTimeForWorkout, SetInputError, summarize, toSessionPayload, type ActiveWorkout } from './model'
+import type { ActiveWorkoutRow } from '../../lib/db'
+import { ConcurrentWorkoutEditError } from './mergeWorkout'
 import { finishWorkout } from './outbox'
 import { cancelRestEnd } from './restNotification'
 import { clearActiveWorkout, StaleWorkoutError } from './store'
@@ -19,11 +21,13 @@ const FEELINGS = [1, 2, 3, 4, 5] as const
 export function FinishWorkout({
   workout,
   ownerId,
+  flush,
   onBack,
   onDone,
 }: {
   workout: ActiveWorkout
   ownerId: string
+  flush: () => Promise<ActiveWorkoutRow | null>
   onBack: () => void
   onDone: () => void
 }) {
@@ -42,16 +46,21 @@ export function FinishWorkout({
     setSaving(true)
     setError(null)
     try {
+      const current = await flush()
+      if (!current || current.ownerId !== ownerId || current.workout.id !== workout.id) throw new StaleWorkoutError()
+      const fresh = current.workout
       await finishWorkout(
         ownerId,
-        toSessionPayload(workout, finishedAt, feeling, notes.trim()),
-        workout.exercises.map((e) => e.exercise),
+        toSessionPayload(fresh, finishTimeForWorkout(fresh, finishedAt), feeling, notes.trim()),
+        fresh.exercises.map((e) => e.exercise),
+        new Date(),
+        current.revision ?? 0,
       )
       await cancelRestEnd()
       requestSync()
       onDone()
     } catch (cause) {
-      setError(cause instanceof StaleWorkoutError
+      setError(cause instanceof StaleWorkoutError || cause instanceof ConcurrentWorkoutEditError
         ? t('workout.staleWorkout')
         : cause instanceof SetInputError ? t(cause.message) : t('errors.generic'))
       setSaving(false)
@@ -63,12 +72,14 @@ export function FinishWorkout({
     setSaving(true)
     setError(null)
     try {
-      await clearActiveWorkout(ownerId, workout.id)
+      const current = await flush()
+      if (!current || current.ownerId !== ownerId || current.workout.id !== workout.id) throw new StaleWorkoutError()
+      await clearActiveWorkout(ownerId, workout.id, current.revision ?? 0)
       // Never cancel a newer workout's timer if this screen is stale.
       await cancelRestEnd()
       onDone()
     } catch (cause) {
-      setError(cause instanceof StaleWorkoutError ? t('workout.staleWorkout') : t('errors.generic'))
+      setError(cause instanceof StaleWorkoutError || cause instanceof ConcurrentWorkoutEditError ? t('workout.staleWorkout') : t('errors.generic'))
       setSaving(false)
     }
   }

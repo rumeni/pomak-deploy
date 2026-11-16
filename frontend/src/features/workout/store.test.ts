@@ -6,7 +6,8 @@ import { setCurrentUserId } from '../../lib/currentUser'
 import { db } from '../../lib/db'
 import { startEmpty, type ActiveWorkout, type SessionPayload } from './model'
 import { finishWorkout } from './outbox'
-import { clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout, StaleWorkoutError, startWorkoutIfUnchanged } from './store'
+import { applyActiveWorkoutEdit, clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout, StaleWorkoutError, startWorkoutIfUnchanged } from './store'
+import { ConcurrentWorkoutEditError } from './mergeWorkout'
 
 beforeEach(async () => {
   await db.activeWorkout.clear()
@@ -159,5 +160,54 @@ describe('atomic discard of the expected workout only (#51)', () => {
     setCurrentUserId('u1')
     await expect(clearActiveWorkout('u1', 'A')).rejects.toBeInstanceOf(StaleWorkoutError)
     expect(await db.activeWorkout.count()).toBe(0)
+  })
+})
+
+describe('atomic same-workout edits across browser tabs', () => {
+  const now = new Date('2026-11-16T13:00:00Z')
+  it('preserves independent fields from two stale snapshots', async () => {
+    setCurrentUserId('u1')
+    await saveActiveWorkout(startEmpty('A', now))
+    const base = (await getActiveWorkoutRow())!.workout
+    await Promise.all([
+      applyActiveWorkoutEdit('u1', base.id, base, { ...base, name: 'Renamed' }),
+      applyActiveWorkoutEdit('u1', base.id, base, { ...base, draftNotes: 'Some note' }),
+    ])
+    const saved = (await getActiveWorkoutRow())!
+    expect(saved.workout.name).toBe('Renamed')
+    expect(saved.workout.draftNotes).toBe('Some note')
+    expect(saved.revision).toBe(2)
+  })
+  it('rejects competing edits of the same field instead of overwriting', async () => {
+    setCurrentUserId('u1')
+    await saveActiveWorkout(startEmpty('A', now))
+    const base = (await getActiveWorkoutRow())!.workout
+    await applyActiveWorkoutEdit('u1', base.id, base, { ...base, name: 'First' })
+    await expect(applyActiveWorkoutEdit('u1', base.id, base, { ...base, name: 'Second' }))
+      .rejects.toBeInstanceOf(ConcurrentWorkoutEditError)
+    expect((await getActiveWorkoutRow())?.workout.name).toBe('First')
+  })
+  it('cannot finish a stale revision of the same workout', async () => {
+    setCurrentUserId('u1')
+    await saveActiveWorkout(startEmpty('A', now))
+    const old = (await getActiveWorkoutRow())!
+    await applyActiveWorkoutEdit('u1', old.workout.id, old.workout, { ...old.workout, name: 'Updated' })
+    const payload: SessionPayload = {
+      id: old.workout.id, routine_id: null, name: 'A',
+      started_at: now.toISOString(), finished_at: now.toISOString(),
+      plan_snapshot: null, feeling: null, notes: '', exercises: [],
+    }
+    await expect(finishWorkout('u1', payload, [], new Date(), old.revision ?? 0))
+      .rejects.toBeInstanceOf(StaleWorkoutError)
+    expect((await getActiveWorkoutRow())?.workout.name).toBe('Updated')
+    expect(await db.outbox.get(old.workout.id)).toBeUndefined()
+  })
+  it('cannot replace a workout if new sets arrived after confirmation', async () => {
+    setCurrentUserId('u1')
+    await saveActiveWorkout(startEmpty('A', now))
+    const old = (await getActiveWorkoutRow())!
+    await applyActiveWorkoutEdit('u1', old.workout.id, old.workout, { ...old.workout, name: 'Updated' })
+    expect(await startWorkoutIfUnchanged(startEmpty('B', now), old.workout.id, 'u1', old.revision ?? 0)).toBe(false)
+    expect((await getActiveWorkoutRow())?.workout.name).toBe('Updated')
   })
 })
