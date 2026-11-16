@@ -23,6 +23,12 @@ class MeasurementSerializer(serializers.ModelSerializer):
         fields = ['id', 'kind', 'value', 'unit', 'measured_on', 'note', 'created_at']
         read_only_fields = ['unit', 'created_at']
 
+    def update(self, instance, validated_data):
+        # Keep client-assigned UUIDs for POST idempotency, but PATCH must not
+        # re-key an owned measurement onto another user's primary key.
+        validated_data.pop('id', None)
+        return super().update(instance, validated_data)
+
     def validate_measured_on(self, value):
         # Dan više zbog razlike u vremenskoj zoni telefona i servera.
         if value > timezone.localdate() + datetime.timedelta(days=1):

@@ -129,3 +129,33 @@ class RecipeTests(APITestCase):
         self.create(ingredients=[{'food_id': str(sauce.id), 'grams': '100'}], mass_g=None)
         self.user.delete()
         self.assertFalse(Food.objects.filter(owner__isnull=False).exists())
+
+    def test_edit_recipe_cannot_overwrite_shared_or_another_users_food(self):
+        other = User.objects.create_user('other@example.test', 'jaka-lozinka-123')
+        private_food = Food.objects.create(
+            owner=other, source=Food.Source.CUSTOM, name='Other private food', kcal=120,
+        )
+        for victim in (self.rice, private_food):
+            for method in ('patch', 'put'):
+                with self.subTest(victim=str(victim.pk), method=method):
+                    own_recipe = self.create()
+                    original_victim = Food.objects.get(pk=victim.pk)
+                    original_owner = original_victim.owner_id
+                    original_source = original_victim.source
+                    original_name = original_victim.name
+                    body = {'id': str(victim.pk), 'name': 'Updated own recipe'}
+                    if method == 'put':
+                        body = self.body(id=str(victim.pk), name='Updated own recipe')
+                    result = getattr(self.client, method)(
+                        f"{URL}{own_recipe['id']}/", body, format='json',
+                    )
+                    self.assertEqual(result.status_code, 200, result.data)
+                    self.assertEqual(result.data['id'], own_recipe['id'])
+                    own = Food.objects.get(pk=own_recipe['id'])
+                    self.assertEqual(own.owner_id, self.user.pk)
+                    self.assertEqual(own.source, Food.Source.RECIPE)
+                    self.assertEqual(own.name, 'Updated own recipe')
+                    untouched = Food.objects.get(pk=victim.pk)
+                    self.assertEqual(untouched.owner_id, original_owner)
+                    self.assertEqual(untouched.source, original_source)
+                    self.assertEqual(untouched.name, original_name)
