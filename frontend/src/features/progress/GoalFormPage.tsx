@@ -8,6 +8,7 @@ import { addDays, formatDecimal, formatShortDate, parseDecimal, toISODate } from
 import { uuid } from '../../lib/uuid'
 import { GOAL_KINDS, useCreateGoal, useMeasurements, type GoalKind, type MeasurementKind } from './api'
 import { goalRange, goalValueInRange } from './goalLimits'
+import { goalAlreadySavedConflict } from './goalRetry'
 
 /** Novi cilj napretka: telesna mera (polazna vrednost = poslednje merenje) ili broj treninga nedeljno. */
 export function GoalFormPage() {
@@ -78,7 +79,17 @@ function GoalForm({ kind, latest }: { kind: GoalKind; latest?: { value: number; 
     }
     create.mutate(
       { id: id.current, kind, target_value: String(targetValue), start_value: startValue === null ? null : String(startValue), target_date: until || null },
-      { onSuccess: () => navigate('/napredak', { replace: true }) },
+      {
+        onSuccess: () => navigate('/napredak', { replace: true }),
+        onError: (e) => {
+          if (!goalAlreadySavedConflict(e)) return
+          // A previous request may already have created the goal; its original
+          // ID must not trap subsequent submissions in repeated 409 conflicts.
+          // useCreateGoal invalidates ['goals'] before navigation.
+          id.current = uuid()
+          navigate('/napredak', { replace: true })
+        },
+      },
     )
   }
 

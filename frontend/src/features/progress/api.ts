@@ -4,6 +4,7 @@ import i18n from '../../i18n'
 import { api } from '../../lib/api'
 import type { Exercise } from '../training/api'
 import type { LoggedSet } from '../workout/model'
+import { goalAlreadySavedConflict } from './goalRetry'
 
 export type RecordKey =
   | 'heaviest'
@@ -137,6 +138,11 @@ export function useCreateGoal() {
       // Polazna vrednost bez ranijeg merenja postaje prvo merenje.
       void queryClient.invalidateQueries({ queryKey: ['measurements'] })
       void queryClient.invalidateQueries({ queryKey: ['week'] })
+    },
+    onError: (e) => {
+      if (goalAlreadySavedConflict(e)) {
+        void queryClient.invalidateQueries({ queryKey: ['goals'] })
+      }
     },
   })
 }

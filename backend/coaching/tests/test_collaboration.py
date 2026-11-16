@@ -112,6 +112,83 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual(response.data['measurements'][0]['value'], '74.20')
         self.assertIsNone(response.data['nutrition_days'])
 
+    def test_nutrition_totals_indicate_missing_macro_values_only_with_consent(self):
+        self.connect(nutrition=False)
+        day = timezone.localdate()
+        MealEntry.objects.create(
+            owner=self.client_user, date=day, meal='lunch', name='Known protein and fat',
+            kcal='250.0', protein_g='25.00', carbs_g=None, fat_g='5.00',
+        )
+        MealEntry.objects.create(
+            owner=self.client_user, date=day, meal='dinner', name='Known carbs',
+            kcal='150.0', protein_g=None, carbs_g='12.00', fat_g=None,
+        )
+        # Another person's meals must not be counted in any macro sum or unknown count.
+        MealEntry.objects.create(
+            owner=self.other_client, date=day, meal='lunch', name='Other client',
+            kcal='1000.0', protein_g=None, carbs_g=None, fat_g=None,
+        )
+
+        self.as_user(self.coach)
+        url = f'/api/coach/clients/{self.client_user.pk}/'
+        self.assertIsNone(self.client.get(url).data['nutrition_days'])
+
+        self.as_user(self.client_user)
+        self.assertEqual(
+            self.client.patch('/api/coach/connection/', {'share_nutrition': True}, format='json').status_code,
+            200,
+        )
+        self.as_user(self.coach)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(len(res.data['nutrition_days']), 1)
+        summary = res.data['nutrition_days'][0]
+        self.assertEqual(summary['kcal'], '400.0')
+        self.assertEqual(summary['protein_g'], '25.00')
+        self.assertEqual(summary['carbs_g'], '12.00')
+        self.assertEqual(summary['fat_g'], '5.00')
+        self.assertEqual(
+            (summary['protein_unknown'], summary['carbs_unknown'], summary['fat_unknown']),
+            (1, 1, 1),
+        )
+
+        # Revoking nutrition sharing must hide sums and all missing-data counts.
+        self.as_user(self.client_user)
+        self.assertEqual(
+            self.client.patch('/api/coach/connection/', {'share_nutrition': False}, format='json').status_code,
+            200,
+        )
+        self.as_user(self.coach)
+        self.assertIsNone(self.client.get(url).data['nutrition_days'])
+
+    def test_nutrition_all_null_or_complete_values_have_correct_unknown_counts(self):
+        self.connect(nutrition=True)
+        day = timezone.localdate()
+        MealEntry.objects.create(owner=self.client_user, date=day, meal='lunch', name='Unknown macros', kcal='200.0')
+        self.as_user(self.coach)
+        url = f'/api/coach/clients/{self.client_user.pk}/'
+        summary = self.client.get(url).data['nutrition_days'][0]
+        self.assertIsNone(summary['protein_g'])
+        self.assertIsNone(summary['carbs_g'])
+        self.assertIsNone(summary['fat_g'])
+        self.assertEqual(
+            (summary['protein_unknown'], summary['carbs_unknown'], summary['fat_unknown']),
+            (1, 1, 1),
+        )
+
+        MealEntry.objects.create(
+            owner=self.client_user, date=day, meal='dinner', name='All macros',
+            kcal='250.0', protein_g='20.00', carbs_g='25.00', fat_g='8.00',
+        )
+        summary = self.client.get(url).data['nutrition_days'][0]
+        self.assertEqual(summary['protein_g'], '20.00')
+        self.assertEqual(summary['carbs_g'], '25.00')
+        self.assertEqual(summary['fat_g'], '8.00')
+        self.assertEqual(
+            (summary['protein_unknown'], summary['carbs_unknown'], summary['fat_unknown']),
+            (1, 1, 1),
+        )
+
     def test_foreign_coach_cannot_view_message_assign_or_remove_client(self):
         self.connect()
         self.as_user(self.another_coach)
