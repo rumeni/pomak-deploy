@@ -9,5 +9,22 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "main": true
+    }
+  },
+  "headers": [
+    {
+      "source": "/build.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    }
   ]
 }

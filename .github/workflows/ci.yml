@@ -2,6 +2,14 @@ name: POMAK CI
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Keep the newest PR verification; do not cancel production/main checks.
+concurrency:
+  group: pomak-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -125,3 +133,21 @@ jobs:
           path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+  production-smoke:
+    name: Verify deployed production
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [frontend, backend, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - name: Wait for matching Vercel web release and smoke API availability
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: node frontend/scripts/check-production.mjs
