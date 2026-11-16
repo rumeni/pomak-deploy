@@ -2,7 +2,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({ t: (key: string) => key }),
+}))
+vi.mock('../../lib/api', () => ({ api: { post: vi.fn() }, errorMessage: () => 'error' }))
 vi.mock('../../lib/auth', () => ({
   useAuth: () => ({ me: { email: 'pending@example.test' }, logout: vi.fn() }),
 }))
