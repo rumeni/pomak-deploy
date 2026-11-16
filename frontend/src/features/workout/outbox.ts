@@ -3,7 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db, type OutboxRow } from '../../lib/db'
 import type { Exercise } from '../training/api'
-import type { PreviousPerformance, SessionPayload } from './model'
+import { formatDuration } from '../training/labels'
+import { uuid } from '../../lib/uuid'
+import type { ActiveWorkout, PreviousPerformance, SessionPayload } from './model'
 
 /**
  * Završava trening: u JEDNOJ transakciji ga upisuje u red za slanje i briše aktivan trening.
@@ -28,6 +30,57 @@ export async function pendingSessions(ownerId: string): Promise<OutboxRow[]> {
 
 export async function discardOutboxItem(id: string): Promise<void> {
   await db.outbox.delete(id)
+}
+
+/**
+ * Reconstruct a rejected session as a fully editable active workout. The original
+ * outbox row is removed only after the draft is durably stored in one transaction.
+ */
+export async function restoreRejectedWorkout(ownerId: string, id: string): Promise<void> {
+  await db.transaction('rw', db.outbox, db.activeWorkout, async () => {
+    const row = await db.outbox.get(id)
+    if (!row || row.ownerId !== ownerId || !row.error) throw new Error('NOT_FOUND')
+    if (await db.activeWorkout.get('current')) throw new Error('ACTIVE_WORKOUT_EXISTS')
+
+    const exercisesById = new Map(row.exercises.map((e) => [e.id, e]))
+    const exercises = row.payload.exercises.filter((e) => e.sets.length).map((item) => {
+      const exercise = exercisesById.get(item.exercise_id)
+      if (!exercise) throw new Error('MISSING_EXERCISE')
+      return {
+        key: uuid(),
+        exercise,
+        restSeconds: 0,
+        notes: item.notes,
+        sets: item.sets.map((set) => ({
+          key: uuid(),
+          set_type: set.set_type,
+          weight: set.weight_kg ?? '',
+          reps: set.reps === null ? '' : String(set.reps),
+          duration: set.duration_seconds === null ? '' : formatDuration(set.duration_seconds),
+          distance: set.distance_m === null ? '' : String(set.distance_m / 1000),
+          target: null,
+          done: true,
+          completedAt: set.completed_at,
+        })),
+      }
+    })
+
+    const workout: ActiveWorkout = {
+      id: row.payload.id,
+      routineId: row.payload.routine_id,
+      name: row.payload.name,
+      startedAt: row.payload.started_at,
+      planSnapshot: row.payload.plan_snapshot,
+      draftFeeling: row.payload.feeling,
+      draftNotes: row.payload.notes,
+      recoveredFinishedAt: row.payload.finished_at,
+      exercises,
+      previous: {},
+      rest: null,
+    }
+    await db.activeWorkout.put({ slot: 'current', ownerId, workout })
+    await db.outbox.delete(id)
+  })
 }
 
 export type SendResult = 'sent' | 'retry-later' | 'rejected'

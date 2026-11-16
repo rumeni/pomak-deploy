@@ -30,8 +30,8 @@ export function FinishWorkout({
   const { t } = useTranslation()
   // A forgotten workout should end at its last confirmed set, not the next day's UI open.
   const [finishedAt] = useState(() => finishTimeForWorkout(workout, new Date()))
-  const [feeling, setFeeling] = useState<number | null>(null)
-  const [notes, setNotes] = useState('')
+  const [feeling, setFeeling] = useState<number | null>(workout.draftFeeling ?? null)
+  const [notes, setNotes] = useState(workout.draftNotes ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

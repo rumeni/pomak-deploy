@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from '../../lib/db'
 import type { SessionPayload } from './model'
-import { classifySendError, finishWorkout, mergePrevious, pendingSessions, previousFromOutbox, syncOutbox } from './outbox'
+import type { Exercise } from '../training/api'
+import { classifySendError, finishWorkout, mergePrevious, pendingSessions, previousFromOutbox, restoreRejectedWorkout, syncOutbox } from './outbox'
 
 function payload(id: string, startedAt: string, exerciseId = 'bench', weight = '60'): SessionPayload {
   return {
@@ -148,5 +149,38 @@ describe('prošli rezultati sa telefona', () => {
     const merged = mergePrevious(server, local)
     expect(merged.bench.session_id).toBe('nov')
     expect(merged.squat.session_id).toBe('s')
+  })
+})
+
+describe('restore rejected offline workout', () => {
+  const exercise: Exercise = {
+    id: 'bench', name: 'Bench', aliases: '', equipment: 'barbell', measurement: 'weight_reps',
+    load_mode: 'total', muscle: 'chest', instructions: '', is_custom: false,
+  }
+
+  it('recovers sets, notes and session identity atomically for editing', async () => {
+    const body = payload('rejected', '2026-09-29T10:00:00Z')
+    body.feeling = 4
+    body.notes = 'Previous notes'
+    await finishWorkout('u1', body, [exercise])
+    await db.outbox.update('rejected', { error: 'Too long' })
+
+    await restoreRejectedWorkout('u1', 'rejected')
+    const active = await db.activeWorkout.get('current')
+    expect(active?.workout.id).toBe('rejected')
+    expect(active?.workout.draftFeeling).toBe(4)
+    expect(active?.workout.draftNotes).toBe('Previous notes')
+    expect(active?.workout.recoveredFinishedAt).toBe(body.finished_at)
+    expect(active?.workout.exercises[0].sets[0]).toMatchObject({ done: true, reps: '8', weight: '60' })
+    expect(await db.outbox.get('rejected')).toBeUndefined()
+  })
+
+  it('never overwrites an active workout or another user’s queued workout', async () => {
+    await finishWorkout('u1', payload('one', '2026-09-29T10:00:00Z'), [exercise])
+    await db.outbox.update('one', { error: 'Invalid' })
+    await expect(restoreRejectedWorkout('u2', 'one')).rejects.toThrow('NOT_FOUND')
+    await db.activeWorkout.put({ slot: 'current', ownerId: 'u1', workout: {} as never })
+    await expect(restoreRejectedWorkout('u1', 'one')).rejects.toThrow('ACTIVE_WORKOUT_EXISTS')
+    expect(await db.outbox.get('one')).toBeDefined()
   })
 })
