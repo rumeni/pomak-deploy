@@ -109,3 +109,23 @@ class FoodDatabaseTests(APITestCase):
         # Simulate a record that predates Cyrillic transliteration.
         Food.objects.filter(pk=food.pk).update(search_name='моја пилетина')
         self.assertIn('Моја пилетина', self.names('пилетина'))
+
+    def test_long_unicode_normalization_is_rejected_without_500_or_partial_update(self):
+        # U+FDFA expands to a long Arabic phrase under NFKD normalization.
+        exotic = '\ufdfa' * 100
+        created = self.client.post(
+            '/api/nutrition/foods/',
+            {'name': exotic, 'kcal': '120', 'state': 'prepared'},
+            format='json',
+        )
+        self.assertEqual(created.status_code, 400, created.data)
+        self.assertIn('name', created.data)
+        self.assertFalse(Food.objects.filter(owner=self.user, name=exotic).exists())
+
+        own = Food.objects.create(owner=self.user, source='custom', name='Normal food', kcal=100)
+        changed = self.client.patch(
+            f'/api/nutrition/foods/{own.pk}/', {'name': exotic}, format='json',
+        )
+        self.assertEqual(changed.status_code, 400, changed.data)
+        own.refresh_from_db()
+        self.assertEqual(own.name, 'Normal food')
