@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import timedelta
 
@@ -112,6 +113,17 @@ class WorkoutSessionTests(APITestCase):
         self.assertEqual(WorkoutSession.objects.count(), 0)
         self.assertEqual(SetLog.objects.count(), 0)
 
+    def test_session_rejects_unpaired_unicode_surrogate_as_400(self):
+        # Escaped lone UTF-16 surrogates are valid JSON syntax, but cannot be
+        # encoded as UTF-8 when snapshot size is validated.
+        body = self.payload(plan_snapshot={'note': chr(0xD800)})
+        response = self.client.post(
+            '/api/training/sessions/', data=json.dumps(body), content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn('plan_snapshot', response.data)
+        self.assertEqual(WorkoutSession.objects.count(), 0)
+
     def test_session_rejects_oversized_plan_snapshot_without_writing(self):
         response = self.post(self.payload(plan_snapshot={'notes': 'x' * (256 * 1024)}))
         self.assertEqual(response.status_code, 400)
@@ -122,6 +134,49 @@ class WorkoutSessionTests(APITestCase):
         other = User.objects.create_user('c@d.rs', 'jaka-lozinka-123')
         routine = Routine.objects.create(owner=other, name='Tuđa')
         self.assertEqual(self.post(self.payload(routine_id=str(routine.id))).status_code, 400)
+
+    def test_cursor_history_loads_more_than_fifty_without_shifting_or_leaking(self):
+        start = timezone.now() - timedelta(days=10)
+        for i in range(56):
+            t = start + timedelta(minutes=i)
+            WorkoutSession.objects.create(
+                owner=self.user, name=f'Workout {i}', started_at=t,
+                finished_at=t + timedelta(minutes=10),
+            )
+
+        first = self.client.get('/api/training/sessions/')
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(len(first.data), 50)
+        self.assertEqual(first.data[0]['name'], 'Workout 55')
+        cursor = {'before': first.data[-1]['started_at'], 'before_id': first.data[-1]['id']}
+
+        # A newly logged workout should NOT move the page boundary.
+        WorkoutSession.objects.create(
+            owner=self.user, name='Newly arrived', started_at=timezone.now(),
+            finished_at=timezone.now() + timedelta(minutes=1),
+        )
+        second = self.client.get('/api/training/sessions/', cursor)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(len(second.data), 6)
+        self.assertEqual(second.data[0]['name'], 'Workout 5')
+        self.assertEqual(second.data[-1]['name'], 'Workout 0')
+        self.assertFalse({s['id'] for s in first.data} & {s['id'] for s in second.data})
+
+        self.client.force_authenticate(User.objects.create_user('stranger@example.com', 'strong-pass-123'))
+        self.assertEqual(self.client.get('/api/training/sessions/', cursor).data, [])
+
+    def test_invalid_history_cursor_returns_400(self):
+        path = '/api/training/sessions/'
+        bad_cursors = (
+            {'before': '2026-09-30T10:00:00Z'},
+            {'before_id': str(uuid.uuid4())},
+            {'before': 'yesterday', 'before_id': str(uuid.uuid4())},
+            {'before': '2026-09-30T10:00:00', 'before_id': str(uuid.uuid4())},
+            {'before': '2026-09-30T10:00:00Z', 'before_id': 'not-a-uuid'},
+        )
+        for params in bad_cursors:
+            with self.subTest(params=params):
+                self.assertEqual(self.client.get(path, params).status_code, 400)
 
     def test_history_is_private_and_newest_first(self):
         older = self.payload()

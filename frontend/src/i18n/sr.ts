@@ -754,6 +754,8 @@ export const sr = {
     feeling: 'Utisak',
     notes: 'Komentar',
     title: 'Istorija',
+    loadMore: 'Učitaj starije treninge',
+    loadingMore: 'Učitavanje…',
     empty: 'Još nema odrađenih treninga.',
     meta: '{{date}} · {{duration}}',
     sets_one: '{{count}} serija',

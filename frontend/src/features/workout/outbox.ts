@@ -5,7 +5,7 @@ import { db, type OutboxRow } from '../../lib/db'
 import type { Exercise } from '../training/api'
 import { formatDuration } from '../training/labels'
 import { uuid } from '../../lib/uuid'
-import type { ActiveWorkout, PreviousPerformance, SessionPayload } from './model'
+import { prepareSessionPayload, uploadSafePlanSnapshot, type ActiveWorkout, type PreviousPerformance, type SessionPayload } from './model'
 
 /**
  * Završava trening: u JEDNOJ transakciji ga upisuje u red za slanje i briše aktivan trening.
@@ -70,7 +70,7 @@ export async function restoreRejectedWorkout(ownerId: string, id: string): Promi
       routineId: row.payload.routine_id,
       name: row.payload.name,
       startedAt: row.payload.started_at,
-      planSnapshot: row.payload.plan_snapshot,
+      planSnapshot: uploadSafePlanSnapshot(row.payload.plan_snapshot),
       draftFeeling: row.payload.feeling,
       draftNotes: row.payload.notes,
       recoveredFinishedAt: row.payload.finished_at,
@@ -139,7 +139,7 @@ export function syncOutbox(
       if (!(await db.outbox.get(row.id))) continue
       if (!isCurrent()) break
       try {
-        await send(row.payload)
+        await send(prepareSessionPayload(row.payload))
         if (!isCurrent()) break
         await db.outbox.delete(row.id)
         report.sent += 1

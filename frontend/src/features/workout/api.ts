@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { Exercise } from '../training/api'
@@ -30,10 +30,22 @@ export async function fetchPrevious(exerciseIds: string[]): Promise<Record<strin
   }
 }
 
-export function useSessions() {
-  return useQuery({
-    queryKey: ['sessions'],
-    queryFn: async () => (await api.get<WorkoutSession[]>('/training/sessions/')).data,
+const SESSION_PAGE_SIZE = 50
+type SessionCursor = { before: string; before_id: string } | null
+
+/** Load history in stable keyset pages; existing API callers still get arrays. */
+export function useSessions(ownerId: string | undefined) {
+  return useInfiniteQuery({
+    queryKey: ['sessions', ownerId],
+    initialPageParam: null as SessionCursor,
+    enabled: !!ownerId,
+    queryFn: async ({ pageParam }) =>
+      (await api.get<WorkoutSession[]>('/training/sessions/', { params: pageParam ?? undefined })).data,
+    getNextPageParam: (lastPage) => {
+      if (lastPage.length < SESSION_PAGE_SIZE) return undefined
+      const last = lastPage[lastPage.length - 1]
+      return { before: last.started_at, before_id: last.id }
+    },
   })
 }
 
