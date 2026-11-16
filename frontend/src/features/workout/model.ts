@@ -153,10 +153,17 @@ function parseReps(text: string): number | null {
   return value
 }
 
-function parseWeight(text: string): number | null {
+function parseWeight(text: string, confirmedLegacy = false): number | null {
   if (!text.trim()) return null
   const value = parseDecimal(text)
-  if (value === null || value > 1000 || !/^\d+(?:[.,]\d{1,2})?$/.test(text.trim())) {
+  const decimal = text.trim().match(/^\d+(?:[.,](\d+))?$/)
+  const significantDigits = decimal?.[1]?.replace(/0+$/, '') ?? ''
+  // Older versions permitted 60.000 on already-confirmed offline sets.
+  // Accept only those values which roundtrip exactly at backend precision.
+  const precisionValid = confirmedLegacy
+    ? !!decimal && significantDigits.length <= 2
+    : /^\d+(?:[.,]\d{1,2})?$/.test(text.trim())
+  if (value === null || value > 1000 || !precisionValid) {
     throw new SetInputError('workout.errors.invalidWeight')
   }
   return value
@@ -197,7 +204,7 @@ export function setResult(set: ActiveSet, exercise: Exercise): LoggedSet {
   result.reps = parseReps(set.reps)
   if (result.reps === null) throw new SetInputError('workout.errors.needReps')
   if (m !== 'bodyweight_reps') {
-    const weight = parseWeight(set.weight)
+    const weight = parseWeight(set.weight, set.done)
     if (weight === null && m === 'weight_reps') throw new SetInputError('workout.errors.needWeight')
     result.weight_kg = weight === null ? null : String(weight)
   }
@@ -266,8 +273,14 @@ export function summarize(workout: ActiveWorkout, now: Date): WorkoutSummary {
     const perSide = item.exercise.load_mode === 'per_side' ? 2 : 1
     for (const s of done) {
       if (s.set_type !== 'working') continue
-      const r = setResult(s, item.exercise)
-      volumeKg += Number(r.weight_kg ?? 0) * (r.reps ?? 0) * perSide
+      // Old persisted workouts may contain a now-invalid number. Never crash
+      // the finish screen; Save will report an actionable validation error.
+      try {
+        const r = setResult(s, item.exercise)
+        volumeKg += Number(r.weight_kg ?? 0) * (r.reps ?? 0) * perSide
+      } catch (error) {
+        if (!(error instanceof SetInputError)) throw error
+      }
     }
   }
   const durationSeconds = Math.max(0, Math.round((now.getTime() - new Date(workout.startedAt).getTime()) / 1000))

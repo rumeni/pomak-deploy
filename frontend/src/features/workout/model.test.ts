@@ -200,3 +200,23 @@ describe('validate workout sets against backend limits before confirming', () =>
     expect(() => confirmSet({ ...base, exercises: [long] }, e.key, long.sets[0].key, t0)).toThrow('workout.errors.invalidWeight')
   })
 })
+
+describe('older locally persisted confirmed sets', () => {
+  it('accepts exact decimal values with legacy trailing zeros', () => {
+    let w = start()
+    const item = w.exercises[0]
+    w = confirmSet(w, item.key, item.sets[1].key, t0)
+    w = updateSet(w, item.key, item.sets[1].key, { weight: '60.000', done: true })
+    expect(summarize(w, new Date('2026-09-25T11:00:00Z')).doneSets).toBe(1)
+    expect(toSessionPayload(w, new Date('2026-09-25T11:00:00Z'), null, '').exercises[0].sets[0].weight_kg).toBe('60')
+  })
+
+  it('does not crash summary for invalid legacy sets and keeps data editable', () => {
+    let w = start()
+    const item = w.exercises[0]
+    w = confirmSet(w, item.key, item.sets[1].key, t0)
+    w = updateSet(w, item.key, item.sets[1].key, { weight: '1500', done: true })
+    expect(summarize(w, new Date('2026-09-25T11:00:00Z')).doneSets).toBe(1)
+    expect(() => toSessionPayload(w, new Date('2026-09-25T11:00:00Z'), null, '')).toThrow('workout.errors.invalidWeight')
+  })
+})

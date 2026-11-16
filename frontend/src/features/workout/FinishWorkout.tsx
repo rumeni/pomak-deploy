@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, FormError, ScreenHeader } from '../../components/ui'
 import { formatDecimal } from '../../lib/format'
 import { formatDuration } from '../training/labels'
-import { finishTimeForWorkout, summarize, toSessionPayload, type ActiveWorkout } from './model'
+import { finishTimeForWorkout, SetInputError, summarize, toSessionPayload, type ActiveWorkout } from './model'
 import { finishWorkout } from './outbox'
 import { cancelRestEnd } from './restNotification'
 import { clearActiveWorkout } from './store'
@@ -50,8 +50,8 @@ export function FinishWorkout({
       await cancelRestEnd()
       requestSync()
       onDone()
-    } catch {
-      setError(t('errors.generic'))
+    } catch (cause) {
+      setError(cause instanceof SetInputError ? t(cause.message) : t('errors.generic'))
       setSaving(false)
     }
   }
