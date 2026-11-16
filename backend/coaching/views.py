@@ -282,7 +282,10 @@ class CoachClientView(APIView):
                 fat_unknown=Count('id', filter=Q(fat_g__isnull=True)),
             ).order_by('date')
             data['nutrition_days'] = [
-                {key: (str(value) if key != 'date' and value is not None else value) for key, value in row.items()}
+                # Decimal totals stay serialized as strings, but Count()
+                # results MUST remain JSON numbers for i18next pluralization.
+                {key: (str(value) if key in ('kcal', 'protein_g', 'carbs_g', 'fat_g') and value is not None else value)
+                 for key, value in row.items()}
                 for row in rows
             ]
         return Response(data)
