@@ -14,6 +14,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from core.views import require_object_body
+
 from .authentication import SessionVersionTokenRefreshSerializer
 from .export import build_zip
 from .serializers import LoginSerializer, MeSerializer, RegisterSerializer
@@ -91,6 +93,7 @@ class RefreshView(TokenRefreshView):
     throttle_classes = [DatabaseAuthThrottle, AnonRateThrottle, ScopedRateThrottle]
 
     def post(self, request, *args, **kwargs):
+        require_object_body(request)
         if web_request(request) and not request.data.get('refresh') and request.COOKIES.get('pomak.refresh'):
             request._full_data = {**request.data, 'refresh': incoming_refresh(request)}
         return output_tokens(request, super().post(request, *args, **kwargs))
@@ -102,6 +105,7 @@ class LogoutView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        require_object_body(request)
         if not web_request(request) and not request.user.is_authenticated:
             raise NotAuthenticated()
         token = incoming_refresh(request)

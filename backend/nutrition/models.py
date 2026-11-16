@@ -35,7 +35,7 @@ class Food(TimeStampedModel):
     name = models.CharField(max_length=150)
     name_en = models.CharField(max_length=150, blank=True)
     aliases = models.CharField(max_length=300, blank=True)
-    search_name = models.CharField(max_length=600, editable=False, db_index=True)
+    search_name = models.CharField(max_length=1300, editable=False, db_index=True)
     state = models.CharField(max_length=10, choices=State.choices, default=State.NA)
 
     kcal = models.DecimalField(max_digits=6, decimal_places=1)
