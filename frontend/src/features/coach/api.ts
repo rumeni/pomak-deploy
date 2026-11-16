@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 
@@ -65,10 +65,21 @@ export function useCoachClient(id: string | undefined) {
   })
 }
 
+const CHAT_PAGE_SIZE = 80
+type MessageCursor = { before: string; before_id: string } | null
+
 export function useCoachMessages(clientId?: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['coach-messages', clientId ?? 'own'],
-    queryFn: async () => (await api.get<CoachMessage[]>('/coach/messages/', { params: clientId ? { client_id: clientId } : {} })).data,
+    initialPageParam: null as MessageCursor,
+    queryFn: async ({ pageParam }) =>
+      (await api.get<CoachMessage[]>('/coach/messages/', {
+        params: { ...(clientId ? { client_id: clientId } : {}), ...(pageParam ?? {}) },
+      })).data,
+    // Each page is chronological, so its FIRST message is the oldest.
+    getNextPageParam: (page) => page.length < CHAT_PAGE_SIZE ? undefined : {
+      before: page[0].created_at, before_id: page[0].id,
+    },
     refetchInterval: 15000,
     retry: false,
   })

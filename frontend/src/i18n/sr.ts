@@ -536,6 +536,8 @@ export const sr = {
     routinesInTraining: 'Dodeljene rutine pojavljuju se i na kartici Trening.',
     messages: 'Poruke',
     noMessages: 'Još nema poruka. Pošalji prvu poruku.',
+    loadOlderMessages: 'Učitaj starije poruke',
+    loadingOlderMessages: 'Učitavanje starijih poruka…',
     newMessage: 'Nova poruka',
     messagePlaceholder: 'Napiši poruku treneru ili klijentu…',
     sendMessage: 'Pošalji poruku',

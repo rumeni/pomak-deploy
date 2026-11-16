@@ -528,6 +528,8 @@ export const en = {
     routinesInTraining: 'Assigned routines also appear in the Training tab.',
     messages: 'Messages',
     noMessages: 'No messages yet. Send the first one.',
+    loadOlderMessages: 'Load older messages',
+    loadingOlderMessages: 'Loading older messages…',
     newMessage: 'New message',
     messagePlaceholder: 'Write a message to your coach or client…',
     sendMessage: 'Send message',
