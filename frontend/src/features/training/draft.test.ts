@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Exercise, Routine } from './api'
-import { DraftError, draftToPayload, newDraftExercise, newRoutineDraft, parseDuration, parseRepRange, routineToDraft } from './draft'
+import { DraftError, MAX_ROUTINE_EXERCISES, MAX_ROUTINE_SETS, draftToPayload, newDraftExercise, newRoutineDraft, parseDuration, parseRepRange, routineToDraft } from './draft'
 
 const bench: Exercise = {
   id: 'e1', name: 'Bench', aliases: '', equipment: 'barbell', measurement: 'weight_reps',
@@ -37,6 +37,26 @@ describe('parseDuration', () => {
 })
 
 describe('draftToPayload', () => {
+  it('accepts 40 exercises and 20 sets, rejects 41 exercises and 21 sets before upload', () => {
+    const draft = newRoutineDraft()
+    draft.name = 'Long workout'
+    const single = newDraftExercise(bench)
+    single.sets = [single.sets[0]]
+    draft.exercises = Array.from({ length: MAX_ROUTINE_EXERCISES }, () => ({ ...single, key: crypto.randomUUID() }))
+    expect(draftToPayload(draft).exercises).toHaveLength(40)
+    draft.exercises.push(newDraftExercise(bench))
+    expect(() => draftToPayload(draft)).toThrow('tooManyExercises')
+
+    const another = newRoutineDraft()
+    another.name = 'Twenty sets'
+    another.exercises = [newDraftExercise(bench)]
+    const item = another.exercises[0]
+    item.sets = Array.from({ length: MAX_ROUTINE_SETS }, () => ({ ...item.sets[0] }))
+    expect(draftToPayload(another).exercises[0].sets).toHaveLength(20)
+    item.sets.push({ ...item.sets[0] })
+    expect(() => draftToPayload(another)).toThrow('tooManySets')
+  })
+
   it('pretvara zarez u tačku, km u metre i šalje samo polja koja vežba koristi', () => {
     const draft = newRoutineDraft()
     draft.name = ' Trening A '

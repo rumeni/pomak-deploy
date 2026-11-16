@@ -29,6 +29,10 @@ export interface RoutineDraft {
   exercises: DraftExercise[]
 }
 
+// Mirror backend RoutineSerializer; invalid drafts must not reach the server.
+export const MAX_ROUTINE_EXERCISES = 40
+export const MAX_ROUTINE_SETS = 20
+
 /** Greška u nacrtu: ključ prevoda (routine.errors.*) i vrednosti za poruku. */
 export class DraftError extends Error {
   readonly key: string
@@ -121,6 +125,9 @@ export function routineToDraft(routine: Routine): RoutineDraft {
 export function draftToPayload(draft: RoutineDraft): RoutinePayload {
   if (!draft.name.trim()) throw new DraftError('nameRequired')
   if (!draft.exercises.length) throw new DraftError('noExercises')
+  if (draft.exercises.length > MAX_ROUTINE_EXERCISES) {
+    throw new DraftError('tooManyExercises', { count: String(MAX_ROUTINE_EXERCISES) })
+  }
 
   return {
     id: draft.id,
@@ -128,6 +135,9 @@ export function draftToPayload(draft: RoutineDraft): RoutinePayload {
     notes: draft.notes,
     exercises: draft.exercises.map((e) => {
       if (!e.sets.length) throw new DraftError('noSets', { exercise: e.exercise.name })
+      if (e.sets.length > MAX_ROUTINE_SETS) {
+        throw new DraftError('tooManySets', { count: String(MAX_ROUTINE_SETS) })
+      }
       const m = e.exercise.measurement
       const usesReps = m !== 'duration' && m !== 'distance_duration'
       const usesWeight = m === 'weight_reps' || m === 'weighted_bodyweight' || m === 'assisted_bodyweight'

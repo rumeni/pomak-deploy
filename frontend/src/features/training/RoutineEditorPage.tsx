@@ -7,6 +7,8 @@ import { errorMessage } from '../../lib/api'
 import { useDeleteRoutine, useDuplicateRoutine, useRoutine, useSaveRoutine, type Exercise } from './api'
 import {
   DraftError,
+  MAX_ROUTINE_EXERCISES,
+  MAX_ROUTINE_SETS,
   draftToPayload,
   emptySet,
   newDraftExercise,
@@ -56,8 +58,14 @@ function Editor({ initial }: { initial: RoutineDraft }) {
       return { ...d, exercises: list }
     })
 
-  const addExercises = (exercises: Exercise[]) =>
+  const addExercises = (exercises: Exercise[]) => {
+    if (draft.exercises.length + exercises.length > MAX_ROUTINE_EXERCISES) {
+      setError(t('routine.errors.tooManyExercises', { count: MAX_ROUTINE_EXERCISES }))
+      return
+    }
+    setError(null)
     setDraft((d) => ({ ...d, exercises: [...d.exercises, ...exercises.map(newDraftExercise)] }))
+  }
 
   const onSave = () => {
     setError(null)
@@ -157,6 +165,7 @@ function ExerciseCard({
   onRemove: () => void
 }) {
   const { t } = useTranslation()
+  const [limitError, setLimitError] = useState<string | null>(null)
   const { exercise } = item
   const m = exercise.measurement
   const columns = setColumns(exercise, t)
@@ -165,12 +174,18 @@ function ExerciseCard({
   const updateSet = (key: string, patch: Partial<DraftSet>) =>
     onChange((e) => ({ ...e, sets: e.sets.map((s) => (s.key === key ? { ...s, ...patch } : s)) }))
 
-  const addSet = () =>
+  const addSet = () => {
+    if (item.sets.length >= MAX_ROUTINE_SETS) {
+      setLimitError(t('routine.errors.tooManySets', { count: MAX_ROUTINE_SETS }))
+      return
+    }
+    setLimitError(null)
     onChange((e) => {
       // Nova serija preuzima vrednosti poslednje radne serije: najčešće su iste.
       const last = [...e.sets].reverse().find((s) => s.set_type === 'working')
       return { ...e, sets: [...e.sets, last ? { ...last, key: emptySet().key } : emptySet()] }
     })
+  }
 
   // Radne serije se numerišu 1, 2, 3…; zagrevanje (Z / W) ne ulazi u brojanje.
   const labels = item.sets.reduce<string[]>((acc, s) => {
@@ -233,6 +248,7 @@ function ExerciseCard({
       <button type="button" onClick={addSet} className="mt-2 min-h-11 w-full rounded-xl text-sm font-semibold text-brand-dark active:bg-brand-soft">
         {t('routine.addSet')}
       </button>
+      {limitError && <p role="alert" className="px-2 text-sm text-danger">{limitError}</p>}
       {m !== 'duration' && m !== 'distance_duration' && (
         <p className="px-1 text-xs text-muted">{t('routine.hint')}</p>
       )}
