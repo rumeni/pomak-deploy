@@ -86,6 +86,7 @@ export const sr = {
     verifyRequiredText: 'Poslali smo link za potvrdu na {{email}}. Potvrdi adresu da nastaviš.',
     resendEmail: 'Pošalji ponovo',
     refreshVerification: 'Već sam potvrdio/la — osveži',
+    deleteUnverifiedAccount: 'Obriši nalog',
   },
   onboarding: {
     stepOf: 'Početak · korak {{current}} od {{total}}',

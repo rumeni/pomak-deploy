@@ -37,6 +37,7 @@ import { MealSettingsPage } from '../features/diary/MealSettingsPage'
 import { useOutboxSync } from '../features/workout/sync'
 import { useAuth } from '../lib/auth'
 import { AppLayout } from './AppLayout'
+import { canAccessAccountDeletion } from './verificationGate'
 
 export function App() {
   const { me, loading, unreachable, retry } = useAuth()
@@ -54,6 +55,9 @@ export function App() {
   // or is paused in onboarding.
   if (location.pathname === '/lozinka/reset') return <ResetPasswordPage />
   if (location.pathname === '/potvrda-emaila') return <VerifyEmailPage />
+
+  // Unverified accounts must be able to delete their data before onboarding.
+  if (canAccessAccountDeletion(location.pathname, !!me)) return <DeleteAccountPage />
 
   if (!me) {
     return (
