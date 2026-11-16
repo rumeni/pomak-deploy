@@ -68,3 +68,25 @@ class ExerciseLibraryTests(APITestCase):
         ex.refresh_from_db()
         self.assertIsNotNone(ex.archived_at)
         self.assertNotIn('Test', self.search(q='test'))
+
+    def test_exotic_unicode_search_key_overflow_returns_400(self):
+        exotic = '\ufdfa' * 100
+        body = {
+            'name': exotic, 'equipment': 'other',
+            'measurement': 'weight_reps', 'muscle': 'core',
+        }
+        response = self.client.post('/api/training/exercises/', body, format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('name', response.data)
+        self.assertFalse(Exercise.objects.filter(owner=self.user, name=exotic).exists())
+
+        own = Exercise.objects.create(
+            owner=self.user, name='Normal exercise', equipment='other',
+            measurement='weight_reps', muscle='core',
+        )
+        updated = self.client.patch(
+            f'/api/training/exercises/{own.pk}/', {'name': exotic}, format='json',
+        )
+        self.assertEqual(updated.status_code, 400, updated.data)
+        own.refresh_from_db()
+        self.assertEqual(own.name, 'Normal exercise')

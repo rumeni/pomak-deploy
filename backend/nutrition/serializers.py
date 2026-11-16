@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from core.i18n import localized_name
+from core.text import FOOD_PREMIGRATION_KEY_LIMIT, search_key_fits
 
 from . import recipes, targets
 from .models import Food, FoodPortion, Meal, MealEntry, NutritionDay, NutritionTarget, RecipeIngredient, SavedMeal, SavedMealItem
@@ -68,6 +69,10 @@ class FoodSerializer(serializers.ModelSerializer):
         if self.instance is not None and self.instance.source == Food.Source.RECIPE:
             # Vrednosti recepta se računaju iz sastojaka; menja se preko /recipes/.
             raise serializers.ValidationError(_('A recipe is changed through its ingredients.'))
+        name = attrs.get('name', getattr(self.instance, 'name', ''))
+        aliases = attrs.get('aliases', getattr(self.instance, 'aliases', ''))
+        if not search_key_fits(name, getattr(self.instance, 'name_en', ''), aliases, max_chars=FOOD_PREMIGRATION_KEY_LIMIT):
+            raise serializers.ValidationError({'name': _('Name or aliases are too long for search.')})
         # Na 100 g namirnice ne može biti više od 100 g proteina, UH i masti zajedno.
         macros = [attrs.get(f, getattr(self.instance, f, None)) for f in MACRO_FIELDS]
         if sum(m for m in macros if m is not None) > 100:
@@ -308,6 +313,10 @@ class RecipeSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        name = attrs.get('name', getattr(self.instance, 'name', ''))
+        if not search_key_fits(name, getattr(self.instance, 'name_en', ''),
+                               getattr(self.instance, 'aliases', ''), max_chars=FOOD_PREMIGRATION_KEY_LIMIT):
+            raise serializers.ValidationError({'name': _('Name is too long for search.')})
         ingredients = attrs.get('ingredients')
         if ingredients is None:
             ingredients = [{'food': i.food, 'grams': i.grams} for i in self.instance.ingredients.select_related('food')]

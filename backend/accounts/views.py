@@ -162,6 +162,7 @@ class DeleteAccountView(APIView):
     throttle_classes = [DatabaseAccountDeletionThrottle, UserRateThrottle]
 
     def post(self, request):
+        require_object_body(request)
         password = request.data.get('password', '')
         if not request.user.check_password(password):
             raise ValidationError({'password': _('Wrong password.')})

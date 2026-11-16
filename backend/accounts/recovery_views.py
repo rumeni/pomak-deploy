@@ -28,6 +28,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
 
+from core.views import require_object_body
+
 from .email_security import VERIFICATION_SALT, send_reset_email, send_verification_email_safe
 from .models import User
 from .password_security import replace_password_and_revoke_sessions
@@ -191,7 +193,9 @@ class PasswordResetConfirmView(APIView):
 
 class PasswordChangeView(APIView):
     throttle_classes = [DatabaseAccountDeletionThrottle]
+
     def post(self, request):
+        require_object_body(request)
         old_password = request.data.get('old_password', '')
         new_password = request.data.get('new_password', '')
         with transaction.atomic():

@@ -162,3 +162,12 @@ class RecipeTests(APITestCase):
                     self.assertEqual(untouched.owner_id, original_owner)
                     self.assertEqual(untouched.source, original_source)
                     self.assertEqual(untouched.name, original_name)
+
+    def test_exotic_unicode_recipe_name_is_rejected_without_inserting_row(self):
+        from core.text import normalize_search
+        exotic = '\ufdfa' * 100
+        self.assertGreater(len(normalize_search(exotic)), 600)
+        response = self.client.post(URL, self.body(name=exotic), format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('name', response.data)
+        self.assertFalse(Food.objects.filter(owner=self.user, source=Food.Source.RECIPE, name=exotic).exists())
