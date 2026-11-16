@@ -678,6 +678,7 @@ export const en = {
     inProgress: 'Workout in progress',
     resume: 'Resume workout',
     replaceConfirm: 'You already started "{{name}}". Discard it and start a new one?',
+    startConflict: 'Another workout started while loading. Your current workout is safe; please try again.',
     finish: 'Finish',
     setHint: 'Tap the set number: warm-up. Long press: remove the set.',
     removeSetConfirm: 'Remove set {{n}}?',

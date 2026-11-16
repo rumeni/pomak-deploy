@@ -6,7 +6,7 @@ import { setCurrentUserId } from '../../lib/currentUser'
 import { db } from '../../lib/db'
 import { startEmpty, type ActiveWorkout, type SessionPayload } from './model'
 import { finishWorkout } from './outbox'
-import { clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout } from './store'
+import { clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout, startWorkoutIfUnchanged } from './store'
 
 beforeEach(async () => {
   await db.activeWorkout.clear()
@@ -79,5 +79,51 @@ describe('late autosave regression (#41)', () => {
     setCurrentUserId('u2')
     expect(await persistActiveWorkoutIfCurrent({ ...old, workout: { ...old.workout, name: 'stale' } })).toBe(false)
     expect((await db.activeWorkout.get('u1'))?.workout.name).toBe('A')
+  })
+})
+
+
+describe('atomic workout start regression (#46)', () => {
+  const date = new Date('2026-11-16T13:00:00Z')
+
+  it('keeps the first start when two routines finish loading in reverse order', async () => {
+    setCurrentUserId('u1')
+    const originalId: string | null = (await getActiveWorkoutRow())?.workout.id ?? null
+    let finishSlow!: () => void
+    const slow = new Promise<void>((resolve) => { finishSlow = resolve })
+    const A = startEmpty('Routine A', date)
+    const B = startEmpty('Routine B', date)
+    const startA = (async () => {
+      await slow // simulated slow loadPrevious
+      return startWorkoutIfUnchanged(A, originalId, 'u1')
+    })()
+    const second = await startWorkoutIfUnchanged(B, originalId, 'u1')
+    expect(second).toBe(true)
+    finishSlow()
+    expect(await startA).toBe(false)
+    expect((await getActiveWorkoutRow())?.workout.id).toBe(B.id)
+  })
+
+  it('cannot replace a workout that another tab created while loading previous sets', async () => {
+    setCurrentUserId('u1')
+    const A = startEmpty('A', date)
+    await saveActiveWorkout(A)
+    const expected = (await getActiveWorkoutRow())!.workout.id
+    await saveActiveWorkout(startEmpty('Newer B', date))
+    const replacement = startEmpty('Stale C', date)
+    expect(await startWorkoutIfUnchanged(replacement, expected, 'u1')).toBe(false)
+    expect((await getActiveWorkoutRow())?.workout.name).toBe('Newer B')
+  })
+
+  it('honors intentional replacement, without writing to another account', async () => {
+    setCurrentUserId('u1')
+    const A = startEmpty('A', date)
+    await saveActiveWorkout(A)
+    expect(await startWorkoutIfUnchanged(startEmpty('B', date), A.id, 'u1')).toBe(true)
+    const kept = (await db.activeWorkout.get('u1'))!.workout.id
+    setCurrentUserId('u2')
+    expect(await startWorkoutIfUnchanged(startEmpty('C', date), kept, 'u1')).toBe(false)
+    expect((await db.activeWorkout.get('u1'))?.workout.id).toBe(kept)
+    expect(await db.activeWorkout.get('u2')).toBeUndefined()
   })
 })

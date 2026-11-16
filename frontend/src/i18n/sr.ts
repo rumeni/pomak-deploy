@@ -689,6 +689,7 @@ export const sr = {
     inProgress: 'Trening u toku',
     resume: 'Nastavi trening',
     replaceConfirm: 'Već imaš započet trening „{{name}}“. Odbaciti ga i započeti novi?',
+    startConflict: 'Drugi trening je u međuvremenu pokrenut. Trenutni trening je sačuvan; pokušaj ponovo.',
     finish: 'Završi',
     setHint: 'Dodir na broj serije: zagrevanje. Dugo držanje: ukloni seriju.',
     removeSetConfirm: 'Ukloniti seriju {{n}}?',
