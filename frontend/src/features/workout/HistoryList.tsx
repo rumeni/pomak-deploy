@@ -10,11 +10,12 @@ import { usePendingSessions } from './outbox'
 export function HistoryList() {
   const { t } = useTranslation()
   const { me } = useAuth()
-  const { data: sessions, isLoading, isError } = useSessions()
+  const { data, isLoading, isError, hasNextPage, isFetchingNextPage, fetchNextPage } = useSessions(me?.id)
   const pending = usePendingSessions(me?.id)
 
-  // Bez interneta istorija sa servera nije dostupna, ali neposlati treninzi jesu.
-  const items = combineHistory((sessions ?? []).map(fromServer), (pending ?? []).map(fromOutbox))
+  // All fetched pages plus unsent local workouts; no duplicates after a sync.
+  const sessions = data?.pages.flat() ?? []
+  const items = combineHistory(sessions.map(fromServer), (pending ?? []).map(fromOutbox))
 
   return (
     <section className="flex flex-col gap-2">
@@ -25,6 +26,16 @@ export function HistoryList() {
       {items.map((s) => (
         <HistoryItem key={s.id} session={s} />
       ))}
+      {hasNextPage && (
+        <button
+          type="button"
+          disabled={isFetchingNextPage}
+          onClick={() => void fetchNextPage()}
+          className="min-h-12 rounded-xl bg-card px-4 font-semibold text-brand-dark ring-1 ring-line/60 disabled:opacity-50"
+        >
+          {t(isFetchingNextPage ? 'history.loadingMore' : 'history.loadMore')}
+        </button>
+      )}
     </section>
   )
 }
