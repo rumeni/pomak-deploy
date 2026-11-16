@@ -45,7 +45,7 @@ export function RegisterPage() {
   })
 
   return (
-    <AuthLayout title={t('auth.registerTitle')}>
+    <AuthLayout title={t('auth.registerTitle')} compact>
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <Controller
           name="accountType"

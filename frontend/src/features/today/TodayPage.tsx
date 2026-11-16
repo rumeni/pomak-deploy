@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { Button, Card, PageHeader } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { errorMessage } from '../../lib/api'
-import { formatDecimal, formatLongDate, formatShortDate, parseDecimal, toISODate } from '../../lib/format'
+import { formatDecimal, formatLongDate, formatShortDate, fromISODate, getFormatLocale, parseDecimal, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { totals } from '../diary/model'
 import { useDiaryDay } from '../diary/store'
@@ -14,8 +14,11 @@ import { mondayOf } from '../progress/week'
 import { useRoutines } from '../training/api'
 import { ActiveWorkoutBanner } from '../workout/ActiveWorkoutBanner'
 import { useSessions } from '../workout/api'
+import { fromOutbox, fromServer } from '../workout/history'
+import { usePendingSessions } from '../workout/outbox'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { nextRoutine } from './next'
+import { progressDate, weekActivity, workoutCountWithPending } from './week'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
 const linkClass = 'flex min-h-11 items-center text-sm font-semibold text-brand-dark'
@@ -45,13 +48,79 @@ export function TodayPage() {
           </>
         }
       />
-      <div className="mx-auto flex max-w-xl flex-col gap-3 px-4 pb-6">
-        <ActiveWorkoutBanner />
-        {profile?.tracks_training && <TrainingCard />}
-        {profile?.tracks_nutrition && me && <NutritionCard ownerId={me.id} />}
-        <WeightCard />
+      <div className="today-main">
+        <TodayHero ownerId={me?.id} tracksTraining={!!profile?.tracks_training} tracksNutrition={!!profile?.tracks_nutrition} />
+        <div className="mt-4"><ActiveWorkoutBanner /></div>
+        <div className="today-dashboard-grid">
+          {profile?.tracks_training && <TrainingCard />}
+          {profile?.tracks_nutrition && me && <NutritionCard ownerId={me.id} />}
+          <WeightCard />
+        </div>
       </div>
     </>
+  )
+}
+
+/** Tamni panel sa stvarnim brojevima: treninzi ove nedelje, kalorije danas, poslednja težina. */
+function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: string | undefined; tracksTraining: boolean; tracksNutrition: boolean }) {
+  const { t } = useTranslation()
+  const now = new Date()
+  // Workout weeks match the server (Europe/Belgrade), but nutrition days are
+  // intentionally local, like the Diary and NutritionCard elsewhere in POMAK.
+  const workoutToday = progressDate(now)
+  const nutritionToday = toISODate(now)
+  const monday = mondayOf(workoutToday)
+  const week = useWeek(monday)
+  const { data: sessions } = useSessions()
+  // Treninzi koji čekaju slanje (bez interneta) se vide odmah.
+  const pending = usePendingSessions(tracksTraining ? ownerId : undefined)
+  const { data: weights } = useMeasurements('weight')
+  const { day } = useDiaryDay(tracksNutrition ? ownerId : undefined, nutritionToday)
+
+  const weekday = new Intl.DateTimeFormat(getFormatLocale(), { weekday: 'narrow' })
+  const { days, trained, unsentThisWeek } = weekActivity((sessions ?? []).map(fromServer), (pending ?? []).map(fromOutbox), monday)
+  const workouts = week.data?.workouts
+  const latest = weights?.[0]
+
+  return (
+    <section className="today-hero" aria-label={t('today.thisWeek')}>
+      <div className="topo-layer" aria-hidden />
+      <p className="today-hero-kicker">{t('today.thisWeek')}</p>
+      <div className="today-stats">
+        {tracksTraining && (
+          <div className="today-stat">
+            <span className="stat-value">
+              {workoutCountWithPending(workouts?.count, unsentThisWeek) ?? '–'}
+              {workouts?.target ? <small>/{workouts.target}</small> : null}
+            </span>
+            <span className="stat-label">{t('today.statWorkouts')}</span>
+          </div>
+        )}
+        {tracksNutrition && (
+          <div className="today-stat">
+            <span className="stat-value">
+              {day ? totals(day.entries).kcal : '–'}
+              {day?.target ? <small>/{formatDecimal(day.target.kcal)}</small> : null}
+            </span>
+            <span className="stat-label">{t('today.statKcal')}</span>
+          </div>
+        )}
+        <div className="today-stat">
+          <span className="stat-value">{latest ? formatDecimal(Number(latest.value)) : '–'}</span>
+          <span className="stat-label">{t('today.statWeight')}</span>
+        </div>
+      </div>
+      {tracksTraining && (
+        <div className="today-week" aria-hidden>
+          {days.map((d) => (
+            <div key={d} className={`today-day ${trained.has(d) ? 'is-done' : ''} ${d === workoutToday ? 'is-today' : ''}`}>
+              <span />
+              {weekday.format(fromISODate(d))}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -76,7 +145,7 @@ function TrainingCard() {
   }
 
   return (
-    <Card>
+    <Card className="dashboard-card dashboard-card--training">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('today.training')}</h2>
         {week.data && (
@@ -103,8 +172,8 @@ function TrainingCard() {
       {isLoading && <p className="py-2 text-muted">{t('common.loading')}</p>}
       {next ? (
         <>
-          <p className="mt-2 text-sm text-muted">{t('today.nextWorkout')}</p>
-          <p className="text-lg font-semibold">{next.name}</p>
+          <p className="mt-5 text-xs font-bold uppercase tracking-widest text-muted">{t('today.nextWorkout')}</p>
+          <p className="mt-1 text-xl font-bold tracking-tight">{next.name}</p>
           <p className="truncate text-sm text-muted">{next.exercises.map((e) => e.exercise.name).join(' · ')}</p>
           <Button className="mt-3 w-full" onClick={() => void onStart(next)} disabled={starting}>
             {t('today.start', { name: next.name })}
@@ -152,22 +221,22 @@ function NutritionCard({ ownerId }: { ownerId: string }) {
   const diff = target ? target.kcal - tot.kcal : 0
 
   return (
-    <Card>
+    <Card className="dashboard-card dashboard-card--nutrition">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('today.nutrition')}</h2>
         <Link to="/ishrana" className={`-my-2 ${linkClass}`}>
           {t('today.openDiary')}
         </Link>
       </div>
-      <p className="text-3xl font-bold tabular-nums">
+      <p className="dashboard-metric mt-3 tabular-nums">
         {tot.kcal}
         {target && <span className="text-xl font-semibold text-muted"> / {formatDecimal(target.kcal)}</span>}{' '}
         <span className="text-base font-medium text-muted">{t('nutrition.kcal')}</span>
       </p>
       {target ? (
         <>
-          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-line" aria-hidden>
-            <div className="h-full rounded-full bg-brand" style={{ width: `${Math.round(share * 100)}%` }} />
+          <div className="dashboard-progress mt-4" aria-hidden>
+            <div style={{ width: `${Math.round(share * 100)}%` }} />
           </div>
           <p className="mt-1 text-sm text-muted tabular-nums">
             {diff >= 0 ? t('diary.remaining', { kcal: formatDecimal(diff) }) : t('diary.overTarget', { kcal: formatDecimal(-diff) })}
@@ -225,7 +294,7 @@ function WeightCard() {
   }
 
   return (
-    <Card>
+    <Card className="dashboard-card dashboard-card--weight">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('progress.bodyWeight')}</h2>
         <Link to="/napredak/merenja" className={`-my-2 ${linkClass}`}>

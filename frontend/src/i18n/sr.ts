@@ -7,6 +7,7 @@ export const sr = {
     close: 'Zatvori',
     appName: 'POMAK',
     tagline: 'Tvoj trening. Tvoja ishrana. Tvoj napredak.',
+    authIntro: 'Treninzi, ishrana i merenja na jednom mestu — rade i bez interneta. Trenera uključuješ kad ti to odgovara.',
     loading: 'Učitavanje…',
     saving: 'Čuvanje…',
     save: 'Sačuvaj',
@@ -129,6 +130,10 @@ export const sr = {
   today: {
     title: 'Danas',
     greeting: 'Zdravo, {{name}}',
+    thisWeek: 'Ova nedelja',
+    statWorkouts: 'treninga',
+    statKcal: 'kcal danas',
+    statWeight: 'kg, poslednje',
     profileAria: 'Profil i podešavanja',
     training: 'Trening',
     weekCount: 'Ove nedelje {{count}} od {{target}}',

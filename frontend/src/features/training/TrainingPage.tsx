@@ -27,11 +27,11 @@ export function TrainingPage() {
   return (
     <>
       <PageHeader title={t('training.title')} action={<LanguageMenu />} />
-      <div className="flex flex-col gap-3 px-4">
+      <div className="flex flex-col gap-4 px-4 pb-8">
         <ActiveWorkoutBanner />
 
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{t('training.myRoutines')}</h2>
+          <h2 className="text-xl font-extrabold tracking-tight">{t('training.myRoutines')}</h2>
           {!!routines?.length && (
             <Link to="/trening/rutine/nova" className="flex min-h-11 items-center rounded-xl px-3 font-semibold text-brand-dark active:bg-brand-soft">
               {t('training.new')}
@@ -74,9 +74,9 @@ function RoutineCard({ routine, starting, onStart }: { routine: Routine; startin
   const sets = routine.exercises.reduce((sum, e) => sum + e.sets.filter((s) => s.set_type === 'working').length, 0)
 
   return (
-    <article className="flex items-center gap-2 rounded-2xl bg-card p-2 shadow-sm ring-1 ring-line/60">
+    <article className="app-card flex items-center gap-3 !p-3">
       <Link to={`/trening/rutine/${routine.id}`} className="min-w-0 flex-1 rounded-xl p-2 active:bg-brand-soft">
-        <h3 className="text-lg font-semibold">{routine.name}</h3>
+        <h3 className="text-lg font-bold tracking-tight">{routine.name}</h3>
         <p className="text-sm text-muted">
           {t('training.exercises', { count: names.length })} · {t('training.workingSets', { count: sets })}
         </p>

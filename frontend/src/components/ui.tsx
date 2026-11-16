@@ -19,7 +19,7 @@ export function Button({
   const sizing = size === 'sm' ? 'min-h-10 px-4 text-sm' : 'min-h-12 px-5 text-base'
   return (
     <button
-      className={`${sizing} rounded-xl font-semibold transition-colors ${variants[variant]} ${className}`}
+      className={`${sizing} app-button ${variant === 'primary' ? 'app-button-primary' : ''} ${variants[variant]} ${className}`}
       {...props}
     />
   )
@@ -39,7 +39,7 @@ export const Field = forwardRef<
         ref={ref}
         id={inputId}
         aria-invalid={!!error}
-        className="min-h-12 w-full rounded-xl border border-line bg-card px-4 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 aria-[invalid=true]:border-danger"
+        className="app-input min-h-12 w-full rounded-2xl border border-line bg-card px-4 text-base outline-none focus:border-brand aria-[invalid=true]:border-danger"
         {...props}
       />
       {error && <p className="text-sm text-danger">{error}</p>}
@@ -49,8 +49,8 @@ export const Field = forwardRef<
 
 export function Card({ title, children, className = '' }: { title?: string; children: ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl bg-card p-4 shadow-sm ring-1 ring-line/60 ${className}`}>
-      {title && <h2 className="mb-2 text-lg font-semibold text-brand-dark">{title}</h2>}
+    <section className={`app-card ${className}`}>
+      {title && <h2 className="mb-3 text-lg font-bold tracking-tight text-ink">{title}</h2>}
       {children}
     </section>
   )
@@ -59,10 +59,10 @@ export function Card({ title, children, className = '' }: { title?: string; chil
 /** Zaglavlje glavnog ekrana (taba): naslov i, desno, izbor jezika ili druga akcija. */
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <header className="flex items-start justify-between gap-3 px-4 pb-3 pt-5">
+    <header className="page-header flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm uppercase tracking-wide text-muted">{subtitle}</p>}
+        <h1 className="text-3xl font-extrabold tracking-tight">{title}</h1>
+        {subtitle && <p className="page-header-subtitle">{subtitle}</p>}
       </div>
       {action && <div className="flex shrink-0 items-center gap-2 pt-1">{action}</div>}
     </header>
@@ -182,7 +182,7 @@ export function ScreenHeader({ title, onBack, action }: { title: string; onBack:
 }
 
 export const selectClass =
-  'min-h-12 w-full rounded-xl border border-line bg-card px-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20'
+  'app-input min-h-12 w-full rounded-2xl border border-line bg-card px-4 text-base outline-none focus:border-brand'
 
 export function SelectField({
   label,

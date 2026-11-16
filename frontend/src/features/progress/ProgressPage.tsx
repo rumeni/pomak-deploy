@@ -17,7 +17,7 @@ export function ProgressPage() {
   return (
     <>
       <PageHeader title={t('progress.title')} action={<LanguageMenu />} />
-      <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 pb-6">
+      <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pb-8">
         <WeekCard />
         <GoalsSection />
         <WeightCard />
@@ -45,7 +45,7 @@ function WeightCard() {
       {data && !latest && <p className="py-2 text-muted">{t('progress.noWeight')}</p>}
       {latest && (
         <>
-          <p className="text-3xl font-bold tabular-nums">
+          <p className="dashboard-metric mt-2 tabular-nums">
             {formatDecimal(Number(latest.value))} <span className="text-base font-medium text-muted">kg</span>
           </p>
           <p className="text-sm text-muted">{t('progress.measuredOn', { date: formatShortDate(latest.measured_on) })}</p>
@@ -70,7 +70,7 @@ function ExercisesCard() {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="font-semibold">{t('progress.exercises')}</h2>
-      <ul className="flex flex-col rounded-2xl bg-card shadow-sm ring-1 ring-line/60">
+      <ul className="flex flex-col overflow-hidden rounded-3xl bg-card shadow-sm ring-1 ring-line/60">
         {data.map(({ exercise, last_performed, sessions }) => {
           const last = toISODate(new Date(last_performed))
           return (
