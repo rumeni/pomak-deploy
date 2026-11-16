@@ -14,6 +14,7 @@ MAX_PORTIONS = 10
 MAX_SAVED_MEAL_ITEMS = 30
 MAX_RECIPE_INGREDIENTS = 50
 MACRO_FIELDS = ('protein_g', 'carbs_g', 'fat_g')
+ENTRY_SNAPSHOT_FIELDS = tuple(f'per100_{field}' for field in MealEntry.VALUE_FIELDS)
 
 
 class FoodPortionSerializer(serializers.ModelSerializer):
@@ -122,7 +123,11 @@ class MealEntrySerializer(serializers.ModelSerializer):
 
 
 class MealEntryWriteSerializer(serializers.Serializer):
-    """Upis stavke: iz namirnice (food_id + grams) ili ručno (name + kcal, makroi opcioni)."""
+    """Upis namirnice, ručne stavke ili kopije sa izvornim nutritivnim snimkom.
+
+    Bez per100_* server uzima trenutnu namirnicu. Kopiranje sa svih pet polja
+    ponavlja vrednosti starog unosa bez potrebe da original postoji na serveru.
+    """
 
     date = serializers.DateField()
     meal = serializers.ChoiceField(choices=Meal.choices)
@@ -136,9 +141,39 @@ class MealEntryWriteSerializer(serializers.Serializer):
     fat_g = serializers.DecimalField(max_digits=7, decimal_places=2, min_value=0, max_value=1000, required=False, allow_null=True)
     fiber_g = serializers.DecimalField(max_digits=7, decimal_places=2, min_value=0, max_value=1000, required=False, allow_null=True)
 
+    # Optional snapshot: all five keys together, including explicit nulls for
+    # unknown macros. Bounds mirror FoodSerializer and recipes.check_plausible.
+    per100_kcal = serializers.DecimalField(max_digits=6, decimal_places=1, min_value=0, max_value=900, required=False)
+    per100_protein_g = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+    per100_carbs_g = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+    per100_fat_g = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+    per100_fiber_g = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+
     def validate(self, attrs):
         user = self.context['request'].user
         existing = self.context.get('existing')
+        supplied = [key for key in ENTRY_SNAPSHOT_FIELDS if key in attrs]
+        if supplied:
+            if len(supplied) != len(ENTRY_SNAPSHOT_FIELDS):
+                raise serializers.ValidationError({
+                    'per100_kcal': _('Supply all per-100-g snapshot fields or none.'),
+                })
+            if not attrs.get('food_id'):
+                raise serializers.ValidationError({
+                    'food_id': _('A per-100-g snapshot requires a food.'),
+                })
+            macros = (attrs['per100_protein_g'], attrs['per100_carbs_g'], attrs['per100_fat_g'])
+            if sum(value for value in macros if value is not None) > 100:
+                raise serializers.ValidationError({
+                    'per100_protein_g': _('Protein, carbohydrates and fat together cannot exceed 100 g per 100 g.'),
+                })
+            # Retried PUTs for the same copy may resend identical snapshot data.
+            # Existing entries must never be re-keyed to new per100 values.
+            if existing is not None and any(attrs[key] != getattr(existing, key) for key in ENTRY_SNAPSHOT_FIELDS):
+                raise serializers.ValidationError({
+                    'per100_kcal': _('An existing entry nutritional snapshot cannot be changed.'),
+                })
+        attrs['has_per100_snapshot'] = bool(supplied)
         # Stavka iz namirnice se prepoznaje po snimku vrednosti (namirnica je mogla biti obrisana).
         from_food = existing is not None and existing.per100_kcal is not None
         food_id = attrs.get('food_id')
@@ -175,7 +210,11 @@ class MealEntryWriteSerializer(serializers.Serializer):
                 entry.food = food
                 entry.name = localized_name(food)
                 for field in MealEntry.VALUE_FIELDS:
-                    setattr(entry, f'per100_{field}', getattr(food, field))
+                    per100_field = f'per100_{field}'
+                    # A copy reuses validated historical values. Ordinary entries
+                    # and saved meals use the food's CURRENT snapshot as before.
+                    value = data[per100_field] if data['has_per100_snapshot'] else getattr(food, field)
+                    setattr(entry, per100_field, value)
 
         entry.date = data['date']
         entry.meal = data['meal']

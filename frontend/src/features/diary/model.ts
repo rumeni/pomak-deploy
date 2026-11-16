@@ -217,14 +217,25 @@ function totalsOf(entry: DiaryEntry): Record<ValueField, string | null> {
 }
 
 /**
- * Kopija stavke u drugi dan/obrok (npr. "doručak od juče"). Stavka iz namirnice ostaje veza
- * na namirnicu; ako je namirnica u međuvremenu obrisana, kopira se kao ručni unos sa istim
- * vrednostima (server nema iz čega da napravi snimak).
+ * Kopija stavke u drugi dan/obrok (npr. "doručak od juče") ponavlja tadašnji
+ * snimak per100_*; čak i ako original još čeka slanje, server ne mora da ga
+ * pronađe. Sačuvani obrok, nasuprot tome, uzima trenutne vrednosti namirnice.
+ * Ako je veza sa namirnicom uklonjena, kopija je ručni unos.
  */
 export function copyEntry(entry: DiaryEntry, id: string, date: string, meal: MealKey, now: Date): EntryDraft {
   if (isFromFood(entry) && entry.food_id) {
     const preview: DiaryEntry = { ...entry, id, date, meal, created_at: now.toISOString() }
-    return { body: bodyFor(preview), preview }
+    return {
+      body: {
+        ...bodyFor(preview),
+        per100_kcal: entry.per100_kcal!,
+        per100_protein_g: entry.per100_protein_g,
+        per100_carbs_g: entry.per100_carbs_g,
+        per100_fat_g: entry.per100_fat_g,
+        per100_fiber_g: entry.per100_fiber_g,
+      },
+      preview,
+    }
   }
   return manualEntry(id, date, meal, entry.name, totalsOf(entry), now)
 }
