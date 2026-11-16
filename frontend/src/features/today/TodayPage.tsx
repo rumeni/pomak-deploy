@@ -18,7 +18,7 @@ import { fromOutbox, fromServer } from '../workout/history'
 import { usePendingSessions } from '../workout/outbox'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { nextRoutine } from './next'
-import { weekActivity, workoutCountWithPending } from './week'
+import { progressDate, weekActivity, workoutCountWithPending } from './week'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
 const linkClass = 'flex min-h-11 items-center text-sm font-semibold text-brand-dark'
@@ -64,7 +64,8 @@ export function TodayPage() {
 /** Tamni panel sa stvarnim brojevima: treninzi ove nedelje, kalorije danas, poslednja težina. */
 function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: string | undefined; tracksTraining: boolean; tracksNutrition: boolean }) {
   const { t } = useTranslation()
-  const today = toISODate(new Date())
+  // Match /progress/week/ boundaries even when the phone is outside Serbia.
+  const today = progressDate(new Date())
   const monday = mondayOf(today)
   const week = useWeek(monday)
   const { data: sessions } = useSessions()

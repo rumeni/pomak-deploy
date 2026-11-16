@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { weekActivity, workoutCountWithPending } from './week'
+import { progressDate, weekActivity, workoutCountWithPending } from './week'
 
 // Podne po lokalnom vremenu, da datum ne zavisi od vremenske zone na kojoj test radi.
 const at = (day: string) => new Date(`${day}T12:00:00`).toISOString()
@@ -39,5 +39,23 @@ describe('workout count with offline pending sessions', () => {
   it('combines a server count and unsent sessions without dropping zero', () => {
     expect(workoutCountWithPending(3, 2)).toBe(5)
     expect(workoutCountWithPending(0, 0)).toBe(0)
+  })
+})
+
+describe('weekly boundaries match the backend Europe/Belgrade timezone', () => {
+  it('counts Monday 00:30 Belgrade time in the new week even when it is Sunday in New York', () => {
+    const startedAt = '2026-11-15T23:30:00Z'
+    expect(progressDate(new Date(startedAt))).toBe('2026-11-16')
+    const result = weekActivity([], [{ id: 'local', startedAt, status: 'pending' }], '2026-11-16')
+    expect(result.unsentThisWeek).toBe(1)
+    expect(result.trained.has('2026-11-16')).toBe(true)
+  })
+  it('excludes Sunday 23:30 Belgrade time from the following week', () => {
+    const result = weekActivity([], [{ id: 'earlier', startedAt: '2026-11-15T22:30:00Z', status: 'pending' }], '2026-11-16')
+    expect(result.unsentThisWeek).toBe(0)
+    expect(result.trained.has('2026-11-16')).toBe(false)
+  })
+  it('handles summer time using the same IANA timezone', () => {
+    expect(progressDate(new Date('2026-03-29T22:30:00Z'))).toBe('2026-03-30')
   })
 })

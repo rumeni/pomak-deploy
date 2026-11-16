@@ -7,6 +7,7 @@ import { api, scopeIsCurrent, type AuthScope, type ScopedRequestConfig } from '.
 import { tokens } from '../../lib/tokens'
 import { diaryRequest, syncDiary } from '../diary/sync'
 import { syncOutbox } from './outbox'
+import { workoutQueriesAfterSync } from './syncQueries'
 
 const SYNC_EVENT = 'pomak:sync'
 const INTERVAL_MS = 60_000
@@ -38,7 +39,7 @@ export function useOutboxSync(ownerId: string | undefined): void {
         ownerId, (payload) => api.post('/training/sessions/', payload, requestConfig), stillCurrent, scopeKey,
       )
       if (!stillCurrent()) return
-      if (report.sent || report.rejected) await queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      await Promise.all(workoutQueriesAfterSync(report).map((queryKey) => queryClient.invalidateQueries({ queryKey })))
 
       const changedDays = await syncDiary(ownerId, (op) => {
         const { method, url, body } = diaryRequest(op)
