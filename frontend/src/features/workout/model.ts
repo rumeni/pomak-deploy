@@ -344,6 +344,17 @@ function snapshotBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength
 }
 
+/** Trim by Unicode code points, never in the middle of an emoji/surrogate pair. */
+function unicodePrefix(text: string, limit: number): string {
+  let prefix = ''
+  for (const symbol of text) {
+    if (limit-- <= 0) break
+    const code = symbol.codePointAt(0) ?? 0
+    prefix += code >= 0xD800 && code <= 0xDFFF ? String.fromCodePoint(0xFFFD) : symbol
+  }
+  return prefix
+}
+
 export function uploadSafePlanSnapshot(snapshot: Routine | null): Routine | null {
   if (snapshot === null || snapshotBytes(snapshot) <= MAX_WORKOUT_SNAPSHOT_BYTES) return snapshot
 
@@ -351,15 +362,15 @@ export function uploadSafePlanSnapshot(snapshot: Routine | null): Routine | null
   // unbounded text (instructions and routine notes) is abbreviated.
   const compact: Routine = {
     id: snapshot.id,
-    name: snapshot.name.slice(0, 100),
-    notes: snapshot.notes.slice(0, 8192),
+    name: unicodePrefix(snapshot.name, 100),
+    notes: unicodePrefix(snapshot.notes, 8192),
     created_at: snapshot.created_at,
     updated_at: snapshot.updated_at,
     exercises: snapshot.exercises.slice(0, 40).map((item) => ({
       exercise: {
         id: item.exercise.id,
         slug: item.exercise.slug,
-        name: item.exercise.name.slice(0, 120),
+        name: unicodePrefix(item.exercise.name, 120),
         aliases: '',
         equipment: item.exercise.equipment,
         measurement: item.exercise.measurement,
@@ -369,7 +380,7 @@ export function uploadSafePlanSnapshot(snapshot: Routine | null): Routine | null
         is_custom: item.exercise.is_custom,
       },
       rest_seconds: item.rest_seconds,
-      notes: item.notes.slice(0, 300),
+      notes: unicodePrefix(item.notes, 300),
       sets: item.sets.slice(0, 20).map((set) => ({
         set_type: set.set_type,
         reps_min: set.reps_min,
