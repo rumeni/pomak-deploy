@@ -3,7 +3,7 @@ import type { Exercise } from '../training/api'
 import type { WorkoutSession } from './api'
 import type { LoggedSet } from './model'
 
-export type SessionStatus = 'sent' | 'pending' | 'rejected'
+export type SessionStatus = 'sent' | 'pending' | 'rejected' | 'deleting'
 
 /** Trening za prikaz u istoriji, bilo da je na serveru ili još čeka slanje. */
 export interface SessionView {
@@ -41,7 +41,7 @@ export function fromOutbox(row: OutboxRow): SessionView {
     finishedAt: row.payload.finished_at,
     feeling: row.payload.feeling,
     notes: row.payload.notes,
-    status: row.error ? 'rejected' : 'pending',
+    status: row.deleteRequested ? 'deleting' : row.error ? 'rejected' : 'pending',
     error: row.error,
     // Kao na serveru: vežba bez potvrđenih serija nije deo odrađenog treninga.
     exercises: row.payload.exercises

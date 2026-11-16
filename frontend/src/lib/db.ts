@@ -22,6 +22,11 @@ export interface OutboxRow {
   exercises: Exercise[]
   queuedAt: string
   attempts: number
+  /** At least one POST may already have reached the server, even after a network error. */
+  sendingAt?: number | null
+  /** Durable delete intent: do not re-POST; reconcile with DELETE after reconnection. */
+  deleteRequested?: boolean
+  deletingAt?: number | null
   /** Poruka servera ako je trening odbijen; takav zapis se ne šalje ponovo sam od sebe. */
   error: string | null
 }

@@ -14,7 +14,10 @@ export async function clearLocalData(ownerId: string): Promise<void> {
   await db.transaction('rw', [db.activeWorkout, db.outbox, db.diaryOps, db.diaryDays, db.foodCache], async () => {
     const row = await db.activeWorkout.get(ownerId)
     if (row?.ownerId === ownerId) await db.activeWorkout.delete(ownerId)
-    await db.outbox.where('ownerId').equals(ownerId).delete()
+    // Preserve minimal remote-delete tombstones for reconciliation if the user
+    // signs back into this account. Never reupload the discarded workout.
+    await db.outbox.where('ownerId').equals(ownerId)
+      .filter((row) => !row.deleteRequested).delete()
     await db.diaryOps.where('ownerId').equals(ownerId).delete()
     await db.diaryDays.where('ownerId').equals(ownerId).delete()
     await db.foodCache.where('ownerId').equals(ownerId).delete()
