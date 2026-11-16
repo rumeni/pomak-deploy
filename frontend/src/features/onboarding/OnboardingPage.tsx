@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { DateOfBirthField } from '../../components/DateOfBirthField'
 import { Button, ChoiceCards, Field, FormError, Segmented } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
+import { acceptsProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
 import type { Me, Profile } from '../../lib/types'
@@ -26,13 +27,21 @@ export function OnboardingPage() {
   const [tracking, setTracking] = useState<Tracking>('both')
 
   const saveProfile = async (profile: Partial<Profile>) => {
-    const { data } = await api.patch<Me>('/auth/me/', { profile })
+    if (!me) throw new Error('Authentication changed')
+    const data = await patchOwnProfile(me.id, profile)
+    if (!data) throw new Error('Authentication changed')
     queryClient.setQueryData(['me'], data)
   }
 
   const finish = useMutation({
-    mutationFn: async () => (await api.post<Me>('/auth/me/onboarding/complete/')).data,
-    onSuccess: (data) => queryClient.setQueryData(['me'], data),
+    mutationFn: async (ownerId: string) => {
+      const scope = profileScope(ownerId)
+      const { data } = await api.post<Me>('/auth/me/onboarding/complete/', {}, { __pomakScope: scope })
+      return { data, scope }
+    },
+    onSuccess: ({ data, scope }) => {
+      if (acceptsProfileResponse(scope, data)) queryClient.setQueryData(['me'], data)
+    },
   })
 
   const tracksTraining = tracking !== 'nutrition'
@@ -42,7 +51,7 @@ export function OnboardingPage() {
   const next = () => {
     const following = steps[steps.indexOf(step) + 1]
     if (following) setStep(following)
-    else finish.mutate()
+    else if (me) finish.mutate(me.id)
   }
 
   return (

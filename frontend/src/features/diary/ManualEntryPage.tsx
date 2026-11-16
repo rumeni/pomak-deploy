@@ -15,6 +15,8 @@ type ValueField = 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'
 
 /** Ručni unos poznatih vrednosti za celu pojedenu količinu (?datum=&obrok= ili ?stavka=&datum=). */
 export function ManualEntryPage() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
   const { me } = useAuth()
   const [params] = useSearchParams()
   const date = params.get('datum') ?? toISODate(new Date())
@@ -23,6 +25,12 @@ export function ManualEntryPage() {
 
   if (entryId && !day) return <LoadingScreen />
   const entry = entryId ? day?.entries.find((e) => e.id === entryId) : undefined
+  if (entryId && !entry) return (
+    <div className="min-h-full pb-10">
+      <ScreenHeader title={t('diary.manualTitle')} onBack={() => navigate(-1)} />
+      <p className="p-6 text-center text-danger">{t('diary.entryNotFound')}</p>
+    </div>
+  )
   const meal = entry?.meal ?? ((MEALS.includes(params.get('obrok') as MealKey) ? params.get('obrok') : 'snack') as MealKey)
   return <ManualForm key={entry?.id ?? 'new'} date={date} meal={meal} entry={entry} />
 }

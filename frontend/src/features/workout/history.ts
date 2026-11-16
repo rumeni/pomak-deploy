@@ -54,7 +54,10 @@ export function fromOutbox(row: OutboxRow): SessionView {
 export function combineHistory(server: SessionView[], local: SessionView[]): SessionView[] {
   // Even if a server page is refetched while new workouts are inserted, each
   // session ID must appear once. Sent records supersede local pending copies.
-  const sent = new Map(server.map((s) => [s.id, s]))
+  // A durable deletion tombstone must win over a cached server page until
+  // DELETE is acknowledged. Pending uploads still yield to the server.
+  const deleting = new Map(local.filter((s) => s.status === 'deleting').map((s) => [s.id, s]))
+  const sent = new Map(server.map((s) => [s.id, deleting.get(s.id) ?? s]))
   return [...local.filter((l) => !sent.has(l.id)), ...sent.values()]
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 }

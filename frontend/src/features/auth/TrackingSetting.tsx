@@ -3,9 +3,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FormError, Segmented } from '../../components/ui'
-import { api, errorMessage } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
+import { patchOwnProfile } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
-import type { Me } from '../../lib/types'
 
 type Tracking = 'both' | 'training' | 'nutrition'
 
@@ -22,10 +22,8 @@ export function TrackingSetting() {
   const onChange = async (next: Tracking) => {
     setError(null)
     try {
-      const { data } = await api.patch<Me>('/auth/me/', {
-        profile: { tracks_training: next !== 'nutrition', tracks_nutrition: next !== 'training' },
-      })
-      queryClient.setQueryData(['me'], data)
+      const data = await patchOwnProfile(me.id, { tracks_training: next !== 'nutrition', tracks_nutrition: next !== 'training' })
+      if (data) queryClient.setQueryData(['me'], data)
     } catch (e) {
       setError(errorMessage(e))
     }

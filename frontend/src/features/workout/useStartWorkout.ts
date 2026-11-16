@@ -22,7 +22,6 @@ export function useStartWorkout() {
     if (!ownerId) return
     if (current) {
       if (!window.confirm(t('workout.replaceConfirm', { name: current.workout.name }))) return
-      await cancelRestEnd()
     }
     const now = new Date()
     const workout = routine
@@ -33,6 +32,9 @@ export function useStartWorkout() {
       window.alert(t('workout.startConflict'))
       return
     }
+    // Cancel only after the old workout was actually replaced; a rejected
+    // cross-tab race must leave the active workout's rest alarm intact.
+    if (current) await cancelRestEnd()
     navigate('/trening/aktivan')
   }
 }

@@ -75,9 +75,12 @@ class MeSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})
-        for field, value in profile_data.items():
-            setattr(instance.profile, field, value)
-        instance.profile.save()
+        # Only write fields in this PATCH. A concurrent language update must
+        # not be reverted by an older request changing meal settings.
+        if profile_data:
+            for field, value in profile_data.items():
+                setattr(instance.profile, field, value)
+            instance.profile.save(update_fields=list(profile_data))
         return instance
 
 
