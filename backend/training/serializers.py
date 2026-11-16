@@ -6,6 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from core.i18n import localized_name
+from core.text import EXERCISE_PREMIGRATION_KEY_LIMIT, search_key_fits
 
 from .models import Exercise, Routine, RoutineExercise, RoutineSet, SessionExercise, SetLog, WorkoutSession
 
@@ -39,6 +40,14 @@ class ExerciseSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError(_('Enter the exercise name.'))
         return value
+
+    def validate(self, attrs):
+        name = attrs.get('name', getattr(self.instance, 'name', ''))
+        aliases = attrs.get('aliases', getattr(self.instance, 'aliases', ''))
+        if not search_key_fits(name, getattr(self.instance, 'name_en', ''),
+                               aliases, max_chars=EXERCISE_PREMIGRATION_KEY_LIMIT):
+            raise serializers.ValidationError({'name': _('Name or aliases are too long for search.')})
+        return attrs
 
 
 class RoutineSetSerializer(serializers.ModelSerializer):
