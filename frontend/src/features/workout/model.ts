@@ -48,6 +48,7 @@ export interface ActiveWorkout {
   /** Preserved when a rejected outbox session is restored for editing. */
   draftFeeling?: number | null
   draftNotes?: string
+  recoveredFinishedAt?: string
   exercises: ActiveExercise[]
   previous: Record<string, PreviousPerformance>
   rest: { endsAt: string; totalSeconds: number } | null
@@ -301,11 +302,17 @@ export function finishTimeForWorkout(workout: ActiveWorkout, openedAt: Date): Da
   const opened = openedAt.getTime()
   if (!Number.isFinite(start) || !Number.isFinite(opened)) return openedAt
   const maxEnd = start + 24 * 3600 * 1000
-  if (opened <= maxEnd) return new Date(Math.max(start, opened))
   const completed = workout.exercises.flatMap((e) => e.sets)
     .filter((s) => s.done && s.completedAt)
     .map((s) => new Date(s.completedAt!).getTime())
     .filter((timestamp) => Number.isFinite(timestamp) && timestamp >= start && timestamp <= opened)
+  const savedEnd = workout.recoveredFinishedAt
+    ? new Date(workout.recoveredFinishedAt).getTime() : Number.NaN
+  if (Number.isFinite(savedEnd) && savedEnd >= start && savedEnd <= maxEnd) {
+    const newlyConfirmed = completed.filter((timestamp) => timestamp > savedEnd)
+    return new Date(newlyConfirmed.length ? Math.min(Math.max(...newlyConfirmed), maxEnd) : savedEnd)
+  }
+  if (opened <= maxEnd) return new Date(Math.max(start, opened))
   const end = completed.length ? Math.max(...completed) : opened
   return new Date(Math.max(start, Math.min(end, maxEnd)))
 }

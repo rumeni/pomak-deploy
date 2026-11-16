@@ -73,6 +73,7 @@ export async function restoreRejectedWorkout(ownerId: string, id: string): Promi
       planSnapshot: row.payload.plan_snapshot,
       draftFeeling: row.payload.feeling,
       draftNotes: row.payload.notes,
+      recoveredFinishedAt: row.payload.finished_at,
       exercises,
       previous: {},
       rest: null,

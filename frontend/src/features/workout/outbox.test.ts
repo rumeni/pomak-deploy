@@ -170,6 +170,7 @@ describe('restore rejected offline workout', () => {
     expect(active?.workout.id).toBe('rejected')
     expect(active?.workout.draftFeeling).toBe(4)
     expect(active?.workout.draftNotes).toBe('Previous notes')
+    expect(active?.workout.recoveredFinishedAt).toBe(body.finished_at)
     expect(active?.workout.exercises[0].sets[0]).toMatchObject({ done: true, reps: '8', weight: '60' })
     expect(await db.outbox.get('rejected')).toBeUndefined()
   })

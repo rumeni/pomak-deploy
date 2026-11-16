@@ -220,3 +220,19 @@ describe('older locally persisted confirmed sets', () => {
     expect(() => toSessionPayload(w, new Date('2026-09-25T11:00:00Z'), null, '')).toThrow('workout.errors.invalidWeight')
   })
 })
+
+describe('preserving original completion time when restoring a rejected workout', () => {
+  it('keeps the original finish time if the user only edits an existing set', () => {
+    const w = { ...start(), recoveredFinishedAt: '2026-09-25T11:00:00.000Z' }
+    expect(finishTimeForWorkout(w, new Date('2026-09-25T14:00:00Z')).toISOString())
+      .toBe('2026-09-25T11:00:00.000Z')
+  })
+
+  it('extends the restored finish only when a newly confirmed set is later', () => {
+    let w = { ...start(), recoveredFinishedAt: '2026-09-25T11:00:00.000Z' }
+    const item = w.exercises[0]
+    w = confirmSet(w, item.key, item.sets[1].key, new Date('2026-09-25T13:00:00Z'))
+    expect(finishTimeForWorkout(w, new Date('2026-09-25T14:00:00Z')).toISOString())
+      .toBe('2026-09-25T13:00:00.000Z')
+  })
+})
