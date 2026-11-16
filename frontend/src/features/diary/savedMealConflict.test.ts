@@ -1,7 +1,7 @@
 import { AxiosError, AxiosHeaders } from 'axios'
 import { describe, expect, it } from 'vitest'
 
-import { savedMealConflict } from './api'
+import { savedMealConflict } from './savedMealValidation'
 
 function httpError(status: number) {
   return new AxiosError('Request failed', 'ERR_BAD_RESPONSE', undefined, undefined, {

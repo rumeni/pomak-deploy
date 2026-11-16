@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { isAxiosError } from 'axios'
 
 import i18n from '../../i18n'
 import { api } from '../../lib/api'
 import type { SavedMealItem } from './model'
+import { savedMealConflict } from './savedMealValidation'
 
 export interface SavedMeal {
   id: string
@@ -17,11 +17,6 @@ export function useSavedMeals() {
     queryFn: async () => (await api.get<SavedMeal[]>('/nutrition/saved-meals/')).data,
     retry: false,
   })
-}
-
-/** A 409 means this ID already belongs to a different saved-meal payload. */
-export function savedMealConflict(error: unknown): boolean {
-  return isAxiosError(error) && error.response?.status === 409
 }
 
 export function useCreateSavedMeal() {
