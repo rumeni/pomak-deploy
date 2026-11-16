@@ -47,9 +47,25 @@ export async function startWorkoutIfUnchanged(
   })
 }
 
-export async function clearActiveWorkout(): Promise<void> {
-  const ownerId = getCurrentUserId()
-  if (ownerId) await db.activeWorkout.delete(ownerId)
+/** A tab may still display workout A after another tab replaces it with B. */
+export class StaleWorkoutError extends Error {
+  constructor() {
+    super('STALE_WORKOUT')
+    this.name = 'StaleWorkoutError'
+  }
+}
+
+/** Discard ONLY the workout this screen is showing, never a replacement. */
+export async function clearActiveWorkout(ownerId: string, workoutId: string): Promise<void> {
+  if (getCurrentUserId() !== ownerId) throw new StaleWorkoutError()
+  await db.transaction('rw', db.activeWorkout, async () => {
+    const active = await db.activeWorkout.get(ownerId)
+    if (getCurrentUserId() !== ownerId ||
+        active?.ownerId !== ownerId || active.workout.id !== workoutId) {
+      throw new StaleWorkoutError()
+    }
+    await db.activeWorkout.delete(ownerId)
+  })
 }
 
 /**

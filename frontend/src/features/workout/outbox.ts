@@ -2,6 +2,8 @@ import axios from 'axios'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db, type OutboxRow } from '../../lib/db'
+import { getCurrentUserId } from '../../lib/currentUser'
+import { StaleWorkoutError } from './store'
 import type { Exercise } from '../training/api'
 import { formatDuration } from '../training/labels'
 import { uuid } from '../../lib/uuid'
@@ -17,7 +19,15 @@ export async function finishWorkout(
   exercises: Exercise[],
   now = new Date(),
 ): Promise<void> {
+  if (getCurrentUserId() !== ownerId) throw new StaleWorkoutError()
   await db.transaction('rw', db.outbox, db.activeWorkout, async () => {
+    const active = await db.activeWorkout.get(ownerId)
+    // Check and delete atomically with the outbox insertion; another tab
+    // may have replaced workout A with B after this screen loaded.
+    if (getCurrentUserId() !== ownerId ||
+        active?.ownerId !== ownerId || active.workout.id !== payload.id) {
+      throw new StaleWorkoutError()
+    }
     await db.outbox.put({ id: payload.id, ownerId, payload, exercises, queuedAt: now.toISOString(), attempts: 0, error: null })
     await db.activeWorkout.delete(ownerId)
   })

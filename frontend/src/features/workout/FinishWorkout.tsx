@@ -7,7 +7,7 @@ import { formatDuration } from '../training/labels'
 import { finishTimeForWorkout, SetInputError, summarize, toSessionPayload, type ActiveWorkout } from './model'
 import { finishWorkout } from './outbox'
 import { cancelRestEnd } from './restNotification'
-import { clearActiveWorkout } from './store'
+import { clearActiveWorkout, StaleWorkoutError } from './store'
 import { requestSync } from './sync'
 
 const FEELINGS = [1, 2, 3, 4, 5] as const
@@ -51,16 +51,26 @@ export function FinishWorkout({
       requestSync()
       onDone()
     } catch (cause) {
-      setError(cause instanceof SetInputError ? t(cause.message) : t('errors.generic'))
+      setError(cause instanceof StaleWorkoutError
+        ? t('workout.staleWorkout')
+        : cause instanceof SetInputError ? t(cause.message) : t('errors.generic'))
       setSaving(false)
     }
   }
 
   const onDiscard = async () => {
     if (!window.confirm(t('workout.discardConfirm'))) return
-    await cancelRestEnd()
-    await clearActiveWorkout()
-    onDone()
+    setSaving(true)
+    setError(null)
+    try {
+      await clearActiveWorkout(ownerId, workout.id)
+      // Never cancel a newer workout's timer if this screen is stale.
+      await cancelRestEnd()
+      onDone()
+    } catch (cause) {
+      setError(cause instanceof StaleWorkoutError ? t('workout.staleWorkout') : t('errors.generic'))
+      setSaving(false)
+    }
   }
 
   return (

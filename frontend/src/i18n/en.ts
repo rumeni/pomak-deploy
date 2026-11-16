@@ -679,6 +679,7 @@ export const en = {
     resume: 'Resume workout',
     replaceConfirm: 'You already started "{{name}}". Discard it and start a new one?',
     startConflict: 'Another workout started while loading. Your current workout is safe; please try again.',
+    staleWorkout: 'This workout is no longer active (it may have been replaced or finished in another tab). Your newer workout is safe. Return to Training and reopen the current workout.',
     finish: 'Finish',
     setHint: 'Tap the set number: warm-up. Long press: remove the set.',
     removeSetConfirm: 'Remove set {{n}}?',
