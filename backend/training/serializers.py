@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.db import transaction
@@ -12,6 +13,10 @@ from .models import Exercise, Routine, RoutineExercise, RoutineSet, SessionExerc
 
 MAX_EXERCISES_PER_ROUTINE = 40
 MAX_SETS_PER_EXERCISE = 20
+# Finished workouts use the same practical caps as the routine editor.
+MAX_SESSION_EXERCISES = 40
+MAX_SESSION_SETS_PER_EXERCISE = 20
+MAX_WORKOUT_SNAPSHOT_BYTES = 256 * 1024
 
 
 class ExerciseSerializer(serializers.ModelSerializer):
@@ -178,6 +183,13 @@ class SessionExerciseSerializer(serializers.ModelSerializer):
         model = SessionExercise
         fields = ['exercise', 'exercise_id', 'notes', 'sets']
 
+    def validate_sets(self, value):
+        if len(value) > MAX_SESSION_SETS_PER_EXERCISE:
+            raise serializers.ValidationError(
+                _('At most %(count)d sets per exercise.') % {'count': MAX_SESSION_SETS_PER_EXERCISE}
+            )
+        return value
+
     def validate_exercise_id(self, exercise):
         if exercise.owner_id not in (None, self.context['request'].user.pk):
             raise serializers.ValidationError(_('This exercise is not available.'))
@@ -203,6 +215,24 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
         if routine is not None and routine.owner_id != self.context['request'].user.pk:
             raise serializers.ValidationError(_('This routine is not available.'))
         return routine
+
+    def validate_exercises(self, value):
+        if len(value) > MAX_SESSION_EXERCISES:
+            raise serializers.ValidationError(
+                _('At most %(count)d exercises per workout.') % {'count': MAX_SESSION_EXERCISES}
+            )
+        return value
+
+    def validate_plan_snapshot(self, value):
+        if value is None:
+            return value
+        try:
+            size = len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+        except (TypeError, ValueError, OverflowError, RecursionError):
+            raise serializers.ValidationError(_('Invalid workout plan snapshot.')) from None
+        if size > MAX_WORKOUT_SNAPSHOT_BYTES:
+            raise serializers.ValidationError(_('The workout plan snapshot is too large.'))
+        return value
 
     def validate(self, attrs):
         started, finished = attrs['started_at'], attrs['finished_at']

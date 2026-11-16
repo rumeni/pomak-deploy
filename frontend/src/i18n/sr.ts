@@ -730,6 +730,8 @@ export const sr = {
       invalidReps: 'Ponavljanja moraju biti ceo broj.',
       invalidWeight: 'Težina nije ispravan broj.',
       invalidDuration: 'Trajanje nije ispravno (npr. 0:45).',
+      tooManyExercises: 'Trening može imati najviše {{count}} vežbi.',
+      tooManySets: 'Vežba može imati najviše {{count}} serija.',
     },
   },
   history: {

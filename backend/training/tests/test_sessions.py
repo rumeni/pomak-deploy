@@ -87,6 +87,37 @@ class WorkoutSessionTests(APITestCase):
         body['exercises'][0]['sets'][0] = {'set_type': 'working', 'weight_kg': None, 'reps': None}
         self.assertEqual(self.post(body).status_code, 400)
 
+    def test_session_accepts_same_boundaries_as_a_routine(self):
+        exercise = {'exercise_id': str(self.bench.id), 'notes': '',
+                    'sets': [{'set_type': 'working', 'weight_kg': '20', 'reps': 8}]}
+        forty = self.post(self.payload(exercises=[exercise for _ in range(40)]))
+        self.assertEqual(forty.status_code, 201, forty.data)
+        twenty = self.post(self.payload(exercises=[
+            {**exercise, 'sets': [exercise['sets'][0] for _ in range(20)]},
+        ]))
+        self.assertEqual(twenty.status_code, 201, twenty.data)
+
+    def test_session_rejects_oversized_arrays_without_writing_records(self):
+        exercise = {'exercise_id': str(self.bench.id), 'notes': '',
+                    'sets': [{'set_type': 'working', 'weight_kg': '20', 'reps': 8}]}
+        too_many_exercises = self.post(self.payload(exercises=[exercise for _ in range(41)]))
+        self.assertEqual(too_many_exercises.status_code, 400)
+        self.assertIn('exercises', too_many_exercises.data)
+
+        too_many_sets = self.post(self.payload(exercises=[
+            {**exercise, 'sets': [exercise['sets'][0] for _ in range(21)]},
+        ]))
+        self.assertEqual(too_many_sets.status_code, 400)
+        self.assertIn('sets', str(too_many_sets.data))
+        self.assertEqual(WorkoutSession.objects.count(), 0)
+        self.assertEqual(SetLog.objects.count(), 0)
+
+    def test_session_rejects_oversized_plan_snapshot_without_writing(self):
+        response = self.post(self.payload(plan_snapshot={'notes': 'x' * (256 * 1024)}))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('plan_snapshot', response.data)
+        self.assertEqual(WorkoutSession.objects.count(), 0)
+
     def test_cannot_attach_other_users_routine(self):
         other = User.objects.create_user('c@d.rs', 'jaka-lozinka-123')
         routine = Routine.objects.create(owner=other, name='Tuđa')
