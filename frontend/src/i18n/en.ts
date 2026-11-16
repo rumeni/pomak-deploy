@@ -718,6 +718,8 @@ export const en = {
       invalidReps: 'Reps must be a whole number.',
       invalidWeight: 'Weight is not a valid number.',
       invalidDuration: 'Duration is not valid (e.g. 0:45).',
+      tooManyExercises: 'A workout can have at most {{count}} exercises.',
+      tooManySets: 'An exercise can have at most {{count}} sets.',
     },
   },
   history: {

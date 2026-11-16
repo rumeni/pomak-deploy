@@ -157,7 +157,7 @@ class ExerciseProgressView(APIView):
             .prefetch_related('sets')
             .order_by('session__started_at')
         )
-        result = progress.analyze(exercise.measurement, done)
+        result = progress.analyze(exercise.measurement, done, load_mode=exercise.load_mode)
         return Response({
             'exercise': ExerciseSerializer(exercise).data,
             **result,

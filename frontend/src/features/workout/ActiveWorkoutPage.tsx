@@ -28,6 +28,11 @@ import { cancelRestEnd, restEndedFeedback, restNotificationAction, scheduleRestE
 import { usePersistentWorkout } from './store'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 
+// Match backend WorkoutSessionSerializer boundaries so a finished offline
+// workout is never rejected merely for having too many items.
+const MAX_SESSION_EXERCISES = 40
+const MAX_SESSION_SETS = 20
+
 type Update = (change: (w: ActiveWorkout) => ActiveWorkout) => void
 
 export function ActiveWorkoutPage() {
@@ -62,6 +67,10 @@ export function ActiveWorkoutPage() {
   }
 
   const addExercises = async (exercises: Exercise[]) => {
+    if (workout.exercises.length + exercises.length > MAX_SESSION_EXERCISES) {
+      window.alert(t('workout.errors.tooManyExercises', { count: MAX_SESSION_EXERCISES }))
+      return
+    }
     update((w) => ({ ...w, exercises: [...w.exercises, ...exercises.map(newActiveExercise)] }))
     const missing = exercises.map((e) => e.id).filter((id) => !workout.previous[id])
     const previous = await loadPrevious(missing)
@@ -129,11 +138,16 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
     }
   }
 
-  const addSet = () =>
+  const addSet = () => {
+    if (item.sets.length >= MAX_SESSION_SETS) {
+      setError(t('workout.errors.tooManySets', { count: MAX_SESSION_SETS }))
+      return
+    }
     update((w) => ({
       ...w,
       exercises: w.exercises.map((e) => (e.key === item.key ? { ...e, sets: [...e.sets, emptyActiveSet()] } : e)),
     }))
+  }
 
   const removeSet = (key: string) =>
     update((w) => ({

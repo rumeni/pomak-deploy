@@ -5,9 +5,9 @@ import type { Food } from '../features/nutrition/api'
 import type { Exercise } from '../features/training/api'
 import type { ActiveWorkout, SessionPayload } from '../features/workout/model'
 
-/** Aktivan trening; uvek najviše jedan, pod ključem "current". */
+/** At most one unfinished workout per account, keyed by its owner ID. */
 export interface ActiveWorkoutRow {
-  slot: 'current'
+  slot: string
   /** Nalog kome trening pripada; na istom telefonu može da se prijavi više ljudi. */
   ownerId: string
   workout: ActiveWorkout
@@ -83,4 +83,22 @@ db.version(3).stores({
   diaryDays: 'key, ownerId',
   diaryOps: 'id, [ownerId+date], ownerId, seq',
   foodCache: 'key, ownerId, usedAt',
+})
+
+/**
+ * Re-key a pre-existing global "current" workout on an IndexedDB upgrade.
+ * Do not drop its sets: account A's offline workout must survive a login by B.
+ * The upgrade callback runs transactionally; all other local stores persist.
+ */
+db.version(4).stores({
+  activeWorkout: 'slot',
+}).upgrade(async (tx) => {
+  const table = tx.table('activeWorkout')
+  const legacy = await table.get('current') as ActiveWorkoutRow | undefined
+  if (legacy?.ownerId) {
+    if (!(await table.get(legacy.ownerId))) {
+      await table.put({ ...legacy, slot: legacy.ownerId })
+    }
+    await table.delete('current')
+  }
 })
