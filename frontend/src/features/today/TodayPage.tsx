@@ -71,7 +71,8 @@ function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: stri
   const nutritionToday = toISODate(now)
   const monday = mondayOf(workoutToday)
   const week = useWeek(monday)
-  const { data: sessions } = useSessions()
+  const { data: pages } = useSessions(tracksTraining ? ownerId : undefined)
+  const sessions = pages?.pages.flat() ?? []
   // Treninzi koji čekaju slanje (bez interneta) se vide odmah.
   const pending = usePendingSessions(tracksTraining ? ownerId : undefined)
   const { data: weights } = useMeasurements('weight')
@@ -127,7 +128,9 @@ function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: stri
 function TrainingCard() {
   const { t } = useTranslation()
   const { data: routines, isLoading } = useRoutines()
-  const { data: sessions } = useSessions()
+  const { me } = useAuth()
+  const { data: pages } = useSessions(me?.id)
+  const sessions = pages?.pages.flat() ?? []
   const week = useWeek(mondayOf(toISODate(new Date())))
   const start = useStartWorkout()
   const [starting, setStarting] = useState(false)
