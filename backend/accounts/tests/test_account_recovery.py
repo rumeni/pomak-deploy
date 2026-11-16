@@ -292,3 +292,28 @@ class DisabledAccountEmailsTests(APITestCase):
             'email': 'someone@example.com',
         }, format='json')
         self.assertEqual(res.status_code, 503)
+
+@override_settings(**EMAIL_TEST_SETTINGS)
+class MalformedEmailEndpointBodyTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('shape-check@example.com', 'strong-pass-123')
+        self.client.force_authenticate(self.user)
+
+    def test_non_object_json_returns_400_not_500(self):
+        urls = (
+            '/api/auth/password/reset/request/',
+            '/api/auth/password/reset/confirm/',
+            '/api/auth/email/verify/',
+            '/api/auth/email/resend/',
+        )
+        for url in urls:
+            for raw in ('[]', '"text"', 'null'):
+                with self.subTest(url=url, raw=raw):
+                    response = self.client.post(url, data=raw, content_type='application/json')
+                    self.assertEqual(response.status_code, 400, response.content)
+                    self.assertIn('detail', response.json())
+
+    def test_object_payload_keeps_existing_token_validation(self):
+        response = self.client.post('/api/auth/password/reset/confirm/', {}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('token', response.json())
