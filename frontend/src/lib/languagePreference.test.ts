@@ -35,6 +35,17 @@ describe('offline profile language synchronization (#49)', () => {
     expect(pendingLanguage('language-u1')).toBeNull()
   })
 
+  it('does not resurrect an older choice after another browser tab clears the shared key', async () => {
+    queueLanguage('language-u1', 'en') // tab A
+    values.set('pomak.language-pending:language-u1', 'sr-Latn') // tab B replaces it
+    expect(pendingLanguage('language-u1')).toBe('sr-Latn')
+    values.delete('pomak.language-pending:language-u1') // tab B syncs it
+    expect(pendingLanguage('language-u1')).toBeNull()
+    const send = vi.fn()
+    expect((await flushPendingLanguage('language-u1', send, () => true)).synced).toBe(false)
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it('never clears a newer preference when an older PATCH returns late', async () => {
     queueLanguage('language-u1', 'en')
     let finish!: (value: string) => void

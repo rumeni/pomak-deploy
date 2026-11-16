@@ -3,6 +3,8 @@ import type { Language } from '../i18n'
 const PREFIX = 'pomak.language-pending'
 
 /** Per-account non-secret preference. A logged-out user cannot overwrite B's. */
+// Only used for storage failures. Never keep an in-memory duplicate of a
+// successfully written key: another tab can supersede or clear that key.
 const fallback = new Map<string, Language>()
 const keyFor = (ownerId: string) => `${PREFIX}:${ownerId}`
 
@@ -18,11 +20,12 @@ export function pendingLanguage(ownerId: string): Language | null {
 }
 
 export function queueLanguage(ownerId: string, language: Language): void {
-  fallback.set(ownerId, language)
   try {
     localStorage.setItem(keyFor(ownerId), language)
+    fallback.delete(ownerId)
   } catch {
-    // Volatile until storage is accessible again; local language is still set.
+    // Use volatile fallback ONLY if persistent write failed.
+    fallback.set(ownerId, language)
   }
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('pomak:language-pending'))
 }

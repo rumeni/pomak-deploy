@@ -17,6 +17,7 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
   const listRef = useRef<HTMLDivElement>(null)
   const restoreScroll = useRef<{ top: number; height: number } | null>(null)
   const previousCount = useRef(0)
+  const previousNewestId = useRef<string | null>(null)
   const readerNearBottom = useRef(true)
   const conversationKey = `${selfId}:${clientId ?? 'own'}`
   const lastConversation = useRef(conversationKey)
@@ -28,6 +29,7 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
     if (lastConversation.current !== conversationKey) {
       lastConversation.current = conversationKey
       previousCount.current = 0
+      previousNewestId.current = null
       readerNearBottom.current = true
       restoreScroll.current = null
     }
@@ -36,12 +38,15 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
     const target = chatScrollTop({
       previousCount: previousCount.current,
       count: items.length,
+      previousNewestId: previousNewestId.current,
+      newestId: items.at(-1)?.id ?? null,
       nearBottom: readerNearBottom.current,
       scrollHeight: box.scrollHeight,
       restore: restoreScroll.current,
     })
     if (target !== null) box.scrollTop = target
     previousCount.current = items.length
+    previousNewestId.current = items.at(-1)?.id ?? null
     restoreScroll.current = null
   }, [items.length, messages.data, conversationKey])
 

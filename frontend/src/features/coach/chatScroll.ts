@@ -11,13 +11,17 @@ export function nearChatBottom(top: number, viewport: number, height: number): b
 export function chatScrollTop(options: {
   previousCount: number
   count: number
+  previousNewestId: string | null
+  newestId: string | null
   nearBottom: boolean
   scrollHeight: number
   restore: RestorePosition | null
 }): number | null {
-  const { previousCount, count, nearBottom, scrollHeight, restore } = options
+  const { previousCount, count, previousNewestId, newestId, nearBottom, scrollHeight, restore } = options
   if (restore) return restore.top + scrollHeight - restore.height
   if (count === 0) return null
-  if (previousCount === 0 || (count > previousCount && nearBottom)) return scrollHeight
+  // A full 80-message page is a sliding window: incoming messages replace
+  // older ones without changing count. Follow the newest ID as well.
+  if (previousCount === 0 || (nearBottom && (count > previousCount || newestId !== previousNewestId))) return scrollHeight
   return null
 }
