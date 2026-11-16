@@ -53,7 +53,7 @@ class Exercise(TimeStampedModel):
     # Naziv na engleskom za zajedničku biblioteku; lične vežbe imaju samo naziv koji je korisnik upisao.
     name_en = models.CharField(max_length=120, blank=True)
     aliases = models.CharField(max_length=300, blank=True, help_text=_('Other names, separated by commas.'))
-    search_name = models.CharField(max_length=450, editable=False, db_index=True)
+    search_name = models.CharField(max_length=1300, editable=False, db_index=True)
     equipment = models.CharField(max_length=20, choices=Equipment.choices)
     measurement = models.CharField(max_length=30, choices=Measurement.choices)
     load_mode = models.CharField(max_length=10, choices=LoadMode.choices, default=LoadMode.TOTAL)

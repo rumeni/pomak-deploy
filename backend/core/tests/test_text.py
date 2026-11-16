@@ -16,3 +16,9 @@ class NormalizeSearchTests(SimpleTestCase):
         self.assertEqual(normalize_search('ПИЛЕТИНА'), normalize_search('piletina'))
         self.assertEqual(normalize_search('Ћевапчићи Ђумбир'), 'cevapcici djumbir')
         self.assertEqual(normalize_search('Љиљана Његош Џез'), 'ljiljana njegos dzez')
+
+    def test_long_cyrillic_names_fit_expanded_index(self):
+        # Allowed name and alias lengths can expand through Љ/Њ digraphs.
+        key = normalize_search('љ' * 120 + ' ' + 'њ' * 300)
+        self.assertGreater(len(key), 450)
+        self.assertLessEqual(len(key), 1300)

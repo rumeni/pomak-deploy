@@ -2,7 +2,7 @@
 
 No schema changes. Keep old rows searchable during/after a rolling deploy.
 """
-from django.db import migrations
+from django.db import migrations, models
 from core.text import normalize_search
 
 
@@ -18,7 +18,14 @@ def reindex(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ('nutrition', '0006_nutrition_target'),
-        ('training', '0008_seed_instructions'),
+        ('training', '0009_search_name_capacity'),
     ]
 
-    operations = [migrations.RunPython(reindex, migrations.RunPython.noop)]
+    operations = [
+        migrations.AlterField(
+            model_name='food',
+            name='search_name',
+            field=models.CharField(max_length=1300, editable=False, db_index=True),
+        ),
+        migrations.RunPython(reindex, migrations.RunPython.noop),
+    ]
