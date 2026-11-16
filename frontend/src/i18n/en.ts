@@ -259,6 +259,9 @@ export const en = {
     manualName: 'Name (e.g. Cheese pie from the bakery)',
     manualHint: 'Enter values for the whole amount you ate. Leave unknown macros empty: they will be marked as unknown, not 0.',
     manualKcal: 'Calories (kcal) *',
+    manualNameTooLong: 'Name can contain at most {{max}} characters.',
+    manualValueRange: '{{field}}: the allowed value is between 0 and {{max}}.',
+    manualValuePrecision: '{{field}}: use at most {{places}} decimal places.',
     entryNotFound: 'Entry not found.',
   },
   mealSettings: {

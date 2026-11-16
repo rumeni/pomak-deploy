@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { OutboxRow } from '../../lib/db'
 import type { Exercise } from '../training/api'
-import { combineHistory, formatWorkoutDuration, fromOutbox, setCount, type SessionView } from './history'
+import { combineHistory, formatWorkoutDuration, fromOutbox, sessionExerciseKey, setCount, type SessionView } from './history'
 
 const bench: Exercise = {
   id: 'bench', name: 'Bench', aliases: '', equipment: 'barbell', measurement: 'weight_reps',
@@ -49,6 +49,14 @@ describe('istorija', () => {
     const server = [view('s1', '2026-09-29T10:00:00Z'), view('p1', '2026-09-30T10:00:00Z')]
     const local = [view('p1', '2026-09-30T10:00:00Z', 'pending'), view('p2', '2026-09-30T18:00:00Z', 'pending')]
     expect(combineHistory(server, local).map((s) => `${s.id}:${s.status}`)).toEqual(['p2:pending', 'p1:sent', 's1:sent'])
+  })
+})
+
+describe('workout history React identity', () => {
+  it('uses unique keys for repeated occurrences of the same exercise', () => {
+    const keys = [sessionExerciseKey('bench', 0), sessionExerciseKey('bench', 1), sessionExerciseKey('squat', 2)]
+    expect(new Set(keys).size).toBe(keys.length)
+    expect(keys[0]).not.toBe(keys[1])
   })
 })
 
