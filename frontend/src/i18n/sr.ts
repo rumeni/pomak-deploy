@@ -221,6 +221,8 @@ export const sr = {
     saveAsMeal: 'Sačuvaj kao obrok',
     saveAsMealPrompt: 'Naziv sačuvanog obroka:',
     savedMealCreated: 'Obrok „{{name}}“ je sačuvan.',
+    savedMealNameTooLong: 'Naziv sačuvanog obroka može imati najviše {{max}} znakova.',
+    savedMealTooManyItems: 'Sačuvani obrok može imati najviše {{max}} stavki.',
     savedMeals: 'Sačuvani obroci',
     savedMealsOffline: 'Sačuvani obroci se učitavaju uz internet.',
     items_one: '{{count}} stavka',
