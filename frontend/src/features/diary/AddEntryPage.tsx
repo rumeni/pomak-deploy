@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { ScreenHeader } from '../../components/ui'
+import { FormError, ScreenHeader } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
+import { errorMessage } from '../../lib/api'
 import { toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { useDebounced } from '../../lib/useDebounced'
@@ -96,6 +97,7 @@ export function AddEntryPage() {
             </ul>
           </>
         )}
+        {!search && <FormError message={deleteSaved.error ? errorMessage(deleteSaved.error) : null} />}
         {!search && savedMeals.isError && <p className="text-sm text-muted">{t('diary.savedMealsOffline')}</p>}
 
         {!search && <h2 className="mt-2 text-lg font-semibold">{t('diary.recent')}</h2>}

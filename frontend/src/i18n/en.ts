@@ -217,6 +217,8 @@ export const en = {
     saveAsMeal: 'Save as meal',
     saveAsMealPrompt: 'Name of the saved meal:',
     savedMealCreated: 'Meal "{{name}}" saved.',
+    savedMealNameTooLong: 'Saved meal name can have at most {{max}} characters.',
+    savedMealTooManyItems: 'A saved meal can contain at most {{max}} items.',
     savedMeals: 'Saved meals',
     savedMealsOffline: 'Saved meals load when you are online.',
     items_one: '{{count}} item',

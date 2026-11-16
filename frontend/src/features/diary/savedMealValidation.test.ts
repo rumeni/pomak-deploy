@@ -1,0 +1,15 @@
+import { describe, expect, it } from 'vitest'
+import { MAX_SAVED_MEAL_ITEMS, MAX_SAVED_MEAL_NAME_LENGTH, savedMealDraftIssue } from './savedMealValidation'
+
+describe('saved meal creation uses API limits before the network call', () => {
+  it('allows an exactly 100-character name, rejects 101 characters', () => {
+    expect(savedMealDraftIssue('X'.repeat(MAX_SAVED_MEAL_NAME_LENGTH), 1)).toBeNull()
+    expect(savedMealDraftIssue('X'.repeat(MAX_SAVED_MEAL_NAME_LENGTH + 1), 1)).toBe('nameTooLong')
+  })
+
+  it('allows exactly 30 entries, rejects 31 and prioritizes name validation', () => {
+    expect(savedMealDraftIssue('Lunch', MAX_SAVED_MEAL_ITEMS)).toBeNull()
+    expect(savedMealDraftIssue('Lunch', MAX_SAVED_MEAL_ITEMS + 1)).toBe('tooManyItems')
+    expect(savedMealDraftIssue('X'.repeat(101), 31)).toBe('nameTooLong')
+  })
+})

@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { Button, Card, PageHeader } from '../../components/ui'
+import { Button, Card, FormError, PageHeader } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
+import { errorMessage } from '../../lib/api'
 import { addDays, formatDecimal, formatLongDate, fromISODate, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { fmtValue } from '../nutrition/macroFormat'
 import { useCreateSavedMeal } from './api'
 import { mealLabel, mealSettings, visibleMeals } from './meals'
+import { MAX_SAVED_MEAL_ITEMS, MAX_SAVED_MEAL_NAME_LENGTH, savedMealDraftIssue } from './savedMealValidation'
 import { copyEntry, savedItemFromEntry, totals, type DayTotals, type DisplayDay, type MacroTotal } from './model'
 import { discardRejectedDayOps, loadDayEntries, saveDrafts, setDayStatus, useDiaryDay } from './store'
 import type { DayStatus, DayTarget, DiaryEntry, MealKey } from './types'
@@ -154,6 +156,7 @@ function MealCard({
   const { me } = useAuth()
   const createSaved = useCreateSavedMeal()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const entries = day.entries.filter((e) => e.meal === meal)
   const kcal = Math.round(entries.reduce((sum, e) => sum + Number(e.kcal), 0))
 
@@ -169,9 +172,23 @@ function MealCard({
   }
 
   const saveAsMeal = () => {
+    if (createSaved.isPending) return
     setMenuOpen(false)
+    setSaveError(null)
+    createSaved.reset()
+    // Do not leave a previous success banner visible if this attempt fails.
+    onNotice('')
     const name = window.prompt(t('diary.saveAsMealPrompt'), label)?.trim()
     if (!name) return
+    const issue = savedMealDraftIssue(name, entries.length)
+    if (issue === 'nameTooLong') {
+      setSaveError(t('diary.savedMealNameTooLong', { max: MAX_SAVED_MEAL_NAME_LENGTH }))
+      return
+    }
+    if (issue === 'tooManyItems') {
+      setSaveError(t('diary.savedMealTooManyItems', { max: MAX_SAVED_MEAL_ITEMS }))
+      return
+    }
     createSaved.mutate(
       { id: uuid(), name, items: entries.map(savedItemFromEntry) },
       { onSuccess: () => onNotice(t('diary.savedMealCreated', { name })) },
@@ -200,12 +217,15 @@ function MealCard({
             {t('diary.copyYesterday')}
           </button>
           {entries.length > 0 && (
-            <button type="button" onClick={saveAsMeal} className="min-h-11 border-t border-line px-4 text-left font-medium active:bg-brand-soft">
+            <button type="button" disabled={createSaved.isPending} onClick={saveAsMeal} className="min-h-11 border-t border-line px-4 text-left font-medium active:bg-brand-soft disabled:opacity-50">
               {t('diary.saveAsMeal')}
             </button>
           )}
         </div>
       )}
+      <div className="px-4">
+        <FormError message={saveError ?? (createSaved.error ? errorMessage(createSaved.error) : null)} />
+      </div>
       <ul className="px-4">
         {entries.length === 0 && <li className="py-2 text-sm text-muted">{t('diary.emptyMeal')}</li>}
         {entries.map((entry) => (
