@@ -6,11 +6,14 @@ import {
   finishTimeForWorkout,
   describeLogged,
   previousSet,
+  prepareSessionPayload,
+  MAX_WORKOUT_SNAPSHOT_BYTES,
   SetInputError,
   startFromRoutine,
   suggestion,
   summarize,
   toSessionPayload,
+  uploadSafePlanSnapshot,
   unconfirmSet,
   updateSet,
   type PreviousPerformance,
@@ -234,5 +237,42 @@ describe('preserving original completion time when restoring a rejected workout'
     const w = confirmSet(restored, item.key, item.sets[1].key, new Date('2026-09-25T13:00:00Z'))
     expect(finishTimeForWorkout(w, new Date('2026-09-25T14:00:00Z')).toISOString())
       .toBe('2026-09-25T13:00:00.000Z')
+  })
+})
+
+describe('oversized plan snapshot regression (Codex PR #38)', () => {
+  it('preserves normal snapshots and only strips oversized presentation text', () => {
+    const normal = toSessionPayload(start(), new Date('2026-09-25T11:00:00Z'), null, '')
+    expect(normal.plan_snapshot).toEqual(routine)
+
+    const huge = {
+      ...routine,
+      notes: 'routine notes' + 'n'.repeat(300_000),
+      exercises: routine.exercises.map((e) => ({
+        ...e,
+        exercise: { ...e.exercise, instructions: 'long explanation'.repeat(30_000) },
+      })),
+    }
+    const before = startFromRoutine(huge, previous, t0)
+    expect(before.planSnapshot).toEqual(huge)
+    const ready = toSessionPayload(before, new Date('2026-09-25T11:00:00Z'), null, '')
+    expect(new TextEncoder().encode(JSON.stringify(ready.plan_snapshot)).byteLength).toBeLessThanOrEqual(MAX_WORKOUT_SNAPSHOT_BYTES)
+    expect(ready.plan_snapshot?.exercises.map((e) => e.exercise.id)).toEqual(routine.exercises.map((e) => e.exercise.id))
+    expect(ready.plan_snapshot?.exercises.map((e) => e.sets)).toEqual(routine.exercises.map((e) => e.sets))
+    expect(ready.plan_snapshot?.exercises[0].exercise.instructions).toBe('')
+    expect(before.planSnapshot).toEqual(huge) // no local destructive edit
+    expect(uploadSafePlanSnapshot(routine)).toBe(routine)
+    expect(prepareSessionPayload(normal)).toBe(normal)
+  })
+
+  it('repairs previously queued large snapshots without modifying logged sets', () => {
+    const old = toSessionPayload(start(), new Date('2026-09-25T11:00:00Z'), null, '')
+    const huge = { ...routine, notes: 'n'.repeat(400_000) }
+    const legacy = { ...old, plan_snapshot: huge }
+    const fixed = prepareSessionPayload(legacy)
+    expect(new TextEncoder().encode(JSON.stringify(fixed.plan_snapshot)).byteLength).toBeLessThanOrEqual(MAX_WORKOUT_SNAPSHOT_BYTES)
+    expect(fixed.id).toBe(old.id)
+    expect(fixed.exercises).toBe(old.exercises)
+    expect(legacy.plan_snapshot).toBe(huge)
   })
 })

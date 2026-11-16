@@ -7,6 +7,7 @@ import { db } from '../../lib/db'
 import type { SessionPayload } from './model'
 import type { Exercise } from '../training/api'
 import { classifySendError, finishWorkout, mergePrevious, pendingSessions, previousFromOutbox, restoreRejectedWorkout, syncOutbox } from './outbox'
+import { MAX_WORKOUT_SNAPSHOT_BYTES } from './model'
 
 function payload(id: string, startedAt: string, exerciseId = 'bench', weight = '60'): SessionPayload {
   return {
@@ -68,6 +69,23 @@ describe('syncOutbox', () => {
     expect(sent).toEqual(['stari', 'novi'])
     expect(report).toEqual({ sent: 2, rejected: 0, pending: 0 })
     expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('repairs an older oversized queued snapshot at upload without touching its logged sets', async () => {
+    const old = payload('oversized', '2026-09-30T10:00:00Z')
+    old.plan_snapshot = {
+      id: 'r1', name: 'Huge', created_at: '', updated_at: '',
+      notes: 'n'.repeat(300_000),
+      exercises: [],
+    }
+    await finishWorkout('u1', old, [])
+    const send = vi.fn(async (ready: SessionPayload) => {
+      expect(JSON.stringify(ready.plan_snapshot).length).toBeLessThan(MAX_WORKOUT_SNAPSHOT_BYTES)
+      expect(ready.exercises).toEqual(old.exercises)
+      expect(ready.id).toBe('oversized')
+    })
+    expect((await syncOutbox('u1', send)).sent).toBe(1)
+    expect(send).toHaveBeenCalledTimes(1)
   })
 
   it('bez interneta staje i ništa ne gubi', async () => {
@@ -190,6 +208,21 @@ describe('restore rejected offline workout', () => {
     await restoreRejectedWorkout('u2', 'other')
     expect((await db.activeWorkout.get('u1'))?.workout.name).toBe('A unfinished')
     expect((await db.activeWorkout.get('u2'))?.workout.id).toBe('other')
+  })
+
+  it('restoring a rejected workout also repairs an oversized snapshot', async () => {
+    const old = payload('old', '2026-09-29T10:00:00Z')
+    old.plan_snapshot = {
+      id: 'routine', name: 'Large', notes: 'x'.repeat(300_000),
+      created_at: '', updated_at: '', exercises: [],
+    }
+    await finishWorkout('u1', old, [exercise])
+    await db.outbox.update('old', { error: 'The workout plan snapshot is too large.' })
+    await restoreRejectedWorkout('u1', 'old')
+    const restored = await db.activeWorkout.get('u1')
+    expect(restored?.workout.id).toBe('old')
+    expect(JSON.stringify(restored?.workout.planSnapshot).length).toBeLessThan(MAX_WORKOUT_SNAPSHOT_BYTES)
+    expect(restored?.workout.exercises[0].sets[0]).toMatchObject({ weight: '60', reps: '8', done: true })
   })
 
   it('never overwrites an active workout or another user’s queued workout', async () => {
