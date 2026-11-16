@@ -246,7 +246,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
 .dashboard-progress { height: 6px; border-radius: 3px; overflow: hidden; background: var(--color-brand-soft); }
 .dashboard-progress > div { height: 100%; border-radius: inherit; background: var(--color-accent); transition: width .35s ease; }
 .dashboard-card a { transition: color .15s ease; }
-.dashboard-card a:hover { color: var(--color-accent); }
+.dashboard-card a:not([class*="bg-"]):hover { color: var(--color-accent); }
 
 /* Auth: full-bleed contour field, paper panel. */
 .auth-stage {
@@ -329,7 +329,6 @@ a, button { -webkit-tap-highlight-color: transparent; }
   .auth-aside { padding: 0; }
   .auth-aside .brand-wordmark { font-size: 40px; }
   .auth-aside-title { margin-top: 40px; font-size: 76px; line-height: .92; }
-  .auth-aside-title span:last-child { color: inherit; }
   .auth-aside-text { margin-top: 22px; max-width: 360px; font-size: 16px; line-height: 1.55; }
   .auth-panel { padding: 38px 36px; }
   .auth-panel-brand { display: block; }
