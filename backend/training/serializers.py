@@ -228,7 +228,7 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
             return value
         try:
             size = len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
-        except (TypeError, ValueError, OverflowError, RecursionError):
+        except (TypeError, ValueError, OverflowError, RecursionError, UnicodeError):
             raise serializers.ValidationError(_('Invalid workout plan snapshot.')) from None
         if size > MAX_WORKOUT_SNAPSHOT_BYTES:
             raise serializers.ValidationError(_('The workout plan snapshot is too large.'))
