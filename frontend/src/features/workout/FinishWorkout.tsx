@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, FormError, ScreenHeader } from '../../components/ui'
 import { formatDecimal } from '../../lib/format'
 import { formatDuration } from '../training/labels'
-import { summarize, toSessionPayload, type ActiveWorkout } from './model'
+import { finishTimeForWorkout, summarize, toSessionPayload, type ActiveWorkout } from './model'
 import { finishWorkout } from './outbox'
 import { cancelRestEnd } from './restNotification'
 import { clearActiveWorkout } from './store'
@@ -28,8 +28,8 @@ export function FinishWorkout({
   onDone: () => void
 }) {
   const { t } = useTranslation()
-  // Vreme završetka je trenutak otvaranja ovog ekrana, ne trenutak slanja.
-  const [finishedAt] = useState(() => new Date())
+  // A forgotten workout should end at its last confirmed set, not the next day's UI open.
+  const [finishedAt] = useState(() => finishTimeForWorkout(workout, new Date()))
   const [feeling, setFeeling] = useState<number | null>(null)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)

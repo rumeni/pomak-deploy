@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { Exercise, Routine } from '../training/api'
 import {
   confirmSet,
+  finishTimeForWorkout,
   describeLogged,
   previousSet,
   SetInputError,
@@ -144,5 +145,58 @@ describe('kraj treninga', () => {
       exercisesWithSets: 2,
       volumeKg: Math.round(62.5 * 9 + 12.5 * 12 * 2),
     })
+  })
+})
+
+describe('safe workout times after leaving the app open', () => {
+  it('ends a stale session at the last confirmed set rather than opening Finish the next day', () => {
+    let w = start()
+    const item = w.exercises[0]
+    w = confirmSet(w, item.key, item.sets[1].key, new Date('2026-09-25T10:45:00Z'))
+    const finishedAt = finishTimeForWorkout(w, new Date('2026-09-27T12:00:00Z'))
+    expect(finishedAt.toISOString()).toBe('2026-09-25T10:45:00.000Z')
+    const payload = toSessionPayload(w, finishedAt, null, '')
+    expect(payload.finished_at).toBe('2026-09-25T10:45:00.000Z')
+  })
+
+  it('keeps the actual finish time for an ordinary workout', () => {
+    const end = new Date('2026-09-25T10:45:00Z')
+    expect(finishTimeForWorkout(start(), end)).toEqual(end)
+  })
+
+  it('never sends duration beyond 24h even if a confirmed set was recorded later', () => {
+    let w = start()
+    const ex = w.exercises[0]
+    w = confirmSet(w, ex.key, ex.sets[1].key, new Date('2026-09-27T10:00:00Z'))
+    expect(finishTimeForWorkout(w, new Date('2026-09-27T12:00:00Z')).toISOString()).toBe('2026-09-26T10:00:00.000Z')
+  })
+})
+
+describe('validate workout sets against backend limits before confirming', () => {
+  it('rejects repetitions over 1000', () => {
+    let w = start()
+    const ex = w.exercises[0]
+    w = updateSet(w, ex.key, ex.sets[1].key, { reps: '1001' })
+    expect(() => confirmSet(w, ex.key, ex.sets[1].key, t0)).toThrow('workout.errors.invalidReps')
+  })
+
+  it('rejects out-of-range weights and more than two decimal places', () => {
+    for (const weight of ['1000.01', '1000,001', '20.123']) {
+      let w = start()
+      const ex = w.exercises[0]
+      w = updateSet(w, ex.key, ex.sets[1].key, { weight })
+      expect(() => confirmSet(w, ex.key, ex.sets[1].key, t0)).toThrow('workout.errors.invalidWeight')
+    }
+  })
+
+  it('rejects distances beyond 500 km and durations beyond 24h', () => {
+    const duration = { ...bench, measurement: 'duration' as const }
+    const distance = { ...bench, measurement: 'distance_duration' as const }
+    const base = start()
+    const e = base.exercises[0]
+    const day = { ...e, exercise: duration, sets: [{ ...e.sets[0], duration: '24:00:01' }] }
+    expect(() => confirmSet({ ...base, exercises: [day] }, e.key, day.sets[0].key, t0)).toThrow('workout.errors.invalidDuration')
+    const long = { ...e, exercise: distance, sets: [{ ...e.sets[0], distance: '500.001', duration: '10:00' }] }
+    expect(() => confirmSet({ ...base, exercises: [long] }, e.key, long.sets[0].key, t0)).toThrow('workout.errors.invalidWeight')
   })
 })

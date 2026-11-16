@@ -129,6 +129,7 @@ describe('classifySendError', () => {
     expect(classifySendError(httpError(401)).result).toBe('retry-later')
     expect(classifySendError(httpError(429)).result).toBe('retry-later')
     expect(classifySendError(httpError(400, { detail: 'Loše' }))).toEqual({ result: 'rejected', message: 'Loše' })
+    expect(classifySendError(httpError(400, { started_at: ['Workout cannot start in the future.'] })).result).toBe('retry-later')
   })
 })
 

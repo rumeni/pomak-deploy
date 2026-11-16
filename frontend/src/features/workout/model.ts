@@ -148,14 +148,29 @@ function parseReps(text: string): number | null {
   const t = text.trim()
   if (!t) return null
   if (!/^\d{1,4}$/.test(t)) throw new SetInputError('workout.errors.invalidReps')
-  return Number(t)
+  const value = Number(t)
+  if (value > 1000) throw new SetInputError('workout.errors.invalidReps')
+  return value
 }
 
 function parseWeight(text: string): number | null {
   if (!text.trim()) return null
   const value = parseDecimal(text)
-  if (value === null) throw new SetInputError('workout.errors.invalidWeight')
+  if (value === null || value > 1000 || !/^\d+(?:[.,]\d{1,2})?$/.test(text.trim())) {
+    throw new SetInputError('workout.errors.invalidWeight')
+  }
   return value
+}
+
+function parseDistance(text: string): number | null {
+  if (!text.trim()) return null
+  const km = parseDecimal(text)
+  if (km === null || km < 0 || km > 500 || !/^\d+(?:[.,]\d{1,3})?$/.test(text.trim())) {
+    throw new SetInputError('workout.errors.invalidWeight')
+  }
+  const metres = Math.round(km * 1000)
+  if (metres < 1) throw new SetInputError('workout.errors.invalidWeight')
+  return metres
 }
 
 function parseSeconds(text: string): number | null {
@@ -163,7 +178,7 @@ function parseSeconds(text: string): number | null {
   if (!t) return null
   if (!/^\d+(:\d{1,2}){0,2}$/.test(t)) throw new SetInputError('workout.errors.invalidDuration')
   const seconds = t.split(':').reduce((total, part) => total * 60 + Number(part), 0)
-  if (seconds <= 0) throw new SetInputError('workout.errors.invalidDuration')
+  if (seconds <= 0 || seconds > 24 * 3600) throw new SetInputError('workout.errors.invalidDuration')
   return seconds
 }
 
@@ -174,8 +189,7 @@ export function setResult(set: ActiveSet, exercise: Exercise): LoggedSet {
   if (m === 'duration' || m === 'distance_duration') {
     result.duration_seconds = parseSeconds(set.duration)
     if (m === 'distance_duration') {
-      const km = parseWeight(set.distance)
-      result.distance_m = km === null ? null : Math.round(km * 1000)
+      result.distance_m = parseDistance(set.distance)
     }
     if (result.duration_seconds === null && result.distance_m === null) throw new SetInputError('workout.errors.needDuration')
     return result
@@ -258,6 +272,26 @@ export function summarize(workout: ActiveWorkout, now: Date): WorkoutSummary {
   }
   const durationSeconds = Math.max(0, Math.round((now.getTime() - new Date(workout.startedAt).getTime()) / 1000))
   return { durationSeconds, doneSets, exercisesWithSets, volumeKg: Math.round(volumeKg) }
+}
+
+/**
+ * A workout may remain open overnight after the last confirmed set. Use that
+ * set's timestamp rather than the moment the user reopened "Finish".
+ * Bound duration to the API's 24-hour maximum so a stale session cannot
+ * be permanently rejected after being moved into the offline outbox.
+ */
+export function finishTimeForWorkout(workout: ActiveWorkout, openedAt: Date): Date {
+  const start = new Date(workout.startedAt).getTime()
+  const opened = openedAt.getTime()
+  if (!Number.isFinite(start) || !Number.isFinite(opened)) return openedAt
+  const maxEnd = start + 24 * 3600 * 1000
+  if (opened <= maxEnd) return new Date(Math.max(start, opened))
+  const completed = workout.exercises.flatMap((e) => e.sets)
+    .filter((s) => s.done && s.completedAt)
+    .map((s) => new Date(s.completedAt!).getTime())
+    .filter((timestamp) => Number.isFinite(timestamp) && timestamp >= start && timestamp <= opened)
+  const end = completed.length ? Math.max(...completed) : opened
+  return new Date(Math.max(start, Math.min(end, maxEnd)))
 }
 
 export interface SessionPayload {
