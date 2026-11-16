@@ -53,6 +53,13 @@ export type DiaryOpRow = {
   | { type: 'status'; status: DayStatus }
 )
 
+/** Recoverable cross-tab lease for diary sync when Web Locks are unavailable. */
+export interface DiarySyncLeaseRow {
+  key: string
+  holder: string
+  expiresAt: number
+}
+
 /** Namirnica koju je korisnik koristio: "Nedavno" i unos bez interneta. */
 export interface FoodCacheRow {
   key: string
@@ -68,6 +75,7 @@ export const db = new Dexie('pomak') as Dexie & {
   diaryDays: EntityTable<DiaryDayRow, 'key'>
   diaryOps: EntityTable<DiaryOpRow, 'id'>
   foodCache: EntityTable<FoodCacheRow, 'key'>
+  diarySyncLeases: EntityTable<DiarySyncLeaseRow, 'key'>
 }
 
 db.version(1).stores({
@@ -106,4 +114,10 @@ db.version(4).stores({
     }
     await table.delete('current')
   }
+})
+
+
+/** Add-only store: upgrading a device must never clear its existing offline diary. */
+db.version(5).stores({
+  diarySyncLeases: 'key',
 })
