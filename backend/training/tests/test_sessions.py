@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import timedelta
 
@@ -111,6 +112,17 @@ class WorkoutSessionTests(APITestCase):
         self.assertIn('sets', str(too_many_sets.data))
         self.assertEqual(WorkoutSession.objects.count(), 0)
         self.assertEqual(SetLog.objects.count(), 0)
+
+    def test_session_rejects_unpaired_unicode_surrogate_as_400(self):
+        # Escaped lone UTF-16 surrogates are valid JSON syntax, but cannot be
+        # encoded as UTF-8 when snapshot size is validated.
+        body = self.payload(plan_snapshot={'note': chr(0xD800)})
+        response = self.client.post(
+            '/api/training/sessions/', data=json.dumps(body), content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn('plan_snapshot', response.data)
+        self.assertEqual(WorkoutSession.objects.count(), 0)
 
     def test_session_rejects_oversized_plan_snapshot_without_writing(self):
         response = self.post(self.payload(plan_snapshot={'notes': 'x' * (256 * 1024)}))
