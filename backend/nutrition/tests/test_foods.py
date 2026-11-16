@@ -29,6 +29,8 @@ class FoodDatabaseTests(APITestCase):
 
     def test_search_without_diacritics_by_alias_and_in_english(self):
         self.assertIn('Piletina, belo meso (sirovo)', self.names('piletina'))
+        self.assertIn('Piletina, belo meso (sirovo)', self.names('пилетина'))
+        self.assertIn('Piletina, belo meso (sirovo)', self.names('ПИЛЕТИНА'))
         self.assertIn('Šargarepa', self.names('sargarepa'))
         self.assertIn('Leblebije (kuvane)', self.names('slanutak kuvan'))
         self.assertIn('Chicken breast (raw)', self.names('chicken breast', HTTP_ACCEPT_LANGUAGE='en'))
