@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 
 import { AxiosError, AxiosHeaders } from 'axios'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db, type DiaryOpRow } from '../../lib/db'
 import { diaryRequest, syncDiary } from './sync'
@@ -16,6 +16,11 @@ function httpError(status: number, data: unknown = {}): AxiosError {
 
 beforeEach(async () => {
   await db.diaryOps.clear()
+  await db.diarySyncLeases.clear()
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('syncDiary', () => {
@@ -72,5 +77,149 @@ describe('diaryRequest', () => {
       url: '/nutrition/days/2026-09-30/',
       body: { status: 'complete' },
     })
+  })
+})
+
+
+/** Independent tab sessions share IndexedDB, but not their in-memory `running` map. */
+function mockWebLocks() {
+  const last = new Map<string, Promise<void>>()
+  return {
+    request: vi.fn(async <T>(name: string, run: () => Promise<T>): Promise<T> => {
+      const previous = last.get(name) ?? Promise.resolve()
+      let release!: () => void
+      const held = new Promise<void>((resolve) => { release = resolve })
+      last.set(name, previous.then(() => held))
+      await previous
+      try {
+        return await run()
+      } finally {
+        release()
+      }
+    }),
+  }
+}
+
+function diaryAmount(seq: number, grams: number, ownerId = 'u1'): DiaryOpRow {
+  return row(seq, {
+    ownerId, type: 'upsert', entryId: 'same-food-entry',
+    body: { grams: String(grams) } as never,
+    preview: { date: '2026-09-30' } as never,
+  } as Partial<DiaryOpRow>)
+}
+
+describe('cross-tab diary sync ordering regression (#53)', () => {
+  it('two tabs cannot let a late 150 g request overwrite newer 200 g', async () => {
+    const locks = mockWebLocks()
+    vi.stubGlobal('navigator', { locks })
+    await db.diaryOps.bulkAdd([diaryAmount(1, 150), diaryAmount(2, 200)])
+
+    let firstStarted!: () => void
+    let resumeFirst!: () => void
+    const started = new Promise<void>((resolve) => { firstStarted = resolve })
+    const pause = new Promise<void>((resolve) => { resumeFirst = resolve })
+    let serverGrams = '100'
+    const writes: string[] = []
+    const first = syncDiary('u1', async (op) => {
+      if (op.id === 'op1') { firstStarted(); await pause }
+      serverGrams = (op as Extract<DiaryOpRow, { type: 'upsert' }>).body.grams!
+      writes.push(`first:${op.id}`)
+    }, () => true, 'first-tab')
+
+    await started
+    const secondSend = vi.fn(async (op: DiaryOpRow) => {
+      serverGrams = (op as Extract<DiaryOpRow, { type: 'upsert' }>).body.grams!
+      writes.push(`second:${op.id}`)
+    })
+    const second = syncDiary('u1', secondSend, () => true, 'second-tab')
+    await Promise.resolve()
+    expect(secondSend).not.toHaveBeenCalled()
+    expect(serverGrams).toBe('100')
+
+    resumeFirst()
+    await Promise.all([first, second])
+    expect(writes).toEqual(['first:op1', 'first:op2'])
+    expect(serverGrams).toBe('200')
+    expect(await db.diaryOps.count()).toBe(0)
+    expect(locks.request).toHaveBeenCalledTimes(2)
+  })
+
+  it('rechecks the account/session after waiting for another tab to finish', async () => {
+    vi.stubGlobal('navigator', { locks: mockWebLocks() })
+    await db.diaryOps.add(diaryAmount(1, 150))
+    let started!: () => void
+    let release!: () => void
+    const startedPromise = new Promise<void>((resolve) => { started = resolve })
+    const pause = new Promise<void>((resolve) => { release = resolve })
+    const first = syncDiary('u1', async () => { started(); await pause }, () => true, 'old-tab')
+    await startedPromise
+
+    // A later edit was created after the first tab read the initial batch.
+    await db.diaryOps.add(diaryAmount(2, 200))
+    let current = true
+    const sendNew = vi.fn(async () => undefined)
+    const next = syncDiary('u1', sendNew, () => current, 'logged-out-tab')
+    current = false
+    release()
+    await Promise.all([first, next])
+    expect(sendNew).not.toHaveBeenCalled()
+    expect((await db.diaryOps.get('op2'))?.id).toBe('op2')
+  })
+
+  it('different user accounts can synchronize without blocking each other', async () => {
+    vi.stubGlobal('navigator', { locks: mockWebLocks() })
+    await db.diaryOps.bulkAdd([diaryAmount(1, 150, 'u1'), diaryAmount(2, 250, 'u2')])
+    let started!: () => void
+    let release!: () => void
+    const startPromise = new Promise<void>((resolve) => { started = resolve })
+    const pause = new Promise<void>((resolve) => { release = resolve })
+    const slow = syncDiary('u1', async () => { started(); await pause }, () => true, 'tab-u1')
+    await startPromise
+    const otherSend = vi.fn()
+    await syncDiary('u2', otherSend, () => true, 'tab-u2')
+    expect(otherSend).toHaveBeenCalledTimes(1)
+    expect((await db.diaryOps.get('op1'))?.ownerId).toBe('u1')
+    expect(await db.diaryOps.get('op2')).toBeUndefined()
+    release()
+    await slow
+  })
+
+  it('uses an atomic IndexedDB lease when Web Locks are absent and retries later', async () => {
+    vi.stubGlobal('navigator', { locks: undefined })
+    await db.diaryOps.bulkAdd([diaryAmount(1, 150), diaryAmount(2, 200)])
+    let started!: () => void
+    let release!: () => void
+    const startPromise = new Promise<void>((resolve) => { started = resolve })
+    const pause = new Promise<void>((resolve) => { release = resolve })
+    const first = syncDiary('u1', async (op) => {
+      if (op.id === 'op1') { started(); await pause }
+    }, () => true, 'fallback-tab-a')
+    await startPromise
+
+    const secondSend = vi.fn()
+    expect((await syncDiary('u1', secondSend, () => true, 'fallback-tab-b')).size).toBe(0)
+    expect(secondSend).not.toHaveBeenCalled()
+    expect(await db.diarySyncLeases.count()).toBe(1)
+    release()
+    await first
+    expect(await db.diarySyncLeases.count()).toBe(0)
+
+    await db.diaryOps.add(diaryAmount(3, 300))
+    await syncDiary('u1', secondSend, () => true, 'fallback-retry')
+    expect(secondSend).toHaveBeenCalledTimes(1)
+    expect(await db.diaryOps.count()).toBe(0)
+  })
+
+  it('recovers an expired lease left by a crashed legacy tab', async () => {
+    vi.stubGlobal('navigator', { locks: undefined })
+    await db.diaryOps.add(diaryAmount(1, 150))
+    await db.diarySyncLeases.put({
+      key: 'pomak:diary-sync:u1', holder: 'crashed-tab', expiresAt: Date.now() - 1,
+    })
+    const send = vi.fn()
+    await syncDiary('u1', send, () => true, 'recovery')
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(await db.diaryOps.count()).toBe(0)
+    expect(await db.diarySyncLeases.count()).toBe(0)
   })
 })
