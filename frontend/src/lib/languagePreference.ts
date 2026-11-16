@@ -1,0 +1,52 @@
+import type { Language } from '../i18n'
+
+const PREFIX = 'pomak.language-pending'
+
+/** Per-account non-secret preference. A logged-out user cannot overwrite B's. */
+const fallback = new Map<string, Language>()
+const keyFor = (ownerId: string) => `${PREFIX}:${ownerId}`
+
+export function pendingLanguage(ownerId: string): Language | null {
+  const key = keyFor(ownerId)
+  try {
+    const saved = localStorage.getItem(key)
+    if (saved === 'en' || saved === 'sr-Latn') return saved
+    return fallback.get(ownerId) ?? null
+  } catch {
+    return fallback.get(ownerId) ?? null
+  }
+}
+
+export function queueLanguage(ownerId: string, language: Language): void {
+  fallback.set(ownerId, language)
+  try {
+    localStorage.setItem(keyFor(ownerId), language)
+  } catch {
+    // Volatile until storage is accessible again; local language is still set.
+  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('pomak:language-pending'))
+}
+
+export function clearPendingLanguage(ownerId: string, language: Language): void {
+  if (pendingLanguage(ownerId) !== language) return
+  fallback.delete(ownerId)
+  try {
+    localStorage.removeItem(keyFor(ownerId))
+  } catch {
+    // The server acknowledged it; ignore a storage-disabled environment.
+  }
+}
+
+/** Only confirm the exact choice that was uploaded under the same login. */
+export async function flushPendingLanguage<T>(
+  ownerId: string,
+  send: (language: Language) => Promise<T>,
+  isCurrent: () => boolean,
+): Promise<{ synced: boolean; data?: T }> {
+  const language = pendingLanguage(ownerId)
+  if (!language || !isCurrent()) return { synced: false }
+  const data = await send(language)
+  if (!isCurrent() || pendingLanguage(ownerId) !== language) return { synced: false }
+  clearPendingLanguage(ownerId, language)
+  return { synced: true, data }
+}
