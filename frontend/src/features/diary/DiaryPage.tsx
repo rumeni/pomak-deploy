@@ -8,7 +8,7 @@ import { errorMessage } from '../../lib/api'
 import { addDays, formatDecimal, formatLongDate, fromISODate, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { fmtValue } from '../nutrition/macroFormat'
-import { useCreateSavedMeal } from './api'
+import { savedMealConflict, useCreateSavedMeal } from './api'
 import { mealLabel, mealSettings, visibleMeals } from './meals'
 import { MAX_SAVED_MEAL_ITEMS, MAX_SAVED_MEAL_NAME_LENGTH, savedMealDraftIssue, withRetryMealId } from './savedMealValidation'
 import { copyEntry, savedItemFromEntry, totals, type DayTotals, type DisplayDay, type MacroTotal } from './model'
@@ -197,6 +197,12 @@ function MealCard({
       onSuccess: () => {
         pendingSavedMealId.current = null
         onNotice(t('diary.savedMealCreated', { name }))
+      },
+      onError: (error) => {
+        // A divergent retry cannot overwrite an existing saved meal.
+        // Drop this ID so the next user attempt can start anew, while the
+        // mutation hook refreshes the existing meal in the saved-meals list.
+        if (savedMealConflict(error)) pendingSavedMealId.current = null
       },
     })
   }

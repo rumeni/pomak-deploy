@@ -8,11 +8,15 @@ sme da prikaže uspeh ako nije primenio izmene.
   bez dodatnih promena. Ako se sadržaj razlikuje, isti ID se **ažurira**
   kroz isti DRF serializer i validaciju kao PUT/PATCH, uz status 200.
   Ne vraća se 200 sa starim sadržajem dok su izmene ignorisane.
-- **Ciljevi**: ne postoji uređivanje cilja, zato ponovljeni POST sa
-  postojećim ID-jem vraća **409 Conflict** i zahtev za osvežavanje.
+- **Ciljevi**: ne postoji uređivanje cilja. Ponovljeni POST sa istim
+  korisničkim izborom (`kind`, `target_value`, `target_date`) vraća
+  **200 OK** bez izmene; razlika u tim poljima vraća **409 Conflict**.
+  `start_value` i `start_date` se ne porede jer ih određuje server.
 - **Sačuvani obroci**: klijent čuva isti pokušajni ID dok ne dobije uspešan
   odgovor. Identčan ponovni POST vraća 200 bez duplikata, a izmenjen
   zahtev sa postojećim ID-jem vraća 409 (nema uređivanja tog resursa).
+  Na 409 frontend odbacuje zauzeti ID i osvežava listu sačuvanih obroka,
+  tako da sledeći pokušaj može da počne sa novim ID-jem.
 - **Odrađeni treninzi**: ostaju neizmenjivi. Ponovni POST vraća sačuvani
   trening, jer se završena sesija ne menja.
 

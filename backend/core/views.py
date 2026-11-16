@@ -76,12 +76,21 @@ class IdempotentCreateMixin:
     retry_action:
       - return: identical or divergent repeats return the original (immutable workouts).
       - update: repeated changed POST validates and updates like PUT/PATCH.
-      - conflict: repeated POST cannot change the existing resource (goals).
       - compare: identical repeats return 200; changed contents raise 409.
+        retry_compare_fields may restrict the comparison to user-chosen fields.
     """
 
     owner_field = 'user'
     retry_action = 'return'
+    retry_compare_fields = None
+
+    def _matches_retry(self, body, saved):
+        if self.retry_compare_fields is not None:
+            # Goals have server-managed start values/dates, so only compare
+            # the user's original choices. Missing optional fields mean None.
+            body = {key: body.get(key) for key in self.retry_compare_fields}
+            saved = {key: saved.get(key) for key in self.retry_compare_fields}
+        return _matches_saved_payload(body, saved)
 
     def create(self, request, *args, **kwargs):
         body = require_object_body(request)
@@ -105,9 +114,9 @@ class IdempotentCreateMixin:
                     raise AlreadySavedConflict()
 
                 old_data = self.get_serializer(existing).data
-                if action != 'conflict' and _matches_saved_payload(body, old_data):
+                if self._matches_retry(body, old_data):
                     return Response(old_data, status=status.HTTP_200_OK)
-                if action in ('conflict', 'compare'):
+                if action == 'compare':
                     raise AlreadySavedConflict()
 
                 if action == 'update':
