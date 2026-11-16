@@ -127,6 +127,34 @@ class RecipeTests(APITestCase):
         self.assertEqual(self.client.get(URL).data, [])
         self.assertIsNotNone(Food.objects.get(pk=body['id']).archived_at)
 
+    def test_retry_changed_post_updates_recipe_with_validation(self):
+        recipe_id = str(uuid.uuid4())
+        body = self.body(id=recipe_id, name='Prva')
+        first = self.client.post(URL, body, format='json')
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(self.client.post(URL, body, format='json').status_code, 200)
+
+        changed = self.body(id=recipe_id, name='Izmenjena', mass_g='400')
+        second = self.client.post(URL, changed, format='json')
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(second.data['name'], 'Izmenjena')
+        self.assertEqual(second.data['kcal'], '204.6')
+        self.assertEqual(Food.objects.filter(source=Food.Source.RECIPE).count(), 1)
+
+        invalid = self.client.post(URL, self.body(id=recipe_id, mass_g='5'), format='json')
+        self.assertEqual(invalid.status_code, 400, invalid.data)
+        self.assertEqual(Food.objects.get(pk=recipe_id).name, 'Izmenjena')
+
+    def test_retry_recipe_post_cannot_mutate_regular_food_or_archived_recipe(self):
+        custom = Food.objects.create(owner=self.user, source=Food.Source.CUSTOM, name='Custom', kcal=250)
+        collide = self.client.post(URL, self.body(id=str(custom.id), name='Should not overwrite'), format='json')
+        self.assertEqual(collide.status_code, 409, collide.data)
+        custom.refresh_from_db()
+        self.assertEqual((custom.name, custom.source), ('Custom', Food.Source.CUSTOM))
+        recipe_id = self.create()['id']
+        self.assertEqual(self.client.delete(f'{URL}{recipe_id}/').status_code, 204)
+        self.assertEqual(self.client.post(URL, self.body(id=recipe_id, name='Revive'), format='json').status_code, 409)
+
     def test_deleting_account_removes_recipes_and_own_foods(self):
         sauce = Food.objects.create(owner=self.user, source='custom', name='Sos', kcal=100)
         self.create(ingredients=[{'food_id': str(sauce.id), 'grams': '100'}], mass_g=None)

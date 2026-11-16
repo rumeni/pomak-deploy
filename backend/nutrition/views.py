@@ -121,6 +121,7 @@ class SavedMealViewSet(
 
     serializer_class = SavedMealSerializer
     owner_field = 'owner'
+    retry_action = 'compare'
 
     def get_queryset(self):
         items = SavedMealItem.objects.select_related('food').prefetch_related('food__portions')
@@ -138,6 +139,7 @@ class RecipeViewSet(
 
     serializer_class = RecipeSerializer
     owner_field = 'owner'
+    retry_action = 'update'
     http_method_names = ['get', 'post', 'put', 'patch', 'delete']
 
     def get_queryset(self):

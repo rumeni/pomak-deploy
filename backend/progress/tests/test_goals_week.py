@@ -96,6 +96,16 @@ class GoalTests(Base):
         # Aktivni prvi
         self.assertEqual([g['status'] for g in self.client.get('/api/progress/goals/').data], ['active', 'achieved'])
 
+    def test_repeat_goal_post_reports_conflict_not_false_success(self):
+        goal_id = str(uuid.uuid4())
+        original = {'id': goal_id, 'kind': 'workouts_per_week', 'target_value': '3'}
+        first = self.client.post('/api/progress/goals/', original, format='json')
+        self.assertEqual(first.status_code, 201, first.data)
+        retry = self.client.post('/api/progress/goals/', {**original, 'target_value': '4'}, format='json')
+        self.assertEqual(retry.status_code, 409, retry.data)
+        self.assertEqual(Goal.objects.get(pk=goal_id).target_value, 3)
+        self.assertEqual(Goal.objects.count(), 1)
+
     def test_goals_are_private(self):
         gid = self.post(kind='workouts_per_week', target_value='3', id=str(uuid.uuid4())).data['id']
         self.client.force_authenticate(User.objects.create_user('c@d.rs', 'jaka-lozinka-123'))
