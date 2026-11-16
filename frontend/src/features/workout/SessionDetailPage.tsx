@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -12,7 +13,7 @@ import { useDeleteSession, useSession } from './api'
 import { durationSeconds, formatWorkoutDuration, fromOutbox, fromServer, type SessionView } from './history'
 import { StatusBadge } from './HistoryList'
 import { describeLogged } from './model'
-import { discardOutboxItem } from './outbox'
+import { discardOutboxItem, restoreRejectedWorkout } from './outbox'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 
 /** Detalj treninga iz istorije: sa servera ili, dok nije poslat, sa telefona. */
@@ -28,6 +29,8 @@ export function SessionDetailPage() {
   }, [id, me?.id])
   const remote = useSession(id, local === null)
   const remove = useDeleteSession()
+  const [restoring, setRestoring] = useState(false)
+  const [restoreError, setRestoreError] = useState<string | null>(null)
 
   const session: SessionView | null = local ? fromOutbox(local) : remote.data ? fromServer(remote.data) : null
   const back = () => navigate('/trening')
@@ -54,6 +57,20 @@ export function SessionDetailPage() {
       if (!window.confirm(t('history.discardConfirm'))) return
       await discardOutboxItem(session.id)
       back()
+    }
+  }
+
+  const onRestore = async () => {
+    if (!local || !me) return
+    setRestoreError(null)
+    setRestoring(true)
+    try {
+      await restoreRejectedWorkout(me.id, local.id)
+      navigate('/trening/aktivan', { replace: true })
+    } catch (cause) {
+      setRestoreError(t(cause instanceof Error && cause.message === 'ACTIVE_WORKOUT_EXISTS'
+        ? 'history.restoreActiveFirst' : 'history.restoreFailed'))
+      setRestoring(false)
     }
   }
 
@@ -116,7 +133,12 @@ export function SessionDetailPage() {
           </p>
         )}
 
-        <FormError message={remove.isError ? errorMessage(remove.error) : null} />
+        <FormError message={restoreError ?? (remove.isError ? errorMessage(remove.error) : null)} />
+        {session.status === 'rejected' && local && (
+          <Button onClick={() => void onRestore()} disabled={restoring}>
+            {t('history.restoreToEdit')}
+          </Button>
+        )}
         <Button variant="ghost" className="mt-4 text-danger" onClick={() => void onDelete()} disabled={remove.isPending}>
           {session.status === 'sent' ? t('history.delete') : t('history.discard')}
         </Button>

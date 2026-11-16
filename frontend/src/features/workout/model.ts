@@ -45,6 +45,9 @@ export interface ActiveWorkout {
   name: string
   startedAt: string
   planSnapshot: Routine | null
+  /** Preserved when a rejected outbox session is restored for editing. */
+  draftFeeling?: number | null
+  draftNotes?: string
   exercises: ActiveExercise[]
   previous: Record<string, PreviousPerformance>
   rest: { endsAt: string; totalSeconds: number } | null
