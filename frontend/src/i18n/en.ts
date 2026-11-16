@@ -528,6 +528,8 @@ export const en = {
     routinesInTraining: 'Assigned routines also appear in the Training tab.',
     messages: 'Messages',
     noMessages: 'No messages yet. Send the first one.',
+    loadOlderMessages: 'Load older messages',
+    loadingOlderMessages: 'Loading older messages…',
     newMessage: 'New message',
     messagePlaceholder: 'Write a message to your coach or client…',
     sendMessage: 'Send message',
@@ -665,6 +667,8 @@ export const en = {
       invalidDuration: '"{{value}}" is not a valid duration (e.g. 0:45 or 30:00).',
       zeroDuration: 'Duration must be greater than zero.',
       invalidNumber: '{{exercise}}: "{{value}}" is not a valid number.',
+      tooManyExercises: 'A routine can have at most {{count}} exercises',
+      tooManySets: 'An exercise can have at most {{count}} sets.',
     },
   },
   workout: {

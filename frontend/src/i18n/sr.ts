@@ -536,6 +536,8 @@ export const sr = {
     routinesInTraining: 'Dodeljene rutine pojavljuju se i na kartici Trening.',
     messages: 'Poruke',
     noMessages: 'Još nema poruka. Pošalji prvu poruku.',
+    loadOlderMessages: 'Učitaj starije poruke',
+    loadingOlderMessages: 'Učitavanje starijih poruka…',
     newMessage: 'Nova poruka',
     messagePlaceholder: 'Napiši poruku treneru ili klijentu…',
     sendMessage: 'Pošalji poruku',
@@ -676,6 +678,8 @@ export const sr = {
       invalidDuration: '„{{value}}“ nije ispravno trajanje (npr. 0:45 ili 30:00).',
       zeroDuration: 'Trajanje mora biti veće od nule.',
       invalidNumber: '{{exercise}}: „{{value}}“ nije ispravan broj.',
+      tooManyExercises: 'Rutina može imati najviše {{count}} vežbi',
+      tooManySets: 'Vežba može imati najviše {{count}} serija.',
     },
   },
   workout: {
