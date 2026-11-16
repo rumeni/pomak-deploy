@@ -88,6 +88,11 @@ export async function applyActiveWorkoutEdit(
       throw new StaleWorkoutError()
     }
     const workout = mergeWorkoutEdit(base, edited, row.workout)
+    // Two tabs may each pass a local capacity check and together exceed it.
+    // Validate inside the same transaction before writing the merged result.
+    if (workout.exercises.length > 40 || workout.exercises.some((item) => item.sets.length > 20)) {
+      throw new ConcurrentWorkoutEditError()
+    }
     const saved: ActiveWorkoutRow = { ...row, workout, revision: (row.revision ?? 0) + 1 }
     await db.activeWorkout.put(saved)
     return saved
@@ -99,6 +104,10 @@ export async function applyActiveWorkoutEdit(
  * individual edit over fresh IndexedDB state, preserving other tabs' changes.
  * Exact same-field conflicts are surfaced instead of silently overwritten.
  */
+export function shouldApplyWorkoutRefresh(pendingCount: number, conflict: boolean): boolean {
+  return pendingCount === 0 && !conflict
+}
+
 export function usePersistentWorkout() {
   type State = { loaded: boolean; row: ActiveWorkoutRow | null }
   const [state, setState] = useState<State>({ loaded: false, row: null })
@@ -135,12 +144,20 @@ export function usePersistentWorkout() {
         setConflict(true)
       } finally {
         pending.current -= 1
-        if (pending.current === 0 && !hasConflict.current) {
-          const fresh = await loadOwnRow()
-          if (getCurrentUserId() === original.ownerId) {
-            const next = { loaded: true, row: fresh }
-            latestState.current = next
-            setState(next)
+        if (shouldApplyWorkoutRefresh(pending.current, hasConflict.current)) {
+          try {
+            const fresh = await loadOwnRow()
+            // Another keystroke may have arrived while awaiting the read;
+            // never roll it back with the stale snapshot.
+            if (shouldApplyWorkoutRefresh(pending.current, hasConflict.current) &&
+                getCurrentUserId() === original.ownerId) {
+              const next = { loaded: true, row: fresh }
+              latestState.current = next
+              setState(next)
+            }
+          } catch {
+            hasConflict.current = true
+            setConflict(true)
           }
         }
       }

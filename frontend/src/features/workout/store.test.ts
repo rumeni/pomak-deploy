@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { setCurrentUserId } from '../../lib/currentUser'
 import { db } from '../../lib/db'
-import { startEmpty, type ActiveWorkout, type SessionPayload } from './model'
+import { emptyActiveSet, startEmpty, type ActiveExercise, type ActiveWorkout, type SessionPayload } from './model'
 import { finishWorkout } from './outbox'
-import { applyActiveWorkoutEdit, clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout, StaleWorkoutError, startWorkoutIfUnchanged } from './store'
+import { applyActiveWorkoutEdit, clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout, shouldApplyWorkoutRefresh, StaleWorkoutError, startWorkoutIfUnchanged } from './store'
 import { ConcurrentWorkoutEditError } from './mergeWorkout'
 
 beforeEach(async () => {
@@ -209,5 +209,42 @@ describe('atomic same-workout edits across browser tabs', () => {
     await applyActiveWorkoutEdit('u1', old.workout.id, old.workout, { ...old.workout, name: 'Updated' })
     expect(await startWorkoutIfUnchanged(startEmpty('B', now), old.workout.id, 'u1', old.revision ?? 0)).toBe(false)
     expect((await getActiveWorkoutRow())?.workout.name).toBe('Updated')
+  })
+})
+
+describe('cross-tab edit merge limits and refresh fencing', () => {
+  const now = new Date('2026-11-16T13:00:00Z')
+
+  it('never overwrites an optimistic keystroke with a late refresh', () => {
+    expect(shouldApplyWorkoutRefresh(0, false)).toBe(true)
+    expect(shouldApplyWorkoutRefresh(1, false)).toBe(false)
+    expect(shouldApplyWorkoutRefresh(0, true)).toBe(false)
+  })
+
+  it('rejects two concurrent additions that would exceed 20 sets', async () => {
+    setCurrentUserId('u1')
+    const sets = Array.from({ length: 19 }, () => emptyActiveSet())
+    const exercise = { key: 'ex', sets } as ActiveExercise
+    const base = { ...startEmpty('Workout', now), exercises: [exercise] }
+    await saveActiveWorkout(base)
+    const addOne = { ...base, exercises: [{ ...exercise, sets: [...sets, emptyActiveSet()] }] }
+    const addTwo = { ...base, exercises: [{ ...exercise, sets: [...sets, emptyActiveSet()] }] }
+    await applyActiveWorkoutEdit('u1', base.id, base, addOne)
+    await expect(applyActiveWorkoutEdit('u1', base.id, base, addTwo))
+      .rejects.toBeInstanceOf(ConcurrentWorkoutEditError)
+    expect((await getActiveWorkoutRow())!.workout.exercises[0].sets).toHaveLength(20)
+  })
+
+  it('rejects two concurrent additions that would exceed 40 exercises', async () => {
+    setCurrentUserId('u1')
+    const exercises = Array.from({ length: 39 }, (_, i) => ({ key: 'ex' + i, sets: [] } as unknown as ActiveExercise))
+    const base = { ...startEmpty('Workout', now), exercises }
+    await saveActiveWorkout(base)
+    const addA = { ...base, exercises: [...exercises, { key: 'new-a', sets: [] } as unknown as ActiveExercise] }
+    const addB = { ...base, exercises: [...exercises, { key: 'new-b', sets: [] } as unknown as ActiveExercise] }
+    await applyActiveWorkoutEdit('u1', base.id, base, addA)
+    await expect(applyActiveWorkoutEdit('u1', base.id, base, addB))
+      .rejects.toBeInstanceOf(ConcurrentWorkoutEditError)
+    expect((await getActiveWorkoutRow())!.workout.exercises).toHaveLength(40)
   })
 })
