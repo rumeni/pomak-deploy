@@ -31,7 +31,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // Registruje se ručno u main.tsx, samo u pregledaču (ne u Android aplikaciji).
       injectRegister: null,
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'POMAK',
         short_name: 'POMAK',
@@ -41,7 +41,12 @@ export default defineConfig({
         background_color: '#f2efe9',
         display: 'standalone',
         start_url: '/',
-        icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        icons: [
+          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
       },
     }),
   ],
