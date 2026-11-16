@@ -62,6 +62,11 @@ export function combineHistory(server: SessionView[], local: SessionView[]): Ses
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 }
 
+/** Repeated exercises are legal in a finished workout; their list identity is positional. */
+export function sessionExerciseKey(exerciseId: string, position: number): string {
+  return `${exerciseId}:${position}`
+}
+
 export function durationSeconds(s: SessionView): number {
   return Math.max(0, Math.round((new Date(s.finishedAt).getTime() - new Date(s.startedAt).getTime()) / 1000))
 }

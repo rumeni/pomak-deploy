@@ -10,7 +10,7 @@ import { useAuth } from '../../lib/auth'
 import { db } from '../../lib/db'
 import { getFormatLocale } from '../../lib/format'
 import { useDeleteSession, useSession } from './api'
-import { durationSeconds, formatWorkoutDuration, fromOutbox, fromServer, type SessionView } from './history'
+import { durationSeconds, formatWorkoutDuration, fromOutbox, fromServer, sessionExerciseKey, type SessionView } from './history'
 import { StatusBadge } from './HistoryList'
 import { describeLogged } from './model'
 import { discardOutboxItem, restoreRejectedWorkout } from './outbox'
@@ -112,14 +112,14 @@ export function SessionDetailPage() {
           <p className="rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">{t('history.rejectedHint', { error: session.error })}</p>
         )}
 
-        {session.exercises.map(({ exercise, sets }) => {
+        {session.exercises.map(({ exercise, sets }, position) => {
           // Radne serije 1, 2, 3…; zagrevanje ne ulazi u brojanje.
           const labels = sets.reduce<string[]>((acc, set) => {
             const done = acc.filter((l) => l !== warmup).length
             return [...acc, set.set_type === 'warmup' ? warmup : String(done + 1)]
           }, [])
           return (
-            <section key={exercise.id} className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-line/60">
+            <section key={sessionExerciseKey(exercise.id, position)} className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-line/60">
               <div className="flex">
                 <ExerciseHeading exercise={exercise} />
               </div>

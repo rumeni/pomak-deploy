@@ -265,6 +265,9 @@ export const sr = {
     manualName: 'Naziv (npr. Burek iz pekare)',
     manualHint: 'Upiši vrednosti za celu količinu koju si pojeo. Makroe koje ne znaš ostavi prazne: biće označeni kao nepoznati, ne kao 0.',
     manualKcal: 'Kalorije (kcal) *',
+    manualNameTooLong: 'Naziv može imati najviše {{max}} znakova.',
+    manualValueRange: '{{field}}: dozvoljena vrednost je od 0 do {{max}}.',
+    manualValuePrecision: '{{field}}: dozvoljeno je najviše {{places}} decimalnih mesta.',
     entryNotFound: 'Stavka nije pronađena.',
   },
   mealSettings: {
