@@ -6,7 +6,7 @@ import { setCurrentUserId } from '../../lib/currentUser'
 import { db } from '../../lib/db'
 import { startEmpty, type ActiveWorkout, type SessionPayload } from './model'
 import { finishWorkout } from './outbox'
-import { clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout, startWorkoutIfUnchanged } from './store'
+import { clearActiveWorkout, getActiveWorkoutRow, persistActiveWorkoutIfCurrent, saveActiveWorkout, StaleWorkoutError, startWorkoutIfUnchanged } from './store'
 
 beforeEach(async () => {
   await db.activeWorkout.clear()
@@ -27,7 +27,7 @@ describe('per-account active workout persistence', () => {
 
     setCurrentUserId('u1')
     expect((await getActiveWorkoutRow())?.workout.id).toBe('A')
-    await clearActiveWorkout()
+    await clearActiveWorkout('u1', 'A')
     expect(await db.activeWorkout.get('u1')).toBeUndefined()
     expect((await db.activeWorkout.get('u2'))?.workout.id).toBe('B')
   })
@@ -66,7 +66,7 @@ describe('late autosave regression (#41)', () => {
     expect((await getActiveWorkoutRow())?.workout.id).toBe(B.id)
 
     const pending = persistActiveWorkoutIfCurrent({ slot: 'u1', ownerId: 'u1', workout: { ...B, name: 'late edit' } })
-    await clearActiveWorkout()
+    await clearActiveWorkout('u1', B.id)
     await pending
     expect(await db.activeWorkout.get('u1')).toBeUndefined()
     expect(await persistActiveWorkoutIfCurrent({ slot: 'u1', ownerId: 'u1', workout: B })).toBe(false)
@@ -125,5 +125,39 @@ describe('atomic workout start regression (#46)', () => {
     expect(await startWorkoutIfUnchanged(startEmpty('C', date), kept, 'u1')).toBe(false)
     expect((await db.activeWorkout.get('u1'))?.workout.id).toBe(kept)
     expect(await db.activeWorkout.get('u2')).toBeUndefined()
+  })
+})
+
+describe('atomic discard of the expected workout only (#51)', () => {
+  const date = new Date('2026-11-16T13:00:00Z')
+
+  it('cannot delete B using A from a stale tab', async () => {
+    setCurrentUserId('u1')
+    const A = startEmpty('A', date)
+    await saveActiveWorkout(A)
+    const B = startEmpty('B', date)
+    await saveActiveWorkout(B)
+    await expect(clearActiveWorkout('u1', A.id)).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect((await db.activeWorkout.get('u1'))?.workout.id).toBe(B.id)
+    await clearActiveWorkout('u1', B.id)
+    expect(await db.activeWorkout.get('u1')).toBeUndefined()
+  })
+
+  it('refuses to erase a workout after its session or owner changed', async () => {
+    setCurrentUserId('u1')
+    const A = startEmpty('A', date)
+    await saveActiveWorkout(A)
+    setCurrentUserId('u2')
+    await expect(clearActiveWorkout('u1', A.id)).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect((await db.activeWorkout.get('u1'))?.workout.id).toBe(A.id)
+    setCurrentUserId('u1')
+    await expect(clearActiveWorkout('u1', 'nonexistent')).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect((await db.activeWorkout.get('u1'))?.workout.id).toBe(A.id)
+  })
+
+  it('refuses to remove an already-finished or missing active workout', async () => {
+    setCurrentUserId('u1')
+    await expect(clearActiveWorkout('u1', 'A')).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect(await db.activeWorkout.count()).toBe(0)
   })
 })

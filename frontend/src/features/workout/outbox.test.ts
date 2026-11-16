@@ -4,9 +4,11 @@ import { AxiosError, AxiosHeaders } from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from '../../lib/db'
+import { setCurrentUserId } from '../../lib/currentUser'
+import { StaleWorkoutError } from './store'
 import type { SessionPayload } from './model'
 import type { Exercise } from '../training/api'
-import { classifySendError, discardOutboxItem, finishWorkout, mergePrevious, pendingSessions, previousFromOutbox, restoreRejectedWorkout, syncOutbox } from './outbox'
+import { classifySendError, discardOutboxItem, finishWorkout as finishWorkoutAtomic, mergePrevious, pendingSessions, previousFromOutbox, restoreRejectedWorkout, syncOutbox } from './outbox'
 import { MAX_WORKOUT_SNAPSHOT_BYTES } from './model'
 
 function payload(id: string, startedAt: string, exerciseId = 'bench', weight = '60'): SessionPayload {
@@ -32,9 +34,17 @@ function httpError(status: number, data: unknown = {}): AxiosError {
 
 const networkError = () => new AxiosError('Network Error', 'ERR_NETWORK')
 
+/** Existing upload tests enqueue real completed workouts one after another. */
+async function finishWorkout(ownerId: string, result: SessionPayload, exercises: Exercise[], now?: Date): Promise<void> {
+  setCurrentUserId(ownerId)
+  await db.activeWorkout.put({ slot: ownerId, ownerId, workout: { id: result.id, name: result.name } as never })
+  await finishWorkoutAtomic(ownerId, result, exercises, now)
+}
+
 beforeEach(async () => {
   await db.outbox.clear()
   await db.activeWorkout.clear()
+  setCurrentUserId(null)
 })
 
 describe('finishWorkout', () => {
@@ -57,6 +67,38 @@ describe('finishWorkout', () => {
     await finishWorkout('u1', payload('a', '2026-09-30T10:00:00Z'), [])
     await finishWorkout('u2', payload('b', '2026-09-30T11:00:00Z'), [])
     expect((await pendingSessions('u1')).map((r) => r.id)).toEqual(['a'])
+  })
+})
+
+describe('stale-tab finish protection (#51)', () => {
+  const when = '2026-11-16T14:00:00Z'
+
+  it('refuses to queue A or remove B after another tab replaces A with B', async () => {
+    setCurrentUserId('u1')
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { id: 'A', name: 'A' } as never })
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { id: 'B', name: 'B' } as never })
+
+    await expect(finishWorkoutAtomic('u1', payload('A', when), [])).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect((await db.activeWorkout.get('u1'))?.workout).toMatchObject({ id: 'B', name: 'B' })
+    expect(await db.outbox.get('A')).toBeUndefined()
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('rejects a stale save when the active workout has already been removed', async () => {
+    setCurrentUserId('u1')
+    await expect(finishWorkoutAtomic('u1', payload('A', when), [])).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('rejects a stale save after account switch, preserving both accounts', async () => {
+    setCurrentUserId('u1')
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { id: 'A' } as never })
+    await db.activeWorkout.put({ slot: 'u2', ownerId: 'u2', workout: { id: 'B' } as never })
+    setCurrentUserId('u2')
+    await expect(finishWorkoutAtomic('u1', payload('A', when), [])).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect((await db.activeWorkout.get('u1'))?.workout.id).toBe('A')
+    expect((await db.activeWorkout.get('u2'))?.workout.id).toBe('B')
+    expect(await db.outbox.count()).toBe(0)
   })
 })
 
