@@ -67,4 +67,8 @@ class WeekView(APIView):
             day = datetime.date.fromisoformat(value) if value else timezone.localdate()
         except ValueError:
             raise ValidationError({'start': _('Invalid date.')}) from None
-        return Response(overview.week_overview(request.user, overview.monday_of(day)))
+        monday = overview.monday_of(day)
+        # Dates in year 9999 can overflow when adding the final Sunday.
+        if monday > datetime.date.max - datetime.timedelta(days=6):
+            raise ValidationError({'start': _('Invalid date.')})
+        return Response(overview.week_overview(request.user, monday))
