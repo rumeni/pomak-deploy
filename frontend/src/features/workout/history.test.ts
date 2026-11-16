@@ -40,6 +40,12 @@ describe('istorija', () => {
     expect(combineHistory([...first, ...overlap], local).map((s) => s.id)).toEqual(['s1', 's2', 's3'])
   })
 
+  it('orders UTC offline and offset-bearing API dates by their actual instants', () => {
+    const server = [view('older-api', '2026-11-16T21:00:00+01:00')]
+    const local = [view('newer-offline', '2026-11-16T20:30:00.000Z', 'pending')]
+    expect(combineHistory(server, local).map((s) => s.id)).toEqual(['newer-offline', 'older-api'])
+  })
+
   it('shows deletion pending even when an old server page still contains the session', () => {
     const result = combineHistory([view('old', '2026-09-30T10:00:00Z')], [view('old', '2026-09-30T10:00:00Z', 'deleting')])
     expect(result.map((s) => `${s.id}:${s.status}`)).toEqual(['old:deleting'])

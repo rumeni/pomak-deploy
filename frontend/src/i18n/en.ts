@@ -498,6 +498,7 @@ export const en = {
     errors: {
       workouts: 'Enter a whole number of workouts (1–14).',
       start: 'Enter the current value.',
+      range: 'Value must be between {{low}} and {{high}}.',
     },
   },
   coach: {

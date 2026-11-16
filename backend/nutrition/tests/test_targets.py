@@ -37,6 +37,17 @@ class MethodTests(SimpleTestCase):
         # BMR = 800 + 1125 − 150 + 5 = 1780; ×1,2 = 2136 → 2140
         self.assertEqual((r['explanation']['daily_adjustment'], r['kcal']), (0, 2140))
 
+    def test_negative_rounding_and_raw_negative_carbs(self):
+        self.assertEqual(targets.round_half_up(-1.0), -1)
+        self.assertEqual(targets.round_half_up(-0.6), -1)
+        self.assertEqual(targets.round_half_up(-1.6), -2)
+        result = targets.estimate(inputs(
+            sex='female', birth_date=datetime.date(1960, 1, 1),
+            height_cm=120, weight_kg=142, activity='sedentary',
+            goal='lose', pace=0.5,
+        ))
+        self.assertEqual(result, {'supported': False, 'reason': 'macros'})
+
     def test_unsupported_profiles(self):
         self.assertEqual(targets.estimate(inputs(birth_date=datetime.date(2013, 1, 1)))['reason'], 'age')
         low = targets.estimate(inputs(weight_kg=45.0, height_cm=150.0, birth_date=datetime.date(1970, 1, 1), activity='sedentary', pace=1.0))

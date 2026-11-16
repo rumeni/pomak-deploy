@@ -158,6 +158,7 @@ class ExportView(APIView):
 class DeleteAccountView(APIView):
     """POST {password}: trajno briše nalog i sve lične podatke (treninge, dnevnik, merenja, recepte...)."""
 
+    sensitive_action_scope = 'account-delete'
     allow_unverified_email = True  # Allow deletion before email confirmation.
     throttle_classes = [DatabaseAccountDeletionThrottle, UserRateThrottle]
 

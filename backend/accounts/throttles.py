@@ -155,10 +155,10 @@ class LoginRecoveryThrottle(DatabaseAuthThrottle):
 
 
 class DatabaseAccountDeletionThrottle(BaseThrottle):
-    """Limit password checks during account deletion across serverless instances.
+    """Independent per-account 5/hour quotas for each sensitive account action.
 
-    Each authenticated account gets five attempts per hour, regardless of IP.
-    Counters live in PostgreSQL (not per-instance LocMemCache).
+    Password change, account deletion, and email resend must not lock one
+    another out. PostgreSQL counters work across all serverless instances.
     """
 
     def allow_request(self, request, view):
@@ -166,7 +166,8 @@ class DatabaseAccountDeletionThrottle(BaseThrottle):
             return True
         now = timezone.now()
         hour_start = now.replace(minute=0, second=0, microsecond=0)
-        key = hashlib.sha256(f'account-delete:{request.user.pk}'.encode('utf-8')).hexdigest()
+        scope = getattr(view, 'sensitive_action_scope', 'account-delete')
+        key = hashlib.sha256(f'account-sensitive:{scope}:{request.user.pk}'.encode('utf-8')).hexdigest()
         with transaction.atomic():
             bucket, _ = AuthThrottleBucket.objects.get_or_create(
                 key=key, window_start=hour_start, defaults={'attempts': 0},

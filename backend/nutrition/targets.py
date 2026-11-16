@@ -10,6 +10,7 @@ posebno: faktor aktivnosti već uključuje planirane treninge.
 """
 
 import datetime
+import math
 from dataclasses import dataclass
 
 METHOD = 'msj-v1'
@@ -67,7 +68,8 @@ class Inputs:
 
 
 def round_half_up(value: float, step: int = 1) -> int:
-    return int((value / step) + 0.5) * step
+    # int() truncates toward zero: -1 would incorrectly become 0.
+    return math.floor((value / step) + 0.5) * step
 
 
 def estimate(i: Inputs) -> dict:
@@ -88,9 +90,11 @@ def estimate(i: Inputs) -> dict:
 
     protein = round_half_up(PROTEIN_G_PER_KG * i.weight_kg)
     fat = round_half_up(kcal * FAT_SHARE / 9)
-    carbs = round_half_up((kcal - protein * 4 - fat * 9) / 4)
-    if carbs < 0:
+    raw_carbs = (kcal - protein * 4 - fat * 9) / 4
+    # A rounded zero must not conceal a negative macro balance.
+    if raw_carbs < 0:
         return {'supported': False, 'reason': 'macros'}
+    carbs = round_half_up(raw_carbs)
 
     return {
         'supported': True,
