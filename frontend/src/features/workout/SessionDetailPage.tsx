@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button, FormError, LoadingScreen, ScreenHeader } from '../../components/ui'
-import { api, errorMessage } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { db } from '../../lib/db'
 import { getFormatLocale } from '../../lib/format'

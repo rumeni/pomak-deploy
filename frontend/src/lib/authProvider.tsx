@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import i18n, { changeLanguage, fromServerLanguage, toServerLanguage } from '../i18n'
-import { api, revokePendingWebLogout, webHeaders, withAuthLock, type AuthScope } from './api'
+import { api, revokePendingWebLogout, webHeaders, withAuthLock, type AuthScope, type ScopedRequestConfig } from './api'
 import { performLogin } from './login'
 import { performRegistration } from './registration'
 import { AuthContext, type RegisterData } from './authContext'
@@ -37,17 +37,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Jezik sa naloga važi na svakom uređaju na kome se korisnik prijavi.
   const accountLanguage = me ? fromServerLanguage(me.profile.language) : null
+  const ownerId = me?.id
   useEffect(() => {
     // A locally changed offline preference wins over a stale cached/server
     // profile until its PATCH is confirmed. Do not silently revert on launch.
-    const preferred = me ? pendingLanguage(me.id) ?? accountLanguage : null
+    const preferred = ownerId ? pendingLanguage(ownerId) ?? accountLanguage : null
     if (!preferred || preferred === i18n.language) return
     void changeLanguage(preferred).then(() => queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'me' }))
-  }, [accountLanguage, me?.id, queryClient])
+  }, [accountLanguage, ownerId, queryClient])
 
   useEffect(() => {
-    if (!hasToken || !me) return
-    const ownerId = me.id
+    if (!hasToken || !ownerId) return
     let alive = true
     let sending = false
     const run = async () => {
@@ -61,9 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const result = await flushPendingLanguage(ownerId, async (language) => {
           const scope: AuthScope = { ownerId, session }
+          const requestConfig: ScopedRequestConfig = { __pomakScope: scope }
           const { data } = await api.patch<Me>('/auth/me/', {
             profile: { language: toServerLanguage(language) },
-          }, { __pomakScope: scope })
+          }, requestConfig)
           return data
         }, isCurrent)
         if (result.synced && result.data && isCurrent()) queryClient.setQueryData(['me'], result.data)
@@ -83,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('online', run)
       window.removeEventListener('pomak:language-pending', run)
     }
-  }, [hasToken, me?.id, queryClient])
+  }, [hasToken, ownerId, queryClient])
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
