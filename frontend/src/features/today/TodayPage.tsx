@@ -17,7 +17,7 @@ import { useSessions } from '../workout/api'
 import { fromOutbox, fromServer } from '../workout/history'
 import { usePendingSessions } from '../workout/outbox'
 import { useStartWorkout } from '../workout/useStartWorkout'
-import { nextRoutine } from './next'
+import { nextRoutine, sessionsWithPending } from './next'
 import { progressDate, weekActivity, workoutCountWithPending } from './week'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
@@ -131,13 +131,18 @@ function TrainingCard() {
   const { me } = useAuth()
   const { data: pages } = useSessions(me?.id)
   const sessions = pages?.pages.flat() ?? []
-  const week = useWeek(mondayOf(toISODate(new Date())))
+  const pending = usePendingSessions(me?.id)
+  const recent = sessionsWithPending(sessions, pending ?? [])
+  const today = progressDate(new Date())
+  const monday = mondayOf(today)
+  const week = useWeek(monday)
+  const { unsentThisWeek } = weekActivity(sessions.map(fromServer), (pending ?? []).map(fromOutbox), monday)
+  const weekCount = workoutCountWithPending(week.data?.workouts.count, unsentThisWeek)
   const start = useStartWorkout()
   const [starting, setStarting] = useState(false)
 
-  const today = toISODate(new Date())
-  const doneToday = sessions?.filter((s) => toISODate(new Date(s.started_at)) === today) ?? []
-  const next = routines ? nextRoutine(routines, sessions ?? []) : null
+  const doneToday = recent.filter((s) => progressDate(new Date(s.started_at)) === today)
+  const next = routines ? nextRoutine(routines, recent) : null
   const onStart = async (routine: Parameters<typeof start>[0]) => {
     setStarting(true)
     try {
@@ -151,15 +156,15 @@ function TrainingCard() {
     <Card className="dashboard-card dashboard-card--training">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('today.training')}</h2>
-        {week.data && (
+        {weekCount !== null && (
           <span className="text-sm text-muted tabular-nums">
-            {week.data.workouts.target
+            {week.data?.workouts.target
               ? t('today.weekCount', {
-                  count: week.data.workouts.count,
+                  count: weekCount,
                   target: week.data.workouts.target,
                 })
               : t('today.weekCountNoTarget', {
-                  count: week.data.workouts.count,
+                  count: weekCount,
                 })}
           </span>
         )}

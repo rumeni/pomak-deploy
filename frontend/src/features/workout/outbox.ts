@@ -37,7 +37,7 @@ export async function finishWorkout(
 
 export async function pendingSessions(ownerId: string): Promise<OutboxRow[]> {
   const rows = await db.outbox.where('ownerId').equals(ownerId).toArray()
-  return rows.sort((a, b) => b.payload.started_at.localeCompare(a.payload.started_at))
+  return rows.sort((a, b) => Date.parse(b.payload.started_at) - Date.parse(a.payload.started_at))
 }
 
 /**
@@ -217,7 +217,7 @@ export function syncOutbox(
     // Cancellation rows are included even though normal rejected uploads are not.
     const rows = (await db.outbox.where('ownerId').equals(ownerId).toArray())
       .filter((r) => !r.error || r.deleteRequested)
-      .sort((a, b) => a.payload.started_at.localeCompare(b.payload.started_at))
+      .sort((a, b) => Date.parse(a.payload.started_at) - Date.parse(b.payload.started_at))
     for (const row of rows) {
       if (!isCurrent()) break
       const latest = await db.outbox.get(row.id)
@@ -290,7 +290,7 @@ export function syncOutbox(
  */
 export function previousFromOutbox(rows: OutboxRow[], exerciseIds: string[]): Record<string, PreviousPerformance> {
   const result: Record<string, PreviousPerformance> = {}
-  for (const row of [...rows].sort((a, b) => b.payload.started_at.localeCompare(a.payload.started_at))) {
+  for (const row of [...rows].sort((a, b) => Date.parse(b.payload.started_at) - Date.parse(a.payload.started_at))) {
     if (row.deleteRequested) continue
     for (const item of row.payload.exercises) {
       if (!exerciseIds.includes(item.exercise_id) || result[item.exercise_id] || !item.sets.length) continue
@@ -307,7 +307,7 @@ export function mergePrevious(
 ): Record<string, PreviousPerformance> {
   const merged = { ...server }
   for (const [id, perf] of Object.entries(local)) {
-    if (!merged[id] || perf.started_at > merged[id].started_at) merged[id] = perf
+    if (!merged[id] || Date.parse(perf.started_at) > Date.parse(merged[id].started_at)) merged[id] = perf
   }
   return merged
 }

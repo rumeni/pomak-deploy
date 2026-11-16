@@ -300,6 +300,23 @@ describe('prošli rezultati sa telefona', () => {
   })
 })
 
+describe('workout instants across timezone offsets', () => {
+  it('selects the newest previous result by absolute timestamp', () => {
+    const server = { bench: { session_id: 'api', started_at: '2026-11-16T21:00:00+01:00', sets: [] } }
+    const local = { bench: { session_id: 'offline', started_at: '2026-11-16T20:30:00.000Z', sets: [] } }
+    expect(mergePrevious(server, local).bench.session_id).toBe('offline')
+    expect(mergePrevious(local, server).bench.session_id).toBe('offline')
+  })
+
+  it('uploads older workouts before newer ones even across offset formats', async () => {
+    await finishWorkout('u1', payload('older', '2026-11-16T21:00:00+01:00'), [])
+    await finishWorkout('u1', payload('newer', '2026-11-16T20:30:00.000Z'), [])
+    const sent: string[] = []
+    await syncOutbox('u1', async (p) => void sent.push(p.id))
+    expect(sent).toEqual(['older', 'newer'])
+  })
+})
+
 describe('restore rejected offline workout', () => {
   const exercise: Exercise = {
     id: 'bench', name: 'Bench', aliases: '', equipment: 'barbell', measurement: 'weight_reps',

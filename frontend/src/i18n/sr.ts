@@ -506,6 +506,7 @@ export const sr = {
     errors: {
       workouts: 'Upiši ceo broj treninga (1–14).',
       start: 'Upiši trenutnu vrednost.',
+      range: 'Vrednost mora biti između {{low}} i {{high}}.',
     },
   },
   coach: {

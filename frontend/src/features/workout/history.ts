@@ -59,7 +59,7 @@ export function combineHistory(server: SessionView[], local: SessionView[]): Ses
   const deleting = new Map(local.filter((s) => s.status === 'deleting').map((s) => [s.id, s]))
   const sent = new Map(server.map((s) => [s.id, deleting.get(s.id) ?? s]))
   return [...local.filter((l) => !sent.has(l.id)), ...sent.values()]
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
 }
 
 /** Repeated exercises are legal in a finished workout; their list identity is positional. */
