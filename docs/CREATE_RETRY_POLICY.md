@@ -1,0 +1,25 @@
+# Ponovni POST sa istim ID-jem posle mrežne greške
+
+Korisnik može dobiti grešku zbog isteka zahteva iako je server već sačuvao
+prvi POST. Kada izmeni nacrt i ponovi zahtev sa istim ID-jem, server ne
+sme da prikaže uspeh ako nije primenio izmene.
+
+- **Rutine, recepti i merenja**: identičan POST vraća postojeći zapis (200)
+  bez dodatnih promena. Ako se sadržaj razlikuje, isti ID se **ažurira**
+  kroz isti DRF serializer i validaciju kao PUT/PATCH, uz status 200.
+  Ne vraća se 200 sa starim sadržajem dok su izmene ignorisane.
+- **Ciljevi**: ne postoji uređivanje cilja, zato ponovljeni POST sa
+  postojećim ID-jem vraća **409 Conflict** i zahtev za osvežavanje.
+- **Sačuvani obroci**: klijent čuva isti pokušajni ID dok ne dobije uspešan
+  odgovor. Identčan ponovni POST vraća 200 bez duplikata, a izmenjen
+  zahtev sa postojećim ID-jem vraća 409 (nema uređivanja tog resursa).
+- **Odrađeni treninzi**: ostaju neizmenjivi. Ponovni POST vraća sačuvani
+  trening, jer se završena sesija ne menja.
+
+Provera vlasništva je obavezna. Arhivirana rutina/recept se ne oživljava,
+a recept koji kolidira sa ID-jem obične namirnice ne sme da je menja.
+Poređenje istovetnih zahteva uzima u obzir decimalne ekvivalente
+(npr. `60` i `60.00`) i nizove serija/sastojaka.
+
+U dnevniku je najmanja dozvoljena količina namirnice **0,1 g**, isto kao
+na serveru. Nema migracije baze.
