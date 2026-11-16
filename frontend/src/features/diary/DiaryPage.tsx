@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router-dom'
 
@@ -10,7 +10,7 @@ import { uuid } from '../../lib/uuid'
 import { fmtValue } from '../nutrition/macroFormat'
 import { useCreateSavedMeal } from './api'
 import { mealLabel, mealSettings, visibleMeals } from './meals'
-import { MAX_SAVED_MEAL_ITEMS, MAX_SAVED_MEAL_NAME_LENGTH, savedMealDraftIssue } from './savedMealValidation'
+import { MAX_SAVED_MEAL_ITEMS, MAX_SAVED_MEAL_NAME_LENGTH, savedMealConflict, savedMealDraftIssue, withRetryMealId } from './savedMealValidation'
 import { copyEntry, savedItemFromEntry, totals, type DayTotals, type DisplayDay, type MacroTotal } from './model'
 import { discardRejectedDayOps, loadDayEntries, saveDrafts, setDayStatus, useDiaryDay } from './store'
 import type { DayStatus, DayTarget, DiaryEntry, MealKey } from './types'
@@ -157,6 +157,8 @@ function MealCard({
   const createSaved = useCreateSavedMeal()
   const [menuOpen, setMenuOpen] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // A lost POST response must not cause a second saved-meal ID on retry.
+  const pendingSavedMealId = useRef<string | null>(null)
   const entries = day.entries.filter((e) => e.meal === meal)
   const kcal = Math.round(entries.reduce((sum, e) => sum + Number(e.kcal), 0))
 
@@ -189,10 +191,20 @@ function MealCard({
       setSaveError(t('diary.savedMealTooManyItems', { max: MAX_SAVED_MEAL_ITEMS }))
       return
     }
-    createSaved.mutate(
-      { id: uuid(), name, items: entries.map(savedItemFromEntry) },
-      { onSuccess: () => onNotice(t('diary.savedMealCreated', { name })) },
-    )
+    const body = withRetryMealId(pendingSavedMealId.current, uuid(), name, entries.map(savedItemFromEntry))
+    pendingSavedMealId.current = body.id
+    createSaved.mutate(body, {
+      onSuccess: () => {
+        pendingSavedMealId.current = null
+        onNotice(t('diary.savedMealCreated', { name }))
+      },
+      onError: (error) => {
+        // A divergent retry cannot overwrite an existing saved meal.
+        // Drop this ID so the next user attempt can start anew, while the
+        // mutation hook refreshes the existing meal in the saved-meals list.
+        if (savedMealConflict(error)) pendingSavedMealId.current = null
+      },
+    })
   }
   return (
     <section className="rounded-2xl bg-card shadow-sm ring-1 ring-line/60">

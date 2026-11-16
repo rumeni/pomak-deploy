@@ -22,6 +22,22 @@ class MeasurementTests(APITestCase):
         self.assertEqual(Measurement.objects.count(), 1)
         self.assertEqual(first.data['unit'], 'kg')
 
+    def test_retry_changed_post_updates_value_and_date_without_duplicates(self):
+        mid = str(uuid.uuid4())
+        original = {'id': mid, 'kind': 'weight', 'value': '82.4', 'measured_on': '2026-09-24'}
+        self.assertEqual(self.client.post('/api/progress/measurements/', original).status_code, 201)
+        self.assertEqual(self.client.post('/api/progress/measurements/', original).status_code, 200)
+        changed = {**original, 'value': '81.2', 'measured_on': '2026-09-25'}
+        response = self.client.post('/api/progress/measurements/', changed)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['value'], '81.20')
+        self.assertEqual(response.data['measured_on'], '2026-09-25')
+        self.assertEqual(Measurement.objects.count(), 1)
+
+        invalid = {**changed, 'value': '785'}
+        self.assertEqual(self.client.post('/api/progress/measurements/', invalid).status_code, 400)
+        self.assertEqual(str(Measurement.objects.get(pk=mid).value), '81.20')
+
     def test_other_users_id_is_rejected(self):
         other = User.objects.create_user('c@d.rs', 'jaka-lozinka-123')
         m = Measurement.objects.create(user=other, kind='weight', value=70, measured_on='2026-09-24')

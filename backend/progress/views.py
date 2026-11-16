@@ -20,6 +20,7 @@ class MeasurementViewSet(
     mixins.DestroyModelMixin, viewsets.GenericViewSet,
 ):
     serializer_class = MeasurementSerializer
+    retry_action = 'update'
     http_method_names = ['get', 'post', 'patch', 'delete']
 
     def get_queryset(self):
@@ -35,6 +36,8 @@ class GoalViewSet(IdempotentCreateMixin, mixins.ListModelMixin, mixins.CreateMod
     """Ciljevi napretka: aktivni prvi. Stanje se menja preko POST /goals/<id>/close/."""
 
     serializer_class = GoalSerializer
+    retry_action = 'compare'
+    retry_compare_fields = ('kind', 'target_value', 'target_date')
 
     def get_queryset(self):
         return Goal.objects.filter(user=self.request.user).select_related('user__profile')

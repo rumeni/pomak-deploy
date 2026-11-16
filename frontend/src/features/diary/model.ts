@@ -128,6 +128,11 @@ export function isFromFood(entry: DiaryEntry): boolean {
   return entry.per100_kcal !== null
 }
 
+/** Same 0.1–5000 g limits as MealEntryWriteSerializer; avoid rounding 0.01 g to 0.0. */
+export function validDiaryGrams(amount: number | null): amount is number {
+  return amount !== null && Number.isFinite(amount) && amount >= 0.1 && amount <= 5000
+}
+
 function bodyFor(e: DiaryEntry): EntryWrite {
   const fromFood = isFromFood(e)
   return {

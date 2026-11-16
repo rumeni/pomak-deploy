@@ -44,6 +44,7 @@ class ExerciseViewSet(
 class RoutineViewSet(IdempotentCreateMixin, viewsets.ModelViewSet):
     serializer_class = RoutineSerializer
     owner_field = 'owner'
+    retry_action = 'update'
     http_method_names = ['get', 'post', 'put', 'delete']
 
     def get_queryset(self):
