@@ -33,6 +33,13 @@ describe('istorija', () => {
     expect(fromOutbox({ ...row, error: 'Odbijeno' }).status).toBe('rejected')
   })
 
+  it('does not duplicate workouts repeated by overlapping history pages', () => {
+    const first = [view('s1', '2026-09-29T10:00:00Z'), view('s2', '2026-09-28T10:00:00Z')]
+    const overlap = [view('s2', '2026-09-28T10:00:00Z'), view('s3', '2026-09-27T10:00:00Z')]
+    const local = [view('s2', '2026-09-28T10:00:00Z', 'pending')]
+    expect(combineHistory([...first, ...overlap], local).map((s) => s.id)).toEqual(['s1', 's2', 's3'])
+  })
+
   it('spaja po datumu i ne ponavlja trening koji je u međuvremenu poslat', () => {
     const server = [view('s1', '2026-09-29T10:00:00Z'), view('p1', '2026-09-30T10:00:00Z')]
     const local = [view('p1', '2026-09-30T10:00:00Z', 'pending'), view('p2', '2026-09-30T18:00:00Z', 'pending')]
