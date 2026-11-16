@@ -678,8 +678,8 @@ export const sr = {
       invalidDuration: '„{{value}}“ nije ispravno trajanje (npr. 0:45 ili 30:00).',
       zeroDuration: 'Trajanje mora biti veće od nule.',
       invalidNumber: '{{exercise}}: „{{value}}“ nije ispravan broj.',
-      tooManyExercises: 'Rutina može imati najviše {{count}} vežbi.'
-      tooManySets: 'Vežba može imati najviše {{count}} serija.'
+      tooManyExercises: 'Rutina može imati najviše {{count}} vežbi',
+      tooManySets: 'Vežba može imati najviše {{count}} serija.',
     },
   },
   workout: {

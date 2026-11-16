@@ -667,8 +667,8 @@ export const en = {
       invalidDuration: '"{{value}}" is not a valid duration (e.g. 0:45 or 30:00).',
       zeroDuration: 'Duration must be greater than zero.',
       invalidNumber: '{{exercise}}: "{{value}}" is not a valid number.',
-      tooManyExercises: 'A routine can have at most {{count}} exercises.'
-      tooManySets: 'An exercise can have at most {{count}} sets.'
+      tooManyExercises: 'A routine can have at most {{count}} exercises',
+      tooManySets: 'An exercise can have at most {{count}} sets.',
     },
   },
   workout: {
