@@ -5,7 +5,8 @@ export const MAX_SAVED_MEAL_ITEMS = 30
 export type SavedMealDraftIssue = 'nameTooLong' | 'tooManyItems' | null
 
 export function savedMealDraftIssue(name: string, itemCount: number): SavedMealDraftIssue {
-  if (name.length > MAX_SAVED_MEAL_NAME_LENGTH) return 'nameTooLong'
+  // Python's len() counts Unicode code points; JS string.length counts UTF-16 units.
+  if ([...name].length > MAX_SAVED_MEAL_NAME_LENGTH) return 'nameTooLong'
   if (itemCount > MAX_SAVED_MEAL_ITEMS) return 'tooManyItems'
   return null
 }

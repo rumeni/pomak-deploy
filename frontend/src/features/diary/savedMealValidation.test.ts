@@ -7,6 +7,13 @@ describe('saved meal creation uses API limits before the network call', () => {
     expect(savedMealDraftIssue('X'.repeat(MAX_SAVED_MEAL_NAME_LENGTH + 1), 1)).toBe('nameTooLong')
   })
 
+  it('counts Unicode code points like the Django serializer, not UTF-16 units', () => {
+    expect(savedMealDraftIssue('A'.repeat(99) + '🍎', 1)).toBeNull()
+    expect(savedMealDraftIssue('A'.repeat(100) + '🍎', 1)).toBe('nameTooLong')
+    expect(savedMealDraftIssue('🍎'.repeat(100), 1)).toBeNull()
+    expect(savedMealDraftIssue('🍎'.repeat(101), 1)).toBe('nameTooLong')
+  })
+
   it('allows exactly 30 entries, rejects 31 and prioritizes name validation', () => {
     expect(savedMealDraftIssue('Lunch', MAX_SAVED_MEAL_ITEMS)).toBeNull()
     expect(savedMealDraftIssue('Lunch', MAX_SAVED_MEAL_ITEMS + 1)).toBe('tooManyItems')
