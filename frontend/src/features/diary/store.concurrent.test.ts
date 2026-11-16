@@ -2,9 +2,12 @@ import 'fake-indexeddb/auto'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { db } from '../../lib/db'
+import { db, type DiaryOpRow } from '../../lib/db'
 import { manualEntry } from './model'
 
+// The store imports the HTTP client for read hooks; these tests exercise only
+// local IndexedDB writes, so avoid initializing the DOM-dependent i18n module.
+vi.mock('../../lib/api', () => ({ api: { get: vi.fn() } }))
 vi.mock('../workout/sync', () => ({ requestSync: vi.fn() }))
 
 const DAY = '2026-11-16'
@@ -80,7 +83,7 @@ describe('atomic offline diary ordering across independent tabs', () => {
     await db.diaryOps.put({
       id: 'legacy', ownerId: 'u1', date: DAY, seq: oldSeq,
       error: null, type: 'status', status: 'in_progress',
-    })
+    } as DiaryOpRow)
     const { first } = await separateTabs()
     await first.setDayStatus('u1', DAY, 'complete')
 
