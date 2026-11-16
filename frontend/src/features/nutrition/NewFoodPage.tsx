@@ -7,6 +7,7 @@ import { errorMessage } from '../../lib/api'
 import { parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { useCreateFood, useFood, useUpdateFood, type Food, type FoodState, type NewFood } from './api'
+import { foodFormValue } from './foodFormValues'
 
 const STATES: FoodState[] = ['prepared', 'raw', 'cooked', 'na']
 type ValueField = 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'
@@ -42,14 +43,14 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
   const [name, setName] = useState(initialFood?.name ?? '')
   const [state, setState] = useState<FoodState>(initialFood?.state ?? 'prepared')
   const [values, setValues] = useState<Record<ValueField, string>>(() => ({
-    kcal: initialFood?.kcal ?? '',
-    protein_g: initialFood?.protein_g ?? '',
-    carbs_g: initialFood?.carbs_g ?? '',
-    fat_g: initialFood?.fat_g ?? '',
-    fiber_g: initialFood?.fiber_g ?? '',
+    kcal: foodFormValue(initialFood?.kcal),
+    protein_g: foodFormValue(initialFood?.protein_g),
+    carbs_g: foodFormValue(initialFood?.carbs_g),
+    fat_g: foodFormValue(initialFood?.fat_g),
+    fiber_g: foodFormValue(initialFood?.fiber_g),
   }))
   const [portions, setPortions] = useState<{ key: string; name: string; grams: string }[]>(
-    () => initialFood?.portions.map((portion) => ({ ...portion, key: uuid() })) ?? [],
+    () => initialFood?.portions.map((portion) => ({ ...portion, grams: foodFormValue(portion.grams), key: uuid() })) ?? [],
   )
   const [error, setError] = useState<string | null>(null)
 
