@@ -2,10 +2,12 @@
 
 import re
 from datetime import timedelta
+from uuid import UUID
 
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -14,6 +16,7 @@ from rest_framework.views import APIView
 from nutrition.models import MealEntry
 from progress.models import Goal, Measurement
 from training.models import Routine, RoutineExercise, RoutineSet, WorkoutSession
+from core.views import require_object_body
 
 from .models import CoachAssignment, CoachConnection, CoachInvitation, CoachMessage
 
@@ -45,7 +48,10 @@ def connection_for_coach(request, client_id):
 
 def connection_for_messages(request):
     if request.user.profile.is_coach:
-        raw_id = request.query_params.get('client_id') or request.data.get('client_id')
+        # GET has no JSON body contract; POST validates an object first.
+        raw_id = request.query_params.get('client_id') or (
+            request.data.get('client_id') if request.method == 'POST' else None
+        )
         if not raw_id:
             raise ValidationError({'client_id': 'Select a client.'})
         try:
@@ -328,11 +334,28 @@ class AssignRoutineView(APIView):
 class MessagesView(APIView):
     def get(self, request):
         connection = connection_for_messages(request)
-        items = list(CoachMessage.objects.filter(connection=connection).order_by('-created_at', '-id')[:MAX_MESSAGES_RETURNED])
+        rows = CoachMessage.objects.filter(connection=connection)
+        params = request.query_params
+        if 'before' in params or 'before_id' in params:
+            raw_date, raw_id = params.get('before', ''), params.get('before_id', '')
+            try:
+                before = parse_datetime(raw_date) if len(raw_date) <= 64 else None
+                before_id = UUID(raw_id)
+            except (ValueError, TypeError, AttributeError):
+                before, before_id = None, None
+            if before is None or before_id is None or timezone.is_naive(before):
+                raise ValidationError({'before': 'Invalid message cursor.'})
+            rows = rows.filter(
+                Q(created_at__lt=before) | Q(created_at=before, pk__lt=before_id)
+            )
+        # Retain the legacy chronological array and the last-80 default for
+        # older Android clients. New clients use the FIRST (oldest) row as cursor.
+        items = list(rows.order_by('-created_at', '-id')[:MAX_MESSAGES_RETURNED])
         return Response([message_summary(x) for x in reversed(items)])
 
     @transaction.atomic
     def post(self, request):
+        require_object_body(request)
         relation = connection_for_messages(request)
         serializer = MessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

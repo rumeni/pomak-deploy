@@ -198,6 +198,81 @@ class CoachCollaborationTests(APITestCase):
         self.as_user(self.coach)
         self.assertEqual(self.client.get(url, {'client_id': str(self.client_user.pk)}).status_code, 404)
 
+    def test_message_history_cursor_loads_all_messages_with_new_messages_arriving(self):
+        self.connect()
+        connection = CoachConnection.objects.get(client=self.client_user)
+        base = timezone.now() - timedelta(days=1)
+        for i in range(86):
+            msg = CoachMessage.objects.create(connection=connection, sender=self.coach, text=f'Message {i}')
+            CoachMessage.objects.filter(pk=msg.pk).update(created_at=base + timedelta(seconds=i))
+        url = '/api/coach/messages/'
+        self.as_user(self.coach)
+        params = {'client_id': str(self.client_user.pk)}
+        first = self.client.get(url, params)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(len(first.data), 80)
+        self.assertEqual(first.data[0]['text'], 'Message 6')
+        cursor = {
+            **params, 'before': first.data[0]['created_at'], 'before_id': first.data[0]['id'],
+        }
+        CoachMessage.objects.create(connection=connection, sender=self.client_user, text='Just arrived')
+        second = self.client.get(url, cursor)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual([m['text'] for m in second.data], [f'Message {i}' for i in range(6)])
+        self.assertFalse({m['id'] for m in first.data} & {m['id'] for m in second.data})
+        self.assertEqual(len({m['id'] for m in first.data + second.data}), 86)
+
+        self.as_user(self.client_user)
+        # Client can retrieve their own history, including older messages.
+        self.assertEqual(len(self.client.get(url, cursor).data), 6)
+        self.as_user(self.another_coach)
+        self.assertEqual(self.client.get(url, cursor).status_code, 404)
+
+    def test_message_history_cursor_handles_equal_timestamps_and_rejects_invalid_input(self):
+        self.connect()
+        connection = CoachConnection.objects.get(client=self.client_user)
+        base = timezone.now() - timedelta(days=1)
+        for i in range(83):
+            msg = CoachMessage.objects.create(connection=connection, sender=self.client_user, text=f'Message {i}')
+            CoachMessage.objects.filter(pk=msg.pk).update(created_at=base)
+        self.as_user(self.client_user)
+        url = '/api/coach/messages/'
+        first = self.client.get(url)
+        self.assertEqual(len(first.data), 80)
+        cursor = {'before': first.data[0]['created_at'], 'before_id': first.data[0]['id']}
+        older = self.client.get(url, cursor)
+        self.assertEqual(older.status_code, 200)
+        self.assertEqual(len(older.data), 3)
+        self.assertEqual(len({m['id'] for m in first.data + older.data}), 83)
+
+        for bad in (
+            {'before': cursor['before']},
+            {'before_id': cursor['before_id']},
+            {'before': 'bad', 'before_id': cursor['before_id']},
+            {'before': cursor['before'], 'before_id': 'not-a-uuid'},
+            {'before': base.isoformat().replace('+00:00', ''), 'before_id': cursor['before_id']},
+        ):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.client.get(url, bad).status_code, 400)
+
+    def test_coach_message_json_shape_is_validated_before_lookup(self):
+        self.connect()
+        self.as_user(self.coach)
+        url = '/api/coach/messages/'
+        for raw in ('[]', '"text"', 'null'):
+            with self.subTest(raw=raw):
+                invalid = self.client.post(url, data=raw, content_type='application/json')
+                self.assertEqual(invalid.status_code, 400, invalid.content)
+                self.assertIn('detail', invalid.data)
+                invalid_with_query = self.client.post(
+                    url + '?client_id=' + str(self.client_user.pk),
+                    data=raw, content_type='application/json',
+                )
+                self.assertEqual(invalid_with_query.status_code, 400, invalid_with_query.content)
+        self.assertEqual(CoachMessage.objects.count(), 0)
+        valid = self.client.post(url, {'client_id': str(self.client_user.pk), 'text': 'Hi'}, format='json')
+        self.assertEqual(valid.status_code, 201, valid.data)
+
     def test_invite_and_connection_not_cross_manageable(self):
         invite = self.invite()
         self.as_user(self.another_coach)
