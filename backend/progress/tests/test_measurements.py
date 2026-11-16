@@ -36,7 +36,7 @@ class MeasurementTests(APITestCase):
 
         invalid = {**changed, 'value': '785'}
         self.assertEqual(self.client.post('/api/progress/measurements/', invalid).status_code, 400)
-        self.assertEqual(Measurement.objects.get(pk=mid).value, 81.2)
+        self.assertEqual(str(Measurement.objects.get(pk=mid).value), '81.20')
 
     def test_other_users_id_is_rejected(self):
         other = User.objects.create_user('c@d.rs', 'jaka-lozinka-123')
