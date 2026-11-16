@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/auth'
 import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { manualEntry } from './model'
+import { findManualEntryForEdit } from './manualEntryLookup'
 import { deleteEntry, saveEntry, useDiaryDay } from './store'
 import { mealLabel, mealSettings, selectableMeals } from './meals'
 import { MEALS, type DiaryEntry, type MealKey } from './types'
@@ -24,7 +25,7 @@ export function ManualEntryPage() {
   const { day } = useDiaryDay(me?.id, date)
 
   if (entryId && !day) return <LoadingScreen />
-  const entry = entryId ? day?.entries.find((e) => e.id === entryId) : undefined
+  const entry = findManualEntryForEdit(entryId, day)
   if (entryId && !entry) return (
     <div className="min-h-full pb-10">
       <ScreenHeader title={t('diary.manualTitle')} onBack={() => navigate(-1)} />

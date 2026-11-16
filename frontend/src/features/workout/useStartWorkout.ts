@@ -7,6 +7,7 @@ import { startEmpty, startFromRoutine } from './model'
 import { loadPrevious } from './previous'
 import { cancelRestEnd } from './restNotification'
 import { getActiveWorkoutRow, startWorkoutIfUnchanged } from './store'
+import { startConfirmedReplacement } from './startReplacement'
 
 /**
  * Pokreće trening iz rutine ili prazan. Ako je drugi trening u toku, pita pre nego što ga
@@ -27,14 +28,15 @@ export function useStartWorkout() {
     const workout = routine
       ? startFromRoutine(routine, await loadPrevious(routine.exercises.map((e) => e.exercise.id)), now)
       : startEmpty(t('workout.emptyName'), now)
-    const started = await startWorkoutIfUnchanged(workout, current?.workout.id ?? null, ownerId, current?.revision ?? 0)
+    const started = await startConfirmedReplacement(
+      () => startWorkoutIfUnchanged(workout, current?.workout.id ?? null, ownerId, current?.revision ?? 0),
+      !!current,
+      cancelRestEnd,
+    )
     if (!started) {
       window.alert(t('workout.startConflict'))
       return
     }
-    // Cancel only after the old workout was actually replaced; a rejected
-    // cross-tab race must leave the active workout's rest alarm intact.
-    if (current) void cancelRestEnd().catch(() => undefined)
     navigate('/trening/aktivan')
   }
 }
