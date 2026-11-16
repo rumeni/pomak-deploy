@@ -265,6 +265,30 @@ describe('oversized plan snapshot regression (Codex PR #38)', () => {
     expect(prepareSessionPayload(normal)).toBe(normal)
   })
 
+  it('keeps whole emoji at every truncation boundary (no lone surrogates)', () => {
+    const emoji = '😃'
+    const giant = {
+      ...routine,
+      name: 'r'.repeat(99) + emoji,
+      notes: 'n'.repeat(8191) + emoji + 'x'.repeat(300_000),
+      exercises: [{
+        ...routine.exercises[0],
+        notes: 'a'.repeat(299) + emoji,
+        exercise: {
+          ...bench,
+          name: 'e'.repeat(119) + emoji,
+          instructions: 'long'.repeat(80_000),
+        },
+      }],
+    }
+    const compact = uploadSafePlanSnapshot(giant)
+    expect(compact?.name).toBe('r'.repeat(99) + emoji)
+    expect(compact?.notes).toBe('n'.repeat(8191) + emoji)
+    expect(compact?.exercises[0].notes).toBe('a'.repeat(299) + emoji)
+    expect(compact?.exercises[0].exercise.name).toBe('e'.repeat(119) + emoji)
+    expect(new TextEncoder().encode(JSON.stringify(compact)).byteLength).toBeLessThanOrEqual(MAX_WORKOUT_SNAPSHOT_BYTES)
+  })
+
   it('repairs previously queued large snapshots without modifying logged sets', () => {
     const old = toSessionPayload(start(), new Date('2026-09-25T11:00:00Z'), null, '')
     const huge = { ...routine, notes: 'n'.repeat(400_000) }
