@@ -7,8 +7,10 @@ import type { ActiveWorkout } from './model'
 
 /** Aktivan trening prijavljenog korisnika; trening drugog naloga na istom telefonu se ne vidi. */
 async function loadOwnRow(): Promise<ActiveWorkoutRow | null> {
-  const row = await db.activeWorkout.get('current')
-  return row && row.ownerId === getCurrentUserId() ? row : null
+  const ownerId = getCurrentUserId()
+  if (!ownerId) return null
+  const row = await db.activeWorkout.get(ownerId)
+  return row?.ownerId === ownerId ? row : null
 }
 
 /** Za trake "Trening u toku": `undefined` dok se učitava, `null` ako ga nema. */
@@ -23,11 +25,12 @@ export async function getActiveWorkoutRow(): Promise<ActiveWorkoutRow | null> {
 export async function saveActiveWorkout(workout: ActiveWorkout): Promise<void> {
   const ownerId = getCurrentUserId()
   if (!ownerId) throw new Error('Nema prijavljenog korisnika')
-  await db.activeWorkout.put({ slot: 'current', ownerId, workout })
+  await db.activeWorkout.put({ slot: ownerId, ownerId, workout })
 }
 
 export async function clearActiveWorkout(): Promise<void> {
-  await db.activeWorkout.delete('current')
+  const ownerId = getCurrentUserId()
+  if (ownerId) await db.activeWorkout.delete(ownerId)
 }
 
 /**

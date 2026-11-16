@@ -19,7 +19,7 @@ export async function finishWorkout(
 ): Promise<void> {
   await db.transaction('rw', db.outbox, db.activeWorkout, async () => {
     await db.outbox.put({ id: payload.id, ownerId, payload, exercises, queuedAt: now.toISOString(), attempts: 0, error: null })
-    await db.activeWorkout.delete('current')
+    await db.activeWorkout.delete(ownerId)
   })
 }
 
@@ -40,7 +40,7 @@ export async function restoreRejectedWorkout(ownerId: string, id: string): Promi
   await db.transaction('rw', db.outbox, db.activeWorkout, async () => {
     const row = await db.outbox.get(id)
     if (!row || row.ownerId !== ownerId || !row.error) throw new Error('NOT_FOUND')
-    if (await db.activeWorkout.get('current')) throw new Error('ACTIVE_WORKOUT_EXISTS')
+    if (await db.activeWorkout.get(ownerId)) throw new Error('ACTIVE_WORKOUT_EXISTS')
 
     const exercisesById = new Map(row.exercises.map((e) => [e.id, e]))
     const exercises = row.payload.exercises.filter((e) => e.sets.length).map((item) => {
@@ -78,7 +78,7 @@ export async function restoreRejectedWorkout(ownerId: string, id: string): Promi
       previous: {},
       rest: null,
     }
-    await db.activeWorkout.put({ slot: 'current', ownerId, workout })
+    await db.activeWorkout.put({ slot: ownerId, ownerId, workout })
     await db.outbox.delete(id)
   })
 }

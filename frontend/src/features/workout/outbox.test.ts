@@ -38,10 +38,18 @@ beforeEach(async () => {
 
 describe('finishWorkout', () => {
   it('upisuje u red i briše aktivan trening u istoj transakciji', async () => {
-    await db.activeWorkout.put({ slot: 'current', ownerId: 'u1', workout: {} as never })
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: {} as never })
     await finishWorkout('u1', payload('a', '2026-09-30T10:00:00Z'), [])
     expect(await db.activeWorkout.count()).toBe(0)
     expect((await pendingSessions('u1')).map((r) => r.id)).toEqual(['a'])
+  })
+
+  it('finishing B preserves A\'s unfinished workout on the same device', async () => {
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { name: 'A unfinished' } as never })
+    await db.activeWorkout.put({ slot: 'u2', ownerId: 'u2', workout: { name: 'B finished' } as never })
+    await finishWorkout('u2', payload('b', '2026-09-30T11:00:00Z'), [])
+    expect((await db.activeWorkout.get('u1'))?.workout.name).toBe('A unfinished')
+    expect(await db.activeWorkout.get('u2')).toBeUndefined()
   })
 
   it('red je odvojen po nalogu', async () => {
@@ -166,7 +174,7 @@ describe('restore rejected offline workout', () => {
     await db.outbox.update('rejected', { error: 'Too long' })
 
     await restoreRejectedWorkout('u1', 'rejected')
-    const active = await db.activeWorkout.get('current')
+    const active = await db.activeWorkout.get('u1')
     expect(active?.workout.id).toBe('rejected')
     expect(active?.workout.draftFeeling).toBe(4)
     expect(active?.workout.draftNotes).toBe('Previous notes')
@@ -175,11 +183,20 @@ describe('restore rejected offline workout', () => {
     expect(await db.outbox.get('rejected')).toBeUndefined()
   })
 
+  it('A\'s active workout does not block B from restoring B\'s rejected workout', async () => {
+    await finishWorkout('u2', payload('other', '2026-09-29T10:00:00Z'), [exercise])
+    await db.outbox.update('other', { error: 'Invalid' })
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { name: 'A unfinished' } as never })
+    await restoreRejectedWorkout('u2', 'other')
+    expect((await db.activeWorkout.get('u1'))?.workout.name).toBe('A unfinished')
+    expect((await db.activeWorkout.get('u2'))?.workout.id).toBe('other')
+  })
+
   it('never overwrites an active workout or another user’s queued workout', async () => {
     await finishWorkout('u1', payload('one', '2026-09-29T10:00:00Z'), [exercise])
     await db.outbox.update('one', { error: 'Invalid' })
     await expect(restoreRejectedWorkout('u2', 'one')).rejects.toThrow('NOT_FOUND')
-    await db.activeWorkout.put({ slot: 'current', ownerId: 'u1', workout: {} as never })
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: {} as never })
     await expect(restoreRejectedWorkout('u1', 'one')).rejects.toThrow('ACTIVE_WORKOUT_EXISTS')
     expect(await db.outbox.get('one')).toBeDefined()
   })
