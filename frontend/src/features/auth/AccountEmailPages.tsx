@@ -150,6 +150,7 @@ export function EmailVerificationPendingPage() {
       <div className="mt-5 flex flex-col gap-3">
         <Button disabled={pending} onClick={() => void resend()}>{pending ? t('common.saving') : t('accountSecurity.resendEmail')}</Button>
         <button type="button" className="min-h-12 font-semibold text-brand-dark" onClick={() => window.location.reload()}>{t('accountSecurity.refreshVerification')}</button>
+        <Link to="/profil/obrisi-nalog" className="flex min-h-12 items-center justify-center font-semibold text-danger">{t('accountSecurity.deleteUnverifiedAccount')}</Link>
         <button type="button" className="min-h-12 font-semibold text-muted" onClick={logout}>{t('profile.logout')}</button>
       </div>
     </AuthLayout>

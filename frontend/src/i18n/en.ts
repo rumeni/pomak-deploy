@@ -83,6 +83,7 @@ export const en = {
     verifyRequiredText: 'We sent a verification link to {{email}}. Confirm it to continue.',
     resendEmail: 'Resend email',
     refreshVerification: 'I verified — refresh',
+    deleteUnverifiedAccount: 'Delete account',
   },
   onboarding: {
     stepOf: 'Getting started · step {{current}} of {{total}}',
