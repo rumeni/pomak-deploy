@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.search import search_and_order
+from core.views import require_object_body
 from core.views import IdempotentCreateMixin, SharedLibraryMixin
 
 from .models import Food, MealEntry, NutritionDay, NutritionTarget, RecipeIngredient, SavedMeal, SavedMealItem
@@ -64,9 +65,11 @@ class MealEntryView(APIView):
 
 
 def parse_day(value: str) -> datetime.date:
+    if not isinstance(value, str):
+        raise ValidationError({'date': _('Invalid date.')})
     try:
         return datetime.date.fromisoformat(value)
-    except ValueError:
+    except (ValueError, TypeError):
         raise ValidationError({'date': _('Invalid date.')}) from None
 
 
@@ -159,6 +162,7 @@ class TargetEstimateView(APIView):
     """POST: pregled predloga aplikacije pre prihvatanja (ništa se ne čuva)."""
 
     def post(self, request):
+        require_object_body(request)
         serializer = EstimateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         valid_from = parse_target_day(request.data.get('valid_from') or timezone.localdate().isoformat())

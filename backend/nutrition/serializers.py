@@ -88,7 +88,14 @@ class FoodSerializer(serializers.ModelSerializer):
         if portions is not None:
             food.portions.all().delete()
             self._write_portions(food, portions)
-        recipes.recompute_recipes_using(food)
+        try:
+            recipes.recompute_recipes_using(food)
+        except serializers.ValidationError as cause:
+            # The problem belongs to this edit, not to a cooked-mass field on
+            # the food form. The atomic update restores the previous values.
+            raise serializers.ValidationError({
+                'non_field_errors': _('This food cannot be changed because a recipe using it would become invalid.'),
+            }) from cause
         return food
 
     def _write_portions(self, food, portions):

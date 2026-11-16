@@ -1,9 +1,18 @@
+from collections.abc import Mapping
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
+
+
+def require_object_body(request):
+    """Return 400 for non-object JSON before any .get() or other dict access."""
+    if not isinstance(request.data, Mapping):
+        raise ValidationError({'detail': _('Expected a JSON object.')})
+    return request.data
 
 
 class IdempotentCreateMixin:
@@ -17,7 +26,7 @@ class IdempotentCreateMixin:
     owner_field = 'user'
 
     def create(self, request, *args, **kwargs):
-        record_id = request.data.get('id')
+        record_id = require_object_body(request).get('id')
         if record_id:
             model = self.get_serializer_class().Meta.model
             try:
