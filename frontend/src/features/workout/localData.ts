@@ -10,13 +10,15 @@ export async function unsentSummary(ownerId: string): Promise<{ active: boolean;
 }
 
 /** Briše lokalne podatke naloga sa telefona (pri odjavi, posle potvrde korisnika). */
-export async function clearLocalData(ownerId: string): Promise<void> {
+export async function clearLocalData(ownerId: string, accountDeleted = false): Promise<void> {
   await db.transaction('rw', [db.activeWorkout, db.outbox, db.diaryOps, db.diaryDays, db.foodCache], async () => {
     const row = await db.activeWorkout.get(ownerId)
     if (row?.ownerId === ownerId) await db.activeWorkout.delete(ownerId)
-    // Preserve minimal remote-delete tombstones for reconciliation if the user
-    // signs back into this account. Never reupload the discarded workout.
-    await db.outbox.where('ownerId').equals(ownerId)
+    // Logout retains only minimal remote-delete tombstones so a later login
+    // can reconcile them. Once the ACCOUNT is deleted, the remote data is gone
+    // and absolutely every local record (including tombstones) must be purged.
+    if (accountDeleted) await db.outbox.where('ownerId').equals(ownerId).delete()
+    else await db.outbox.where('ownerId').equals(ownerId)
       .filter((row) => !row.deleteRequested).delete()
     await db.diaryOps.where('ownerId').equals(ownerId).delete()
     await db.diaryDays.where('ownerId').equals(ownerId).delete()

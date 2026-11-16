@@ -37,6 +37,16 @@ export function clearPendingLanguage(ownerId: string, language: Language): void 
   }
 }
 
+/** Account deletion must remove all owner-scoped local preferences as well. */
+export function forgetLanguagePreference(ownerId: string): void {
+  fallback.delete(ownerId)
+  try {
+    localStorage.removeItem(keyFor(ownerId))
+  } catch {
+    // Best effort when browser storage is unavailable.
+  }
+}
+
 /** Only confirm the exact choice that was uploaded under the same login. */
 export async function flushPendingLanguage<T>(
   ownerId: string,
