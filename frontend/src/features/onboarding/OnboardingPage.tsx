@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { DateOfBirthField } from '../../components/DateOfBirthField'
 import { Button, ChoiceCards, Field, FormError, Segmented } from '../../components/ui'
-import { api, errorMessage } from '../../lib/api'
+import { api, errorMessage, type ScopedRequestConfig } from '../../lib/api'
 import { acceptsProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
@@ -36,7 +36,8 @@ export function OnboardingPage() {
   const finish = useMutation({
     mutationFn: async (ownerId: string) => {
       const scope = profileScope(ownerId)
-      const { data } = await api.post<Me>('/auth/me/onboarding/complete/', {}, { __pomakScope: scope })
+      const config: ScopedRequestConfig = { __pomakScope: scope }
+      const { data } = await api.post<Me>('/auth/me/onboarding/complete/', {}, config)
       return { data, scope }
     },
     onSuccess: ({ data, scope }) => {

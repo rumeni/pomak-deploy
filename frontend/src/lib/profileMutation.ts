@@ -1,4 +1,4 @@
-import type { AuthScope } from './api'
+import type { AuthScope, ScopedRequestConfig } from './api'
 import { api, scopeIsCurrent } from './api'
 import { tokens } from './tokens'
 import type { Me, Profile } from './types'
@@ -15,9 +15,9 @@ export function acceptsProfileResponse(
   return data.id === scope.ownerId && current(scope)
 }
 
-export async function patchOwnProfile(ownerId: string, profile: Partial<Profile>): Promise<Me | null> {
-  const scope = profileScope(ownerId)
+export async function patchOwnProfile(ownerId: string, profile: Partial<Profile>, scope: AuthScope = profileScope(ownerId)): Promise<Me | null> {
   if (!scopeIsCurrent(scope)) return null
-  const { data } = await api.patch<Me>('/auth/me/', { profile }, { __pomakScope: scope })
+  const config: ScopedRequestConfig = { __pomakScope: scope }
+  const { data } = await api.patch<Me>('/auth/me/', { profile }, config)
   return acceptsProfileResponse(scope, data) ? data : null
 }

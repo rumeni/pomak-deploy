@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('./api', () => ({ api: { patch: vi.fn() }, scopeIsCurrent: vi.fn() }))
+vi.mock('./tokens', () => ({ tokens: { session: vi.fn() } }))
 import { acceptsProfileResponse } from './profileMutation'
 import type { AuthScope } from './api'
 import type { Me } from './types'

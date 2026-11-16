@@ -22,7 +22,7 @@ export function MealSettingsPage() {
 
   const save = useMutation({
     mutationFn: async ({ list, scope }: { list: MealSetting[]; scope: AuthScope }) => {
-      const data = await patchOwnProfile(scope.ownerId, { meals: list })
+      const data = await patchOwnProfile(scope.ownerId, { meals: list }, scope)
       return { data, scope }
     },
     onSuccess: ({ data, scope }) => {
