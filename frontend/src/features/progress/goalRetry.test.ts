@@ -1,7 +1,8 @@
 import { AxiosError, AxiosHeaders } from 'axios'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { goalAlreadySavedConflict } from './goalRetry'
+import type { QueryClient } from '@tanstack/react-query'
+import { goalAlreadySavedConflict, invalidateGoalRelatedQueries } from './goalRetry'
 
 function apiError(status: number) {
   return new AxiosError('Request failed', 'ERR_BAD_RESPONSE', undefined, undefined, {
@@ -15,5 +16,13 @@ describe('goal conflict recovery', () => {
     expect(goalAlreadySavedConflict(apiError(400))).toBe(false)
     expect(goalAlreadySavedConflict(apiError(500))).toBe(false)
     expect(goalAlreadySavedConflict(new Error('offline'))).toBe(false)
+  })
+
+  it('refreshes goals, measurements and weekly views after an ambiguous create', () => {
+    const invalidateQueries = vi.fn(async () => undefined)
+    invalidateGoalRelatedQueries({ invalidateQueries } as unknown as Pick<QueryClient, 'invalidateQueries'>)
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters.queryKey)).toEqual([
+      ['measurements'], ['goals'], ['week'],
+    ])
   })
 })

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import { Card, EmptyState, PageHeader } from '../../components/ui'
 import { LineChart } from '../../components/LineChart'
@@ -14,10 +14,17 @@ import { LanguageMenu } from '../../components/LanguageMenu'
 /** Napredak: nedeljni pregled, ciljevi, telesna težina i vežbe koje je korisnik radio. */
 export function ProgressPage() {
   const { t } = useTranslation()
+  const location = useLocation()
+  const goalConflictNotice = (location.state as { goalConflictNotice?: boolean } | null)?.goalConflictNotice === true
   return (
     <>
       <PageHeader title={t('progress.title')} action={<LanguageMenu />} />
       <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pb-8">
+        {goalConflictNotice && (
+          <p role="alert" className="rounded-2xl bg-card p-3 text-sm text-ink ring-1 ring-line">
+            {t('progress.goalConflictNotice')}
+          </p>
+        )}
         <WeekCard />
         <GoalsSection />
         <WeightCard />

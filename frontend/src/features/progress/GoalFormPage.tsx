@@ -85,9 +85,9 @@ function GoalForm({ kind, latest }: { kind: GoalKind; latest?: { value: number; 
           if (!goalAlreadySavedConflict(e)) return
           // A previous request may already have created the goal; its original
           // ID must not trap subsequent submissions in repeated 409 conflicts.
-          // useCreateGoal invalidates ['goals'] before navigation.
+          // useCreateGoal refreshes goals, measurements and week before navigation.
           id.current = uuid()
-          navigate('/napredak', { replace: true })
+          navigate('/napredak', { replace: true, state: { goalConflictNotice: true } })
         },
       },
     )
