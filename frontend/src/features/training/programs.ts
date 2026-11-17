@@ -50,3 +50,30 @@ export async function createRoutines(batch: RoutinePayload[], post: (body: Routi
   for (const body of batch) await post(body)
 }
 
+
+/** Keep an unfinished import's UUIDs across unmount/reopen and network retries. */
+const pendingPrefix = 'pomak.pendingProgram.'
+const pendingKey = (ownerId: string, programKey: string) => `${pendingPrefix}${ownerId}.${programKey}`
+
+export function loadPendingProgram(ownerId: string, program: Program): RoutinePayload[] | null {
+  try {
+    const raw = localStorage.getItem(pendingKey(ownerId, program.key))
+    if (!raw) return null
+    const saved: unknown = JSON.parse(raw)
+    const validId = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
+    if (Array.isArray(saved) && saved.length === program.routines.length && saved.every((item) =>
+      item && typeof item === 'object' && typeof item.id === 'string' &&
+      validId.test(item.id) && Array.isArray(item.exercises))) {
+      return saved as RoutinePayload[]
+    }
+  } catch { /* storage disabled or unreadable: fall back to a fresh batch */ }
+  return null
+}
+
+export function savePendingProgram(ownerId: string, programKey: string, batch: RoutinePayload[]): void {
+  try { localStorage.setItem(pendingKey(ownerId, programKey), JSON.stringify(batch)) } catch { /* in-memory retry still works */ }
+}
+
+export function clearPendingProgram(ownerId: string, programKey: string): void {
+  try { localStorage.removeItem(pendingKey(ownerId, programKey)) } catch { /* storage unavailable */ }
+}

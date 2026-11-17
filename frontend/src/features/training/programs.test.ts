@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Exercise } from './api'
-import { createRoutines, describePrescription, programToRoutines, type Program } from './programs'
+import { clearPendingProgram, createRoutines, describePrescription, loadPendingProgram, programToRoutines, savePendingProgram, type Program } from './programs'
 
 const bench: Exercise = {
   id: 'e-bench', slug: 'bench-press', name: 'Bench', aliases: '', equipment: 'barbell', measurement: 'weight_reps',
@@ -40,6 +40,43 @@ describe('suggested programs', () => {
   it('describes the prescription for the preview', () => {
     expect(describePrescription(program.routines[0].exercises[0], 's')).toBe('3 × 8–10 @ 6,5')
     expect(describePrescription(program.routines[0].exercises[1], 's')).toBe('1 × 45 s')
+  })
+
+  it('resumes after unmount/reopen and a language change using the stored batch', async () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+    })
+    try {
+      const ids = [
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+      ]
+      const batch = programToRoutines(program, () => ids.shift()!)
+      savePendingProgram('athlete-1', program.key, batch)
+      const stored = loadPendingProgram('athlete-1', { ...program, name: 'Beginner full body' })
+      expect(stored).toEqual(batch)
+      expect(loadPendingProgram('athlete-2', program)).toBeNull()
+
+      const records = new Set<string>()
+      let failOnSecond = true
+      const post = async (body: { id?: string }) => {
+        if (body.id === batch[1].id && failOnSecond) {
+          failOnSecond = false
+          throw new Error('timeout')
+        }
+        records.add(body.id!)
+      }
+      await expect(createRoutines(batch, post)).rejects.toThrow('timeout')
+      await createRoutines(loadPendingProgram('athlete-1', program)!, post)
+      expect([...records]).toEqual(batch.map((body) => body.id))
+      clearPendingProgram('athlete-1', program.key)
+      expect(loadPendingProgram('athlete-1', program)).toBeNull()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('resumes a failed or lost import with the same routine IDs instead of new copies', async () => {

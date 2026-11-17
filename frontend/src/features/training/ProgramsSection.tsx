@@ -6,8 +6,9 @@ import { Button } from '../../components/ui'
 import i18n from '../../i18n'
 import { api, errorMessage } from '../../lib/api'
 import { uuid } from '../../lib/uuid'
+import { useAuth } from '../../lib/auth'
 import type { Routine, RoutinePayload } from './api'
-import { createRoutines, describePrescription, programToRoutines, type Program } from './programs'
+import { clearPendingProgram, createRoutines, describePrescription, loadPendingProgram, programToRoutines, savePendingProgram, type Program } from './programs'
 
 function usePrograms() {
   return useQuery({
@@ -63,21 +64,30 @@ export function ProgramsSection({ routines }: { routines: Routine[] | undefined 
 function ProgramCard({ program, routines }: { program: Program; routines: Routine[] | undefined }) {
   const { t } = useTranslation()
   const add = useAddProgram()
+  const { me } = useAuth()
   const [open, setOpen] = useState(false)
   const [added, setAdded] = useState(false)
   // The batch (with its routine IDs) of an add that has not finished: a retry resumes it.
-  const pending = useRef<RoutinePayload[] | null>(null)
+  const pending = useRef<{ ownerId: string; batch: RoutinePayload[] } | null>(null)
   const names = new Set(program.routines.map((r) => r.name))
   const alreadyThere = !!routines?.some((r) => names.has(r.name) && r.notes === program.name)
 
   const onAdd = () => {
-    if (!pending.current) {
-      // A new, deliberate add (possibly again): new IDs.
+    if (!me) return
+    // A persisted batch takes precedence even when this component was unmounted or reloaded.
+    const previous = pending.current?.ownerId === me.id
+      ? pending.current.batch : loadPendingProgram(me.id, program)
+    if (previous) {
+      pending.current = { ownerId: me.id, batch: previous }
+    } else {
       if (alreadyThere && !window.confirm(t('programs.addAgainConfirm'))) return
-      pending.current = programToRoutines(program, uuid)
+      const batch = programToRoutines(program, uuid)
+      pending.current = { ownerId: me.id, batch }
+      savePendingProgram(me.id, program.key, batch)
     }
-    add.mutate(pending.current, {
+    add.mutate(pending.current.batch, {
       onSuccess: () => {
+        clearPendingProgram(me.id, program.key)
         pending.current = null
         setAdded(true)
       },
@@ -128,7 +138,7 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
         <p role="status" className="rounded-xl bg-brand-soft px-3 py-2 text-sm font-semibold">{t('programs.added', { count: program.routines.length })}</p>
       ) : (
         <Button variant={program.recommended ? 'primary' : 'secondary'} onClick={onAdd} disabled={add.isPending}>
-          {add.isPending ? t('common.saving') : add.isError ? t('programs.retry') : t('programs.add', { count: program.routines.length })}
+          {add.isPending ? t('common.saving') : add.isError || pending.current?.ownerId === me?.id || (me && loadPendingProgram(me.id, program)) ? t('programs.retry') : t('programs.add', { count: program.routines.length })}
         </Button>
       )}
     </article>
