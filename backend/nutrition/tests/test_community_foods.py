@@ -170,6 +170,18 @@ class CommunityFoodReviewFollowUps(APITestCase):
         self.assertIsNotNone(food.verified_at)
         self.assertEqual((str(food.kcal), food.archived_at), ('61.0', None))
 
+    def test_shared_food_is_revalidated_after_lock_against_latest_macros(self):
+        food = Food.objects.get(pk=self.create(shared=True, kcal='100', protein_g='10', carbs_g='15', fat_g='0').json()['id'])
+        stale = Food.objects.get(pk=food.pk)
+        # Each edit is individually plausible on the original row, but not together:
+        # 125 kcal and 12 g carbs must fail against the new expected 88 kcal.
+        Food.objects.filter(pk=food.pk).update(kcal='125')
+        with mock.patch.object(FoodViewSet, 'get_object', return_value=stale):
+            response = self.client.patch(f'{URL}{food.id}/', {'carbs_g': '12'}, format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        food.refresh_from_db()
+        self.assertEqual((str(food.kcal), str(food.carbs_g)), ('125.0', '15.00'))
+
     def test_open_food_facts_values_keep_their_source_and_stay_private_by_default(self):
         ref = {'source_ref': 'openfoodfacts:3017620422003', 'barcode': '3017620422003'}
         private = self.create(**ref)

@@ -1,6 +1,6 @@
 import datetime
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -19,6 +19,8 @@ from .models import Food, FoodReport, MealEntry, NutritionDay, NutritionTarget, 
 from .serializers import (
     BARCODE_RE,
     can_edit_food,
+    barcode_clash_error,
+    shared_barcode_clash,
     FoodSerializer,
     MealEntrySerializer,
     MealEntryWriteSerializer,
@@ -66,13 +68,26 @@ class FoodViewSet(
             raise PermissionDenied(self.shared_readonly_message)
 
     def perform_update(self, serializer):
-        # Lock and re-read: a verification (or archive) that landed after the request loaded the
-        # food must win, never be overwritten by this write.
+        # DRF validated before acquiring the lock. Revalidate against the locked, current
+        # database row: concurrent edits to calories and macros must not combine incorrectly.
         with transaction.atomic():
             locked = Food.objects.select_for_update().get(pk=serializer.instance.pk)
+            if locked.archived_at is not None:
+                raise NotFound()
             self._require_own(locked)
-            serializer.instance = locked
-            serializer.save()
+            fresh = self.get_serializer(locked, data=self.request.data, partial=self.request.method == 'PATCH')
+            fresh.is_valid(raise_exception=True)
+            try:
+                with transaction.atomic():
+                    fresh.save()
+            except IntegrityError:
+                # Another author could have claimed this shared barcode since validation.
+                barcode = fresh.validated_data.get('barcode', locked.barcode)
+                clash = shared_barcode_clash(barcode, locked.pk) if locked.owner_id is None and barcode else None
+                if clash is not None:
+                    raise barcode_clash_error(clash) from None
+                raise
+            serializer.instance = fresh.instance
 
     def perform_destroy(self, item):
         with transaction.atomic():
