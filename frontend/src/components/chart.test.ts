@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { plot } from './chart'
+import { nearestIndex, plot } from './chart'
 
 describe('plot', () => {
   it('razmak po x prati datume, a y opseg ima malo prostora iznad i ispod', () => {
@@ -36,5 +36,21 @@ describe('plot', () => {
       10,
     )
     expect(points.map((p) => Math.round(p.x * 100) / 100)).toEqual([0, 1, 2])
+  })
+})
+
+describe('chart pointer mapping', () => {
+  it('picks the point under the pointer in pixel coordinates', () => {
+    const { points } = plot([
+      { date: '2026-11-01', value: 80 },
+      { date: '2026-11-08', value: 81 },
+      { date: '2026-11-15', value: 82 },
+    ], 600, 160)
+    expect(points.map((p) => Math.round(p.x))).toEqual([0, 300, 600])
+    // Just left or right of the middle point is still the middle point.
+    expect(nearestIndex(points, 290)).toBe(1)
+    expect(nearestIndex(points, 320)).toBe(1)
+    expect(nearestIndex(points, 520)).toBe(2)
+    expect(nearestIndex([], 10)).toBeNull()
   })
 })
