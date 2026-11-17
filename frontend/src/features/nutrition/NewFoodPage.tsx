@@ -280,7 +280,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
           inputMode="numeric"
           placeholder={t('newFood.barcodePlaceholder')}
           value={barcode}
-          onChange={(e) => { markEdited(); setBarcode(e.target.value.replace(/\s/g, '')); setExistingFood(null) }
+          onChange={(e) => { markEdited(); setBarcode(e.target.value.replace(/\s/g, '')); setExistingFood(null) }}
         />
         {!editing && (
           <label className={`flex items-start gap-3 rounded-xl bg-card p-3 ring-1 ring-line/60 ${fromOpenFoodFacts ? 'opacity-70' : ''}`}>
@@ -288,7 +288,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
               type="checkbox"
               checked={shared && !fromOpenFoodFacts}
               disabled={fromOpenFoodFacts}
-              onChange={(e) => { markEdited(); setShared(e.target.checked) }
+              onChange={(e) => { markEdited(); setShared(e.target.checked) }}
               className="mt-1 size-5 shrink-0 accent-brand"
             />
             <span>
