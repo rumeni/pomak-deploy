@@ -4,7 +4,8 @@ from django.db.models import Prefetch
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import mixins, status, viewsets
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -12,8 +13,11 @@ from core.search import search_and_order
 from core.views import require_object_body
 from core.views import IdempotentCreateMixin, SharedLibraryMixin
 
-from .models import Food, MealEntry, NutritionDay, NutritionTarget, RecipeIngredient, SavedMeal, SavedMealItem
+from . import open_food_facts
+from .models import Food, FoodReport, MealEntry, NutritionDay, NutritionTarget, RecipeIngredient, SavedMeal, SavedMealItem
 from .serializers import (
+    BARCODE_RE,
+    can_edit_food,
     FoodSerializer,
     MealEntrySerializer,
     MealEntryWriteSerializer,
@@ -42,10 +46,45 @@ class FoodViewSet(
 
     def get_queryset(self):
         qs = Food.visible_to(self.request.user).filter(archived_at__isnull=True).prefetch_related('portions')
-        return search_and_order(qs, self.request.query_params.get('q', ''))
+        query = self.request.query_params.get('q', '').strip()
+        if BARCODE_RE.fullmatch(query):
+            # Typed or scanned barcode: the product itself.
+            return qs.filter(barcode=query)
+        return search_and_order(qs, query)
 
     def list(self, request, *args, **kwargs):
         return Response(self.get_serializer(self.get_queryset()[:SEARCH_LIMIT], many=True).data)
+
+    def created_by_user(self, record, user) -> bool:
+        # A shared community food has no owner; its author may still retry its creation.
+        return record.owner_id == user.pk or (record.owner_id is None and record.created_by_id == user.pk)
+
+    def _require_own(self, item):
+        # A community food can be corrected by its author until an admin verified it.
+        if not can_edit_food(item, self.request):
+            raise PermissionDenied(self.shared_readonly_message)
+
+    @action(detail=False, methods=['get'], url_path='barcode/(?P<code>[0-9]{8,14})')
+    def barcode(self, request, code):
+        """A scanned product: ours if we have it, else a suggestion from Open Food Facts to confirm."""
+        food = Food.visible_to(request.user).filter(archived_at__isnull=True, barcode=code).order_by('owner').first()
+        if food is not None:
+            return Response({'food': self.get_serializer(food).data, 'suggestion': None})
+        return Response({'food': None, 'suggestion': open_food_facts.lookup(code)})
+
+    @action(detail=True, methods=['post'])
+    def report(self, request, pk=None):
+        """Report wrong values on a shared food; an admin reviews it."""
+        food = self.get_object()
+        if food.owner_id is not None:
+            raise ValidationError(_('Only shared foods can be reported.'))
+        reason = str(require_object_body(request).get('reason', '')).strip()[:300]
+        if not reason:
+            raise ValidationError({'reason': _('Say what is wrong.')})
+        FoodReport.objects.update_or_create(
+            food=food, reporter=request.user, resolved_at=None, defaults={'reason': reason},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MealEntryView(APIView):
