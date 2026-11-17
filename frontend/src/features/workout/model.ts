@@ -379,12 +379,15 @@ export function replacementLoss(item: ActiveExercise, exercise: Exercise): { ent
  * Where each row's grey weight comes from when the plan prescribes RPE: rows whose load was
  * worked out from last time's estimated 1RM, and RPE rows with no load (no estimate, or reps or
  * RPE outside the chart) where the athlete has to type it. Other rows use the ordinary
- * suggestion (last time or a fixed planned weight) and are in neither list.
+ * suggestion (last time or a fixed planned weight) and are in neither list, as are rows that
+ * already have a weight.
  */
 export function rpeLoadRows(workout: ActiveWorkout, item: ActiveExercise): { calculated: number[]; missing: number[]; e1rm: number | null } {
   const calculated: number[] = []
   const missing: number[] = []
-  item.sets.forEach((_, i) => {
+  item.sets.forEach((set, i) => {
+    // A row with a weight already typed (or confirmed) needs neither a source nor a reminder.
+    if (set.done || set.weight.trim()) return
     const load = rpeTargetWeight(workout, item, i)
     if (load) (load.weight !== null ? calculated : missing).push(i)
   })

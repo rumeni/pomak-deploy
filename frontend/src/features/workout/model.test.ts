@@ -556,6 +556,11 @@ describe('review follow-ups: swap warnings and RPE load sources', () => {
     expect(rows.e1rm).toBeCloseTo(123.46, 1)
     const noHistory = rpeLoadRows(startFromRoutine(mixed, {}, t0), w.exercises[0])
     expect(noHistory).toEqual({ calculated: [], missing: [0, 2], e1rm: null })
+    // Rows with a typed or confirmed weight drop out of both lists.
+    let filled = updateSet(w, w.exercises[0].key, w.exercises[0].sets[2].key, { weight: '70', reps: '12' })
+    filled = confirmSet(filled, filled.exercises[0].key, filled.exercises[0].sets[2].key, t0)
+    filled = updateSet(filled, filled.exercises[0].key, filled.exercises[0].sets[0].key, { weight: '102,5' })
+    expect(rpeLoadRows(filled, filled.exercises[0])).toMatchObject({ calculated: [], missing: [] })
     // An RPE below the chart (3.5) also has no load.
     const low: Routine = { ...mixed, exercises: [{ ...mixed.exercises[0], sets: [{ ...mixed.exercises[0].sets[0], rpe: '3.5' }] }] }
     const lw = startFromRoutine(low, lastTime, t0)
