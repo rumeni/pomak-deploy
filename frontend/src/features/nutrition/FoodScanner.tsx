@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { lookupBarcode, type Food } from './api'
 import type { LabelField } from './labelText'
-import type { ScanData } from './scanMerge'
+import { safeLabelValues, type ScanData } from './scanMerge'
 
 export interface ScanResult extends ScanData {
   /** The product is already in the database. */
@@ -17,7 +17,7 @@ export interface ScanResult extends ScanData {
  * or a photo of the nutrition table (read on the phone). Both open the camera on a phone and a
  * file picker on a computer. Values are only suggestions; the athlete confirms them.
  */
-export function FoodScanner({ onResult, autoStart = false }: { onResult: (result: ScanResult) => void; autoStart?: boolean }) {
+export function FoodScanner({ onResult, onStart, autoStart = false }: { onResult: (result: ScanResult) => void; onStart?: () => void; autoStart?: boolean }) {
   const { t } = useTranslation()
   const barcodeInput = useRef<HTMLInputElement>(null)
   const labelInput = useRef<HTMLInputElement>(null)
@@ -29,6 +29,7 @@ export function FoodScanner({ onResult, autoStart = false }: { onResult: (result
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    onStart?.()
     setBusy(t('scan.readingBarcode'))
     try {
       const { readBarcode } = await import('./scan')
@@ -54,16 +55,22 @@ export function FoodScanner({ onResult, autoStart = false }: { onResult: (result
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    onStart?.()
     setBusy(t('scan.readingLabel', { percent: 0 }))
     try {
       const { readNutritionLabel } = await import('./scan')
-      const { values, found, column, perMl } = await readNutritionLabel(file, (share) => setBusy(t('scan.readingLabel', { percent: Math.round(share * 100) })))
+      const label = await readNutritionLabel(file, (share) => setBusy(t('scan.readingLabel', { percent: Math.round(share * 100) })))
+      const { found, column, perMl } = label
       if (column === 'servingOnly') return onResult({ kind: 'label', values: {}, note: t('scan.labelServingOnly') })
       if (!found.length) return onResult({ kind: 'label', values: {}, note: t('scan.labelNotRead') })
+      // A 100 ml table cannot populate a gram form; an unreadable header is also ambiguous.
+      if (perMl || column === 'assumed') return onResult({
+        kind: 'label', values: {}, note: t(perMl ? 'scan.labelPerMl' : 'scan.labelColumnAssumed'),
+      })
       const missing = (['kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g'] as LabelField[]).filter((f) => !found.includes(f))
       onResult({
         kind: 'label',
-        values,
+        values: safeLabelValues(label),
         note: [
           t('scan.labelRead', { fields: found.map(fieldName).join(', ') }),
           missing.length ? t('scan.labelMissing', { fields: missing.map(fieldName).join(', ') }) : null,

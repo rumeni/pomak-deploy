@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
@@ -80,17 +80,28 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
   const [scanned, setScanned] = useState<Set<ValueField>>(new Set())
   const [scanNote, setScanNote] = useState<string | null>(null)
   const [existingFood, setExistingFood] = useState<Food | null>(null)
+  // Ignore a delayed scan response if the user edited the form after starting the scan.
+  const editVersion = useRef(0)
+  const scannedVersion = useRef(0)
+  const markEdited = () => { editVersion.current += 1 }
 
   const applyScan = (result: ScanResult) => {
+    if (editVersion.current !== scannedVersion.current) return
     setExistingFood(null)
     if (result.food) {
-      if (result.barcode) setBarcode(result.barcode)
+      // Offer the known food without changing any part of this unsaved draft.
       setExistingFood(result.food)
+      setScanNote(result.note)
       return
     }
     // Never mix two products: a different barcode replaces the whole draft (after asking).
     const { next, filled, replaces } = mergeScan({ name, barcode, values, sourceRef }, result)
     if (replaces && !window.confirm(t('scan.replaceConfirm'))) return
+    const differentBarcode = result.kind === 'barcode' && !!result.barcode && !!barcode && result.barcode !== barcode
+    if (differentBarcode || (result.kind === 'barcode' && replaces)) {
+      setPortions([])
+      setShared(false)
+    }
     setName(next.name)
     setBarcode(next.barcode)
     setValues(next.values)
@@ -181,7 +192,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
     <div className="min-h-full pb-10">
       <ScreenHeader title={t(editing ? 'newFood.editTitle' : 'newFood.title')} onBack={() => navigate(-1)} />
       <form className="mx-auto flex max-w-xl flex-col gap-4 p-4" onSubmit={onSubmit} noValidate>
-        {!editing && <FoodScanner onResult={applyScan} autoStart={params.get('skeniraj') === '1'} />}
+        {!editing && <FoodScanner onStart={() => { scannedVersion.current = editVersion.current }} onResult={applyScan} autoStart={params.get('skeniraj') === '1'} />}
         {existingFood && (
           <div role="status" className="flex flex-col gap-2 rounded-2xl bg-accent/15 p-4">
             <p className="font-semibold">{t('newFood.alreadyThere', { name: existingFood.name })}</p>
@@ -192,8 +203,8 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
           </div>
         )}
         {scanNote && <p className="rounded-xl bg-surface px-3 py-2 text-sm">{scanNote}</p>}
-        <Field label={t('newFood.name')} name="name" placeholder={t('newFood.nameExample')} value={name} onChange={(e) => setName(e.target.value)} />
-        <SelectField label={t('newFood.state')} name="state" value={state} onChange={(e) => setState(e.target.value as FoodState)}>
+        <Field label={t('newFood.name')} name="name" placeholder={t('newFood.nameExample')} value={name} onChange={(e) => { markEdited(); setName(e.target.value); setExistingFood(null) }} />
+        <SelectField label={t('newFood.state')} name="state" value={state} onChange={(e) => { markEdited(); setState(e.target.value as FoodState) }}>
           {STATES.map((s) => (
             <option key={s} value={s}>
               {t(`nutrition.state_${s}`)}
@@ -213,6 +224,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
                   inputMode="decimal"
                   value={values[field]}
                   onChange={(e) => {
+                    markEdited()
                     setValues((v) => ({ ...v, [field]: e.target.value }))
                     setScanned((s) => { const next = new Set(s); next.delete(field); return next })
                   }}
@@ -238,26 +250,26 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
                 label={t('newFood.portionName')}
                 name={`portion-name-${p.key}`}
                 value={p.name}
-                onChange={(e) => setPortions((list) => list.map((x) => (x.key === p.key ? { ...x, name: e.target.value } : x)))}
+                onChange={(e) => { markEdited(); setPortions((list) => list.map((x) => (x.key === p.key ? { ...x, name: e.target.value } : x))) }}
               />
               <Field
                 label={t('newFood.portionGrams')}
                 name={`portion-grams-${p.key}`}
                 inputMode="decimal"
                 value={p.grams}
-                onChange={(e) => setPortions((list) => list.map((x) => (x.key === p.key ? { ...x, grams: e.target.value } : x)))}
+                onChange={(e) => { markEdited(); setPortions((list) => list.map((x) => (x.key === p.key ? { ...x, grams: e.target.value } : x))) }}
               />
               <button
                 type="button"
                 aria-label={t('newFood.removePortion')}
-                onClick={() => setPortions((list) => list.filter((x) => x.key !== p.key))}
+                onClick={() => { markEdited(); setPortions((list) => list.filter((x) => x.key !== p.key)) }}
                 className="flex min-h-12 items-center justify-center rounded-xl text-muted active:bg-line"
               >
                 ✕
               </button>
             </div>
           ))}
-          <Button type="button" variant="ghost" onClick={() => setPortions((list) => [...list, { key: uuid(), name: '', grams: '' }])}>
+          <Button type="button" variant="ghost" onClick={() => { markEdited(); setPortions((list) => [...list, { key: uuid(), name: '', grams: '' }]) }}>
             {t('newFood.addPortion')}
           </Button>
         </fieldset>
@@ -268,7 +280,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
           inputMode="numeric"
           placeholder={t('newFood.barcodePlaceholder')}
           value={barcode}
-          onChange={(e) => setBarcode(e.target.value.replace(/\s/g, ''))}
+          onChange={(e) => { markEdited(); setBarcode(e.target.value.replace(/\s/g, '')); setExistingFood(null) }
         />
         {!editing && (
           <label className={`flex items-start gap-3 rounded-xl bg-card p-3 ring-1 ring-line/60 ${fromOpenFoodFacts ? 'opacity-70' : ''}`}>
@@ -276,7 +288,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
               type="checkbox"
               checked={shared && !fromOpenFoodFacts}
               disabled={fromOpenFoodFacts}
-              onChange={(e) => setShared(e.target.checked)}
+              onChange={(e) => { markEdited(); setShared(e.target.checked) }
               className="mt-1 size-5 shrink-0 accent-brand"
             />
             <span>

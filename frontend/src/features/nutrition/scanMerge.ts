@@ -1,4 +1,4 @@
-import type { LabelField } from './labelText'
+import type { LabelField, LabelValues } from './labelText'
 
 export type ValueField = LabelField
 
@@ -21,6 +21,12 @@ export interface ScanData {
 const FIELDS: ValueField[] = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g']
 const display = (v: string | null | undefined) => (v === null || v === undefined ? '' : v.replace('.', ','))
 
+/** The nutrition form stores grams, never silently treat millilitres as grams.
+ * A missing header is ambiguous and requires manual confirmation/entry. */
+export function safeLabelValues(label: LabelValues): LabelValues['values'] {
+  return label.column === 'per100' && !label.perMl ? label.values : {}
+}
+
 /**
  * Puts a scan into the form without ever mixing two products.
  *
@@ -39,7 +45,7 @@ export function mergeScan(current: FoodDraft, scan: ScanData): { next: FoodDraft
     const values = { ...current.values }
     for (const f of filled) values[f] = display(scan.values[f])
     return {
-      next: { ...current, values, sourceRef: filled.length ? '' : current.sourceRef },
+      next: { ...current, values, sourceRef: current.sourceRef },
       filled,
       replaces: filled.some((f) => current.values[f].trim() && current.values[f] !== values[f]),
     }
@@ -61,6 +67,6 @@ export function mergeScan(current: FoodDraft, scan: ScanData): { next: FoodDraft
       sourceRef: scan.sourceRef ?? '',
     },
     filled: FIELDS.filter((f) => values[f]),
-    replaces: hasValues,
+    replaces: hasValues || (otherProduct && !!current.name.trim()),
   }
 }

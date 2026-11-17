@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { mergeScan, type FoodDraft } from './scanMerge'
+import { mergeScan, safeLabelValues, type FoodDraft } from './scanMerge'
 
 const empty: FoodDraft = { name: '', barcode: '', values: { kcal: '', protein_g: '', carbs_g: '', fat_g: '', fiber_g: '' }, sourceRef: '' }
 const nutella = {
@@ -47,8 +47,23 @@ describe('putting a scan into the food form', () => {
     const start = mergeScan(empty, nutella).next
     const { next, filled, replaces } = mergeScan(start, { kind: 'label', values: { fiber_g: '3.4' } })
     expect(next.values).toEqual({ ...start.values, fiber_g: '3,4' })
-    expect(next.sourceRef).toBe('')
+    expect(next.sourceRef).toBe('openfoodfacts:3017620422003')
     expect(filled).toEqual(['fiber_g'])
     expect(replaces).toBe(false)
+  })
+
+  it('retains Open Food Facts provenance after partially rereading the same label', () => {
+    const start = mergeScan(empty, nutella).next
+    const next = mergeScan(start, { kind: 'label', values: { fat_g: '31.2' } }).next
+    expect(next.sourceRef).toBe('openfoodfacts:3017620422003')
+    expect(next.values.protein_g).toBe('6,3')
+  })
+
+  it('prefills only an explicitly identified per-100-gram column', () => {
+    const data = { values: { kcal: '80' }, found: ['kcal' as const], column: 'per100' as const, perMl: false }
+    expect(safeLabelValues(data)).toEqual({ kcal: '80' })
+    expect(safeLabelValues({ ...data, perMl: true })).toEqual({})
+    expect(safeLabelValues({ ...data, column: 'assumed' })).toEqual({})
+    expect(safeLabelValues({ ...data, column: 'servingOnly' })).toEqual({})
   })
 })
