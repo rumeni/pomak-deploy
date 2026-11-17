@@ -9,6 +9,7 @@ import { HistoryList } from '../workout/HistoryList'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { useRoutines, type Routine } from './api'
 import { LanguageMenu } from '../../components/LanguageMenu'
+import { ProgramsSection } from './ProgramsSection'
 
 export function TrainingPage() {
   const { t } = useTranslation()
@@ -62,6 +63,8 @@ export function TrainingPage() {
         <Button variant="secondary" onClick={() => void onStart(null)} disabled={starting !== null}>
           {t('workout.startEmpty')}
         </Button>
+
+        <ProgramsSection routines={routines} />
 
         <HistoryList />
       </div>
