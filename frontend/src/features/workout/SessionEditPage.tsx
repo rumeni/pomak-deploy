@@ -39,8 +39,10 @@ export function SessionEditPage() {
   const [base, setBase] = useState<{ session: WorkoutSession; version: number } | null>(null)
   // Start only from a version fetched after opening: a cached copy may be older than a
   // correction made on another device, and the kept draft must be compared with the newest.
+  // Once that arrived the editor stays: a later failed background refetch (React Query then
+  // reports an error but keeps the data) must not replace an open form with an error page.
   const [openedAt] = useState(() => Date.now())
-  const fresh = !!base || (remote.isSuccess && remote.dataUpdatedAt >= openedAt)
+  const fresh = !!base || (!!remote.data && remote.dataUpdatedAt >= openedAt)
 
   if (!me || (!fresh && !remote.isError)) return <LoadingScreen />
   const session = base?.session ?? (fresh ? remote.data : undefined)
@@ -136,6 +138,8 @@ function Editor({ session, ownerId, onReload }: { session: WorkoutSession; owner
 
   const onBack = () => {
     if (saving) return
+    // Leaving before choosing what to do with an older kept draft keeps it for next time.
+    if (staleDraft) return back()
     if (changed && !window.confirm(t('history.edit.discardConfirm'))) return
     clearEditDraft(ownerId, initial.id)
     back()
