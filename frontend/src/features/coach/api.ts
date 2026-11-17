@@ -34,7 +34,16 @@ export interface CoachClientDetails {
   recent_workouts: { id: string; name: string; started_at: string; finished_at: string; feeling: number | null; notes: string; exercises: { name: string; sets: { set_type: 'warmup' | 'working'; reps: number | null; weight_kg: string | null; duration_seconds: number | null; distance_m: number | null }[] }[] }[]
   goals: { kind: string; target_value: string; target_date: string | null }[]
   measurements: { kind: string; value: string; unit: string; measured_on: string }[] | null
-  nutrition_days: { date: string; kcal: string; protein_g: string | null; carbs_g: string | null; fat_g: string | null }[] | null
+  nutrition_days: {
+    date: string
+    kcal: string
+    protein_g: string | null
+    carbs_g: string | null
+    fat_g: string | null
+    protein_unknown: number
+    carbs_unknown: number
+    fat_unknown: number
+  }[] | null
   assignments: CoachAssignment[]
 }
 

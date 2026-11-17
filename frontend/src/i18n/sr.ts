@@ -474,6 +474,7 @@ export const sr = {
     goals: 'Ciljevi',
     newGoal: '+ Novi cilj',
     newGoalTitle: 'Novi cilj',
+    goalConflictNotice: 'Cilj je već bio sačuvan. Izmene iz poslednjeg pokušaja nisu primenjene — proveri postojeću vrednost cilja.',
     noGoals: 'Nemaš aktivan cilj.',
     pastGoals: 'Raniji ciljevi ({{count}})',
     goalKindLegend: 'Šta pratiš?',

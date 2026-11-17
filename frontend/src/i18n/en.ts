@@ -467,6 +467,7 @@ export const en = {
     goals: 'Goals',
     newGoal: '+ New goal',
     newGoalTitle: 'New goal',
+    goalConflictNotice: 'This goal was already saved. Your changes from the latest attempt were not applied — check the existing goal value.',
     noGoals: 'You have no active goal.',
     pastGoals: 'Earlier goals ({{count}})',
     goalKindLegend: 'What do you track?',

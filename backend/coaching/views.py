@@ -5,7 +5,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
@@ -275,11 +275,21 @@ class CoachClientView(APIView):
             ]
         if connection.share_nutrition:
             start = timezone.localdate() - timedelta(days=6)
+            # Count nulls on SOURCE columns before reusing protein_g/carbs_g/fat_g
+            # as SUM aliases. In a single annotate(), those filters can resolve
+            # to the aggregate alias and produce invalid PostgreSQL SQL.
             rows = MealEntry.objects.filter(owner=client, date__gte=start, date__lte=timezone.localdate()).values('date').annotate(
+                protein_unknown=Count('id', filter=Q(protein_g__isnull=True)),
+                carbs_unknown=Count('id', filter=Q(carbs_g__isnull=True)),
+                fat_unknown=Count('id', filter=Q(fat_g__isnull=True)),
+            ).annotate(
                 kcal=Sum('kcal'), protein_g=Sum('protein_g'), carbs_g=Sum('carbs_g'), fat_g=Sum('fat_g'),
             ).order_by('date')
             data['nutrition_days'] = [
-                {key: (str(value) if key != 'date' and value is not None else value) for key, value in row.items()}
+                # Decimal totals stay serialized as strings, but Count()
+                # results MUST remain JSON numbers for i18next pluralization.
+                {key: (str(value) if key in ('kcal', 'protein_g', 'carbs_g', 'fat_g') and value is not None else value)
+                 for key, value in row.items()}
                 for row in rows
             ]
         return Response(data)
