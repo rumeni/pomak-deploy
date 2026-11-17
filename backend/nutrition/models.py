@@ -65,9 +65,11 @@ class Food(TimeStampedModel):
     class Meta:
         ordering = ['search_name']
         constraints = [
-            # One shared entry per product barcode.
+            # One active shared entry per product barcode; an archived one keeps its history but
+            # no longer reserves the barcode, so the product can be added again.
             models.UniqueConstraint(
-                fields=['barcode'], condition=Q(owner__isnull=True) & ~Q(barcode=''), name='unique_shared_food_barcode',
+                fields=['barcode'], condition=Q(owner__isnull=True) & Q(archived_at__isnull=True) & ~Q(barcode=''),
+                name='unique_active_shared_food_barcode',
             ),
         ]
 

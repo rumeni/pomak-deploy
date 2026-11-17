@@ -68,6 +68,9 @@ def suggestion_from(code: str, data: dict | None) -> dict | None:
         'fat_g': per100('fat_100g'),
         'fiber_g': per100('fiber_100g'),
         'source': 'open_food_facts',
+        # Saved with the food so its origin (and ODbL attribution) is never lost.
+        'source_ref': f'openfoodfacts:{code}',
+        'source_url': f'https://world.openfoodfacts.org/product/{code}',
     }
 
 

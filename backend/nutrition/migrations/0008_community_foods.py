@@ -49,7 +49,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='food',
-            constraint=models.UniqueConstraint(condition=models.Q(('owner__isnull', True), models.Q(('barcode', ''), _negated=True)), fields=('barcode',), name='unique_shared_food_barcode'),
+            constraint=models.UniqueConstraint(condition=models.Q(('owner__isnull', True), ('archived_at__isnull', True), models.Q(('barcode', ''), _negated=True)), fields=('barcode',), name='unique_active_shared_food_barcode'),
         ),
         migrations.AddField(
             model_name='foodreport',

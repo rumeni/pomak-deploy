@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from django.db import transaction
 from django.utils import timezone
 
 from .models import Food, FoodPortion, FoodReport
@@ -20,7 +21,11 @@ class FoodAdmin(admin.ModelAdmin):
 
     @admin.action(description='Mark selected community foods as verified')
     def verify(self, request, queryset):
-        queryset.filter(source=Food.Source.COMMUNITY, verified_at__isnull=True).update(verified_at=timezone.now())
+        # Row locks: an author's edit in flight finishes first, then the verification applies.
+        with transaction.atomic():
+            ids = list(queryset.filter(source=Food.Source.COMMUNITY, verified_at__isnull=True)
+                       .select_for_update().values_list('pk', flat=True))
+            Food.objects.filter(pk__in=ids).update(verified_at=timezone.now())
 
 
 @admin.register(FoodReport)

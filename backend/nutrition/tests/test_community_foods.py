@@ -1,11 +1,13 @@
 import uuid
 from unittest import mock
 
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from accounts.models import User
-from nutrition import open_food_facts
+from nutrition import open_food_facts, serializers as food_serializers
+from nutrition.views import FoodViewSet
 from nutrition.models import Food, FoodReport
 
 URL = '/api/nutrition/foods/'
@@ -117,6 +119,7 @@ class BarcodeLookupTests(APITestCase):
         self.assertEqual(data['suggestion'], {
             'name': 'Jogurt (Moravka)', 'barcode': '5901234123457', 'kcal': '61',
             'protein_g': '3.2', 'carbs_g': '4.6', 'fat_g': '2.8', 'fiber_g': None, 'source': 'open_food_facts',
+            'source_ref': 'openfoodfacts:5901234123457', 'source_url': 'https://world.openfoodfacts.org/product/5901234123457',
         })
 
     def test_nothing_found_or_service_down_is_just_no_suggestion(self):
@@ -125,3 +128,57 @@ class BarcodeLookupTests(APITestCase):
                 data = self.client.get(f'{URL}barcode/5901234123457/').json()
             self.assertEqual(data, {'food': None, 'suggestion': None})
         self.assertEqual(self.client.get(f'{URL}barcode/12ab/').status_code, 404)
+
+
+class CommunityFoodReviewFollowUps(APITestCase):
+    def setUp(self):
+        self.author = User.objects.create_user('a2@b.rs', 'jaka-lozinka-123')
+        self.client.force_authenticate(self.author)
+
+    def create(self, **extra):
+        return self.client.post(URL, body(**extra), format='json')
+
+    def test_an_archived_product_frees_its_barcode_and_keeps_its_history(self):
+        first = self.create(shared=True, barcode='8600939400017').json()
+        self.assertEqual(self.client.delete(f'{URL}{first["id"]}/').status_code, 204)
+        again = self.create(shared=True, barcode='8600939400017', name='Jogurt (nov unos)')
+        self.assertEqual(again.status_code, 201, again.data)
+        self.assertEqual(Food.objects.filter(barcode='8600939400017').count(), 2)  # the old row stays archived
+        found = self.client.get(f'{URL}barcode/8600939400017/').json()['food']
+        self.assertEqual(found['id'], again.json()['id'])
+
+    def test_two_people_adding_the_same_product_at_once_get_a_usable_answer(self):
+        other = User.objects.create_user('b2@b.rs', 'jaka-lozinka-123')
+        self.client.force_authenticate(other)
+        winner = self.create(shared=True, barcode='8600939400024').json()
+        self.client.force_authenticate(self.author)
+        # The precheck ran before the other insert landed: the database constraint decides.
+        with mock.patch.object(food_serializers, 'shared_barcode_clash', side_effect=[None, Food.objects.get(pk=winner['id'])]):
+            res = self.create(shared=True, barcode='8600939400024', name='Isti proizvod')
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.json()['existing_id'], [winner['id']])
+
+    def test_a_verification_after_loading_wins_over_the_authors_edit(self):
+        food = Food.objects.get(pk=self.create(shared=True).json()['id'])
+        stale = Food.objects.get(pk=food.pk)  # what the request loaded, before the admin verified
+        Food.objects.filter(pk=food.pk).update(verified_at=timezone.now())
+        with mock.patch.object(FoodViewSet, 'get_object', return_value=stale):
+            res = self.client.patch(f'{URL}{food.id}/', {'kcal': '62'}, format='json')
+            delete = self.client.delete(f'{URL}{food.id}/')
+        self.assertEqual((res.status_code, delete.status_code), (403, 403))
+        food.refresh_from_db()
+        self.assertIsNotNone(food.verified_at)
+        self.assertEqual((str(food.kcal), food.archived_at), ('61.0', None))
+
+    def test_open_food_facts_values_keep_their_source_and_stay_private_by_default(self):
+        ref = {'source_ref': 'openfoodfacts:3017620422003', 'barcode': '3017620422003'}
+        private = self.create(**ref)
+        self.assertEqual(private.status_code, 201, private.data)
+        self.assertEqual(private.json()['source_ref'], 'openfoodfacts:3017620422003')
+        self.assertEqual(self.create(shared=True, name='Deljeno', **{**ref, 'barcode': '3017620422010', 'source_ref': 'openfoodfacts:3017620422010'}).status_code, 400)
+        with override_settings(SHARE_OPEN_FOOD_FACTS_DATA=True):
+            self.assertEqual(self.create(shared=True, name='Deljeno', **{**ref, 'barcode': '3017620422027', 'source_ref': 'openfoodfacts:3017620422027'}).status_code, 201)
+        self.assertEqual(self.create(source_ref='usda:123').status_code, 400)
+        # Not shared unless asked for.
+        self.assertEqual(self.create(name='Moj obrok').json()['source'], 'custom')
+

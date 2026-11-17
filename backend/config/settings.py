@@ -212,3 +212,8 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
 
 TEST_RUNNER = 'core.test_runner.TestRunner'
+
+# Open Food Facts data is under the ODbL (attribution + share-alike for a combined database).
+# Until the team has settled how to meet that, foods filled from it stay private to their user.
+SHARE_OPEN_FOOD_FACTS_DATA = config('SHARE_OPEN_FOOD_FACTS_DATA', default=False, cast=bool)
+

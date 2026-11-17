@@ -654,6 +654,12 @@ msgstr "Trening nema nijednu potvrđenu seriju."
 msgid "RPE goes in steps of 0.5."
 msgstr "RPE se upisuje u koracima od 0,5."
 
+msgid "Values taken from Open Food Facts can be saved as your own food, not shared."
+msgstr "Vrednosti preuzete iz Open Food Facts mogu da se sačuvaju kao tvoja namirnica, ali ne i da se dele."
+
+msgid "Invalid source."
+msgstr "Neispravan izvor."
+
 msgid "Community"
 msgstr "Zajednica"
 

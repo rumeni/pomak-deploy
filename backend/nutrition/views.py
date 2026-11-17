@@ -1,5 +1,6 @@
 import datetime
 
+from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -63,6 +64,22 @@ class FoodViewSet(
         # A community food can be corrected by its author until an admin verified it.
         if not can_edit_food(item, self.request):
             raise PermissionDenied(self.shared_readonly_message)
+
+    def perform_update(self, serializer):
+        # Lock and re-read: a verification (or archive) that landed after the request loaded the
+        # food must win, never be overwritten by this write.
+        with transaction.atomic():
+            locked = Food.objects.select_for_update().get(pk=serializer.instance.pk)
+            self._require_own(locked)
+            serializer.instance = locked
+            serializer.save()
+
+    def perform_destroy(self, item):
+        with transaction.atomic():
+            locked = Food.objects.select_for_update().get(pk=item.pk)
+            self._require_own(locked)
+            locked.archived_at = timezone.now()
+            locked.save(update_fields=['archived_at', 'updated_at'])
 
     @action(detail=False, methods=['get'], url_path='barcode/(?P<code>[0-9]{8,14})')
     def barcode(self, request, code):

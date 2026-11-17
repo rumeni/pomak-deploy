@@ -81,6 +81,8 @@ SR = {
     'The workout cannot start in the future.': 'Trening ne može da počne u budućnosti.',
     'The workout has no confirmed sets.': 'Trening nema nijednu potvrđenu seriju.',
     'RPE goes in steps of 0.5.': 'RPE se upisuje u koracima od 0,5.',
+    'Values taken from Open Food Facts can be saved as your own food, not shared.': 'Vrednosti preuzete iz Open Food Facts mogu da se sačuvaju kao tvoja namirnica, ali ne i da se dele.',
+    'Invalid source.': 'Neispravan izvor.',
     'Community': 'Zajednica',
     'A barcode has 8 to 14 digits.': 'Bar-kod ima od 8 do 14 cifara.',
     'Calories do not match the macros (about %(expected)s kcal expected). Check the values.': 'Kalorije se ne slažu sa makroima (očekuje se oko %(expected)s kcal). Proveri vrednosti.',
