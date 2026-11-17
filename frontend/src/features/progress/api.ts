@@ -185,7 +185,8 @@ export function useWeek(start: string) {
 /** Training statistics and readiness history; refreshed with the other progress data after a workout syncs. */
 export function useStats(period: StatsPeriod) {
   return useQuery({
-    queryKey: ['progress', 'stats', period],
+    // Exercise names are localised by the server, so the language is part of the key.
+    queryKey: ['progress', 'stats', i18n.language, period],
     queryFn: async () => (await api.get<TrainingStats>('/training/stats/', { params: { period } })).data,
   })
 }

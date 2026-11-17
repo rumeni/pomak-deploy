@@ -43,3 +43,12 @@ export function plot(points: ChartPoint[], width: number, height: number): { poi
     })),
   }
 }
+
+/**
+ * The bar to describe: the selected one while it still exists, otherwise the last (current)
+ * one. Selection is kept by key, so switching to a shorter series never points past its end.
+ */
+export function pickBar<T extends { key: string }>(bars: T[], selectedKey: string | null): T | null {
+  return bars.find((b) => b.key === selectedKey) ?? bars[bars.length - 1] ?? null
+}
+

@@ -49,7 +49,9 @@ class TrainingStatsTests(APITestCase):
         ])
         data = self.stats()
         # 3 working sets; warm-up out. Volume 100x5 + 20x10x2 (per dumbbell) = 900; plank adds none.
-        self.assertEqual(data['totals'], {'sessions': 1, 'working_sets': 3, 'volume_kg': '900', 'avg_rpe': '7.5', 'rpe_sets': 2})
+        self.assertEqual(data['totals'], {
+            'sessions': 1, 'working_sets': 3, 'volume_kg': '900', 'avg_rpe': '7.5', 'rpe_sets': 2, 'rpe_sum': '15.0',
+        })
         self.assertEqual({m['muscle']: m['working_sets'] for m in data['muscles']}, {'chest': 2, 'core': 1})
 
     def test_periods_and_comparison_with_the_previous_period(self):
@@ -103,3 +105,27 @@ class TrainingStatsTests(APITestCase):
         self.workout(1, [(self.bench, [{'weight_kg': '60', 'reps': 20}])])  # nothing estimable
         data = self.client.get(f'/api/training/progress/exercises/{self.bench.id}/').json()
         self.assertEqual([p['value'] for p in data['e1rm_chart']], ['123.5'])
+
+    def test_days_cover_the_real_period_and_long_history_caps_only_the_chart(self):
+        # A year of history: weekly rates must use ~365 days, not the 26 bars shown.
+        self.workout(364, [(self.bench, [{'weight_kg': '60', 'reps': 5}])])
+        self.workout(0, [(self.bench, [{'weight_kg': '60', 'reps': 5}])])
+        everything = self.stats('all')
+        self.assertEqual(everything['days'], 365)
+        self.assertEqual(len(everything['weeks']), 26)
+        self.assertTrue(everything['weeks_capped'])
+        self.assertEqual(everything['totals']['working_sets'], 2)
+        # Seven days are one week of training even when they cross a Monday (two bars).
+        week = self.stats('7')
+        self.assertEqual(week['days'], 7)
+        self.assertFalse(week['weeks_capped'])
+
+    def test_exact_rpe_sum_and_per_side_flag(self):
+        self.workout(1, [(self.curl, [{'weight_kg': '20', 'reps': 10, 'rpe': 7.5}, {'weight_kg': '20', 'reps': 10, 'rpe': 8}])])
+        self.workout(2, [(self.curl, [{'weight_kg': '18', 'reps': 10, 'rpe': 8.5}] * 3)])
+        data = self.stats()
+        self.assertEqual([(e['rpe_sum'], e['rpe_sets'], e['avg_rpe']) for e in data['readiness']], [])
+        self.assertTrue(data['top_lifts'][0]['per_side'])
+        weeks_rpe = sum(float(w['rpe_sum']) for w in data['weeks'])
+        self.assertEqual(weeks_rpe, 41.0)
+

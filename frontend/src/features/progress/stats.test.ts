@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { EMPTY_READINESS } from '../workout/rpe'
-import { answerCount, change, readinessComparison, readinessSeries, type ReadinessEntry } from './stats'
+import { pickBar } from '../../components/chart'
+import { answerCount, change, perWeek, readinessComparison, readinessSeries, rpeChange, type ReadinessEntry } from './stats'
 
-const entry = (date: string, readiness: Partial<typeof EMPTY_READINESS>, sets: number, avgRpe: string | null, rpeSets: number): ReadinessEntry => ({
+const entry = (date: string, readiness: Partial<typeof EMPTY_READINESS>, sets: number, avgRpe: string | null, rpeSets: number, rpeSum?: string): ReadinessEntry => ({
   session_id: date, date, name: 'T', readiness: { ...EMPTY_READINESS, ...readiness },
   working_sets: sets, volume_kg: '0', avg_rpe: avgRpe, rpe_sets: rpeSets,
+  rpe_sum: rpeSum ?? String(avgRpe ? Number(avgRpe) * rpeSets : 0),
 })
 
 const fresh = { sleep_hours: 8, motivation: 5, stress: 1 } // score 100
@@ -42,3 +44,38 @@ describe('statistics helpers', () => {
     expect(readinessComparison([...entries, entry('2026-11-06', tired, 9, null, 0)]).enough).toBe(true)
   })
 })
+
+describe('review follow-ups', () => {
+  it('keeps the bar selection by key and falls back to the last bar after a shorter period', () => {
+    const long = Array.from({ length: 13 }, (_, i) => ({ key: `w${i}`, value: i }))
+    expect(pickBar(long, 'w11')?.key).toBe('w11')
+    // Switching from 90 days to 7: the selected late week is gone, never undefined.
+    expect(pickBar(long.slice(-2), 'w3')?.key).toBe('w12')
+    expect(pickBar([], 'w3')).toBeNull()
+  })
+
+  it('averages per week over the real period, not chart bars', () => {
+    expect(perWeek(520, 365)).toBeCloseTo(9.97, 2) // a year of history, though only 26 bars are shown
+    expect(perWeek(12, 7)).toBe(12) // seven days crossing a Monday are still one week
+    expect(perWeek(6, 3)).toBe(6) // shorter than a week counts as one
+  })
+
+  it('compares RPE in points only when both periods have it', () => {
+    expect(rpeChange('8.3', '7.9')).toBe(0.4)
+    expect(rpeChange('7.5', '8.0')).toBe(-0.5)
+    expect(rpeChange('8.0', null)).toBeNull()
+    expect(rpeChange(null, '8.0')).toBeNull()
+  })
+
+  it('weights RPE by exact sums, not rounded workout averages', () => {
+    // Workout averages 8.33 and 7.67 would round to 8.3 and 7.7 on their own.
+    const rows = [1, 2, 3].flatMap((d) => [
+      entry(`2026-11-0${d}`, fresh, 10, '8.3', 3, '25'),
+      entry(`2026-11-1${d}`, tired, 10, '7.7', 3, '23'),
+    ])
+    const result = readinessComparison(rows)
+    expect(result.high.avgRpe).toBeCloseTo(25 / 3, 6)
+    expect(result.low.avgRpe).toBeCloseTo(23 / 3, 6)
+  })
+})
+

@@ -13,6 +13,8 @@ export interface PeriodTotals {
   avg_rpe: string | null
   /** Working sets that have an RPE (what avg_rpe is based on). */
   rpe_sets: number
+  /** Exact sum of those RPEs, for averages over several groups. */
+  rpe_sum: string
 }
 
 export interface ReadinessEntry {
@@ -24,6 +26,7 @@ export interface ReadinessEntry {
   volume_kg: string
   avg_rpe: string | null
   rpe_sets: number
+  rpe_sum: string
 }
 
 export interface TopLift {
@@ -35,6 +38,8 @@ export interface TopLift {
   rpe: string | null
   date: string
   session_id: string
+  /** Weight is per dumbbell / side. */
+  per_side: boolean
   /** This period's best is also the all-time best. */
   personal_best: boolean
 }
@@ -43,6 +48,10 @@ export interface TrainingStats {
   period: StatsPeriod
   first_day: string | null
   last_day: string
+  /** Days the period really covers (for "all": since the first workout). */
+  days: number
+  /** The weekly chart shows only the latest weeks of a longer history. */
+  weeks_capped: boolean
   totals: PeriodTotals
   /** Same-length period just before; null for "all". */
   previous: PeriodTotals | null
@@ -56,6 +65,20 @@ export interface TrainingStats {
 export function change(current: number, previous: number | null | undefined): { diff: number; pct: number | null } | null {
   if (previous === null || previous === undefined) return null
   return { diff: current - previous, pct: previous > 0 ? Math.round(((current - previous) / previous) * 100) : null }
+}
+
+/**
+ * Average per week over the period's real length - never per chart bar (bars are capped and
+ * edge weeks can be partial). Periods shorter than a week count as one week.
+ */
+export function perWeek(total: number, days: number): number {
+  return total / (Math.max(days, 7) / 7)
+}
+
+/** Change of average RPE in RPE points; none when either period has no RPE logged. */
+export function rpeChange(current: string | null, previous: string | null | undefined): number | null {
+  if (current === null || previous === null || previous === undefined) return null
+  return Math.round((Number(current) - Number(previous)) * 10) / 10
 }
 
 /** How many of the six questions were answered. */
@@ -91,8 +114,9 @@ export function readinessComparison(entries: ReadinessEntry[]): { high: Group; l
       const score = readinessScore(e.readiness)
       return score !== null && readinessBand(score) === band
     })
+    // Exact sums, rounded only at the end.
     const rpeSets = rows.reduce((n, e) => n + e.rpe_sets, 0)
-    const rpeSum = rows.reduce((n, e) => n + (e.avg_rpe ? Number(e.avg_rpe) * e.rpe_sets : 0), 0)
+    const rpeSum = rows.reduce((n, e) => n + Number(e.rpe_sum || 0), 0)
     return {
       count: rows.length,
       avgSets: average(rows.map((e) => e.working_sets)),

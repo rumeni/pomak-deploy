@@ -76,6 +76,8 @@ class _Totals:
             'volume_kg': str(self.volume.quantize(Decimal('1'))),
             'avg_rpe': str((self.rpe_sum / self.rpe_sets).quantize(Decimal('0.1'))) if self.rpe_sets else None,
             'rpe_sets': self.rpe_sets,
+            # Exact sum, so averages over several workouts are not built from rounded ones.
+            'rpe_sum': str(self.rpe_sum),
         }
 
 
@@ -117,9 +119,14 @@ def training_stats(user, period: str) -> dict:
         before = _sessions(user, first - datetime.timedelta(days=days), first - datetime.timedelta(days=1))
         previous = _totals(before)
 
-    # Weekly series, Monday to Sunday, empty weeks included.
-    start = _monday(first) if first else (_monday(timezone.localtime(sessions[0].started_at).date()) if sessions else _monday(today))
-    start = max(start, _monday(today) - datetime.timedelta(weeks=MAX_WEEKS - 1))
+    # Days the period really covers: for "all", from the first workout. Rates per week use this,
+    # never the number of chart bars (capped, and edge weeks can be partial).
+    first_workout = timezone.localtime(sessions[0].started_at).date() if sessions else today
+    span_days = days if days else (today - first_workout).days + 1
+
+    # Weekly series, Monday to Sunday, empty weeks included; the chart shows at most MAX_WEEKS.
+    full_start = _monday(first) if first else _monday(first_workout)
+    start = max(full_start, _monday(today) - datetime.timedelta(weeks=MAX_WEEKS - 1))
     weeks = {start + datetime.timedelta(weeks=i): _Totals() for i in range((_monday(today) - start).days // 7 + 1)}
     muscles = defaultdict(int)
     for session in sessions:
@@ -138,6 +145,8 @@ def training_stats(user, period: str) -> dict:
         'period': period,
         'first_day': first,
         'last_day': today,
+        'days': span_days,
+        'weeks_capped': start > full_start,
         'totals': _totals(sessions),
         'previous': previous,
         'weeks': [{'week_start': monday, **t.as_dict()} for monday, t in weeks.items()],
@@ -149,6 +158,7 @@ def training_stats(user, period: str) -> dict:
             {
                 'exercise_id': exercise_id,
                 'exercise': localized_name(exercise),
+                'per_side': exercise.load_mode == Exercise.LoadMode.PER_SIDE,
                 'e1rm': str(value.quantize(Decimal('0.1'))),
                 'weight_kg': str(s.weight_kg),
                 'reps': s.reps,

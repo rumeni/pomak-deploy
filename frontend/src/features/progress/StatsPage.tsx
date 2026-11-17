@@ -13,6 +13,8 @@ import {
   average,
   change,
   MIN_COMPARE,
+  perWeek,
+  rpeChange,
   readinessComparison,
   readinessSeries,
   STATS_PERIODS,
@@ -119,8 +121,18 @@ function Totals({ data }: { data: TrainingStats }) {
         {tile(t('stats.volume'), whole(Number(totals.volume_kg)), 'volume_kg', 'kg')}
         <div className="rounded-2xl bg-card p-3 shadow-sm ring-1 ring-line/60">
           <dt className="text-xs text-muted">{t('stats.avgRpe')}</dt>
-          <dd className="dashboard-metric text-3xl">{totals.avg_rpe ? formatRpe(Number(totals.avg_rpe)) : '–'}</dd>
+          <dd className="dashboard-metric text-3xl">{totals.avg_rpe ? formatDecimal(Number(totals.avg_rpe)) : '–'}</dd>
           <dd className="text-xs text-muted">{t('stats.rpeSets', { count: totals.rpe_sets })}</dd>
+          {(() => {
+            // Only when both periods have RPE; missing RPE is not zero.
+            const diff = rpeChange(totals.avg_rpe, previous?.avg_rpe)
+            if (diff === null) return null
+            return (
+              <dd className="text-xs text-muted tabular-nums">
+                {diff === 0 ? t('stats.same') : t('stats.vsPrevious', { change: `${diff > 0 ? '+' : '−'}${formatDecimal(Math.abs(diff))}` })}
+              </dd>
+            )
+          })()}
         </div>
       </dl>
       {previous && <p className="mt-1 text-xs text-muted">{t(`stats.previous_${data.period}`)}</p>}
@@ -159,6 +171,9 @@ function Weekly({ data }: { data: TrainingStats }) {
       <div className="mt-3">
         <BarChart bars={bars} format={format} label={`${t('stats.byWeek')}: ${t(`stats.measure_${measure}`)}`} />
       </div>
+      <p className="mt-2 text-xs text-muted">
+        {data.weeks_capped ? t('stats.weeksCapped', { count: data.weeks.length }) : t('stats.partialWeeks')}
+      </p>
     </Card>
   )
 }
@@ -167,7 +182,6 @@ function Muscles({ data }: { data: TrainingStats }) {
   const { t } = useTranslation()
   if (!data.muscles.length) return null
   const max = Math.max(...data.muscles.map((m) => m.working_sets))
-  const weeks = data.weeks.length || 1
   return (
     <Card>
       <h2 className="font-semibold">{t('stats.byMuscle')}</h2>
@@ -181,7 +195,7 @@ function Muscles({ data }: { data: TrainingStats }) {
             </span>
             <span className="tabular-nums">
               <span className="font-semibold">{m.working_sets}</span>
-              <span className="text-xs text-muted"> · {formatDecimal(Math.round((m.working_sets / weeks) * 10) / 10)}/{t('stats.perWeek')}</span>
+              <span className="text-xs text-muted"> · ≈{formatDecimal(Math.round(perWeek(m.working_sets, data.days) * 10) / 10)}/{t('stats.perWeek')}</span>
             </span>
           </li>
         ))}
@@ -203,13 +217,15 @@ function TopLifts({ data }: { data: TrainingStats }) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{lift.exercise}</span>
                 <span className="block text-xs text-muted tabular-nums">
-                  {formatDecimal(Number(lift.weight_kg))} × {lift.reps}{lift.rpe ? ` @ ${formatRpe(Number(lift.rpe))}` : ''} · {longDay(lift.date)}
+                  {formatDecimal(Number(lift.weight_kg))}{lift.per_side ? ` ${t('stats.perSide')}` : ''} × {lift.reps}{lift.rpe ? ` @ ${formatRpe(Number(lift.rpe))}` : ''} · {longDay(lift.date)}
                 </span>
               </span>
               {lift.personal_best && (
                 <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-semibold uppercase">{t('stats.personalBest')}</span>
               )}
-              <span className="font-display text-xl tabular-nums">{formatDecimal(Number(lift.e1rm))} <span className="text-xs font-normal text-muted">kg</span></span>
+              <span className="font-display text-xl tabular-nums">
+                {formatDecimal(Number(lift.e1rm))} <span className="text-xs font-normal text-muted">kg{lift.per_side ? ` ${t('stats.perSide')}` : ''}</span>
+              </span>
             </Link>
           </li>
         ))}
@@ -332,7 +348,8 @@ function RecentCheckIns({ data }: { data: TrainingStats }) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{e.name}</span>
                   <span className="block text-xs text-muted tabular-nums">
-                    {longDay(e.date)} · {t('stats.setsCount', { count: e.working_sets })}{e.avg_rpe ? ` · RPE ${formatRpe(Number(e.avg_rpe))}` : ''}
+                    {longDay(e.date)} · {t('stats.setsCount', { count: e.working_sets })}{e.avg_rpe ? ` · RPE ${formatDecimal(Number(e.avg_rpe))}` : ''}
+                    {' · '}{t('stats.answers', { value: answerCount(e.readiness) })}
                   </span>
                 </span>
                 {score !== null && (
