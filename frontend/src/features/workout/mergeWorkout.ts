@@ -17,6 +17,28 @@ function keyed(a: unknown[]): boolean {
   return a.every((v) => record(v) && typeof v.key === 'string')
 }
 
+const keyOf = (row: unknown) => (row as { key: string }).key
+
+/**
+ * Order is an edit too (e.g. moving an exercise). The rows above are placed in `latest`'s
+ * order; if only the local side reordered the rows all three versions share, apply that order
+ * to them, leaving rows added or removed on either side where they are. Two different
+ * reorders cannot both win, so they are a conflict.
+ */
+function mergeOrder(base: unknown[], edited: unknown[], latest: unknown[], merged: unknown[]): unknown[] {
+  const inEdited = new Set(edited.map(keyOf))
+  const inLatest = new Set(latest.map(keyOf))
+  const shared = new Set(base.map(keyOf).filter((k) => inEdited.has(k) && inLatest.has(k)))
+  const order = (list: unknown[]) => list.map(keyOf).filter((k) => shared.has(k))
+  const baseOrder = order(base)
+  const localOrder = order(edited)
+  if (equal(localOrder, baseOrder)) return merged
+  if (!equal(order(latest), baseOrder) && !equal(order(latest), localOrder)) throw new ConcurrentWorkoutEditError()
+  const byKey = new Map(merged.map((row) => [keyOf(row), row]))
+  const next = localOrder[Symbol.iterator]()
+  return merged.map((row) => (shared.has(keyOf(row)) ? byKey.get(next.next().value as string) : row))
+}
+
 /** Merge local edits over the latest saved row, never over a stale whole-object snapshot. */
 export function mergeWorkoutValue(base: unknown, edited: unknown, latest: unknown): unknown {
   if (equal(base, edited)) return latest
@@ -45,7 +67,7 @@ export function mergeWorkoutValue(base: unknown, edited: unknown, latest: unknow
       else if (original.has(key) && !saved.has(key) &&
         !equal(original.get(key), row)) throw new ConcurrentWorkoutEditError()
     }
-    return merged
+    return mergeOrder(base, edited, latest, merged)
   }
   if (record(base) && record(edited) && record(latest)) {
     const result = { ...latest }

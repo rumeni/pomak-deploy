@@ -18,10 +18,11 @@ import {
   moveExercise,
   newActiveExercise,
   planSummary,
-  previousEstimated1rm,
   previousSet,
   removeExercise,
   replaceExercise,
+  replacementLoss,
+  rpeLoadRows,
   rpeTargetWeight,
   setExerciseNotes,
   SetInputError,
@@ -142,6 +143,17 @@ export function ActiveWorkoutPage() {
       if (e instanceof SetInputError) return window.alert(t(e.message))
       throw e
     }
+    const item = workout.exercises.find((e) => e.key === exerciseKey)
+    const loss = item ? replacementLoss(item, exercise) : null
+    // Typed values belong to the old exercise; never drop them without asking.
+    if (loss && (loss.enteredSets || loss.resetsSets)) {
+      const lines = [
+        t('workout.swapConfirm', { from: item!.exercise.name, to: exercise.name }),
+        loss.enteredSets ? t('workout.replaceLosesValues', { count: loss.enteredSets }) : null,
+        loss.resetsSets ? t('workout.replaceResetsSets') : null,
+      ]
+      if (!window.confirm(lines.filter(Boolean).join('\n'))) return
+    }
     // Another tab could confirm a set meanwhile; then keep the workout as it is.
     update((w) => {
       try {
@@ -247,9 +259,9 @@ function WorkoutExerciseCard({
 
   const fields = inputFields(m, exercise.load_mode === 'per_side', t)
   const plan = planSummary(item)
-  // Where the grey weight comes from, when the plan prescribes RPE instead of a weight.
-  const rpeDriven = item.sets.some((_, i) => rpeTargetWeight(workout, item, i) !== null)
-  const e1rm = rpeDriven ? previousEstimated1rm(workout, item) : null
+  // Where the grey weight comes from, per row, when the plan prescribes RPE instead of a weight.
+  const rpeRows = rpeLoadRows(workout, item)
+  const rpeDriven = rpeRows.calculated.length > 0 || rpeRows.missing.length > 0
 
   useEffect(() => {
     if (notesOpen) notesRef.current?.focus()
@@ -333,11 +345,20 @@ function WorkoutExerciseCard({
               <span className="font-semibold tabular-nums">{planText}</span>
             </p>
           )}
-          {rpeDriven && (
+          {rpeRows.calculated.length > 0 && rpeRows.e1rm !== null && (
             <p className="text-muted">
-              {e1rm !== null
-                ? t('workout.rpeLoadSource', { e1rm: formatDecimal(Math.round(e1rm * 10) / 10) })
-                : t('workout.rpeLoadMissing')}
+              {t('workout.rpeLoadSource', {
+                count: rpeRows.calculated.length,
+                sets: rpeRows.calculated.map((i) => labels[i]).join(', '),
+                e1rm: formatDecimal(Math.round(rpeRows.e1rm * 10) / 10),
+              })}
+            </p>
+          )}
+          {rpeRows.missing.length > 0 && (
+            <p className="text-muted">
+              {rpeRows.e1rm === null
+                ? t('workout.rpeLoadMissing')
+                : t('workout.rpeLoadOffChart', { count: rpeRows.missing.length, sets: rpeRows.missing.map((i) => labels[i]).join(', ') })}
             </p>
           )}
         </div>

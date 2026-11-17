@@ -362,6 +362,35 @@ export function replaceExercise(workout: ActiveWorkout, exerciseKey: string, exe
   return { ...workout, exercises: workout.exercises.map((e) => (e.key === exerciseKey ? replaced : e)) }
 }
 
+/**
+ * What a swap would throw away, so the athlete can confirm first: sets with typed but not yet
+ * confirmed values (weight, reps, time, distance or RPE), and whether the set list itself
+ * starts over (switching between rep-based and timed work).
+ */
+export function replacementLoss(item: ActiveExercise, exercise: Exercise): { enteredSets: number; resetsSets: boolean } {
+  const entered = (s: ActiveSet) => !!(s.weight.trim() || s.reps.trim() || s.duration.trim() || s.distance.trim() || typeof s.rpe === 'number')
+  return {
+    enteredSets: item.sets.filter((s) => !s.done && entered(s)).length,
+    resetsSets: isCardio(item.exercise) !== isCardio(exercise),
+  }
+}
+
+/**
+ * Where each row's grey weight comes from when the plan prescribes RPE: rows whose load was
+ * worked out from last time's estimated 1RM, and RPE rows with no load (no estimate, or reps or
+ * RPE outside the chart) where the athlete has to type it. Other rows use the ordinary
+ * suggestion (last time or a fixed planned weight) and are in neither list.
+ */
+export function rpeLoadRows(workout: ActiveWorkout, item: ActiveExercise): { calculated: number[]; missing: number[]; e1rm: number | null } {
+  const calculated: number[] = []
+  const missing: number[] = []
+  item.sets.forEach((_, i) => {
+    const load = rpeTargetWeight(workout, item, i)
+    if (load) (load.weight !== null ? calculated : missing).push(i)
+  })
+  return { calculated, missing, e1rm: calculated.length || missing.length ? previousEstimated1rm(workout, item) : null }
+}
+
 /** Plan of an exercise for the card header, e.g. working sets "3 × 8–10 @ 8", plus warm-ups. */
 export interface PlanSummary {
   warmups: number
