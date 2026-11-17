@@ -107,7 +107,14 @@ export function SessionDetailPage() {
           <StatusBadge status={session.status} />
         </div>
 
-        {session.status === 'pending' && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.pendingHint')}</p>}
+        {remote.data?.edited_at && session.status === 'sent' && (
+          <p className="text-sm text-muted">
+            {t('history.edit.edited', {
+              date: new Date(remote.data.edited_at).toLocaleString(getFormatLocale(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+            })}
+          </p>
+        )}
+        {session.status === 'pending' && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.pendingHint')} {t('history.edit.pendingHint')}</p>}
         {session.status === 'deleting' && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.deletingHint')}</p>}
         {session.status === 'rejected' && (
           <p className="rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">{t('history.rejectedHint', { error: session.error })}</p>
@@ -151,6 +158,12 @@ export function SessionDetailPage() {
         )}
 
         <FormError message={restoreError ?? discardError ?? (remove.isError ? errorMessage(remove.error) : null)} />
+        {session.status === 'sent' && (
+          <Button variant="secondary" onClick={() => navigate(`/trening/istorija/${session.id}/izmena`)} disabled={!navigator.onLine}>
+            {t('history.edit.button')}
+          </Button>
+        )}
+        {session.status === 'sent' && !navigator.onLine && <p className="text-center text-sm text-muted">{t('history.edit.onlineOnly')}</p>}
         {session.status === 'rejected' && local && (
           <Button onClick={() => void onRestore()} disabled={restoring}>
             {t('history.restoreToEdit')}

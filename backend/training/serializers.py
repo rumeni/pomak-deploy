@@ -239,9 +239,9 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
         model = WorkoutSession
         fields = [
             'id', 'routine_id', 'name', 'started_at', 'finished_at', 'plan_snapshot',
-            'feeling', 'notes', 'readiness', 'exercises', 'created_at',
+            'feeling', 'notes', 'readiness', 'exercises', 'created_at', 'updated_at', 'edited_at',
         ]
-        read_only_fields = ['created_at']
+        read_only_fields = ['created_at', 'updated_at', 'edited_at']
 
     def validate_routine_id(self, routine):
         if routine is not None and routine.owner_id != self.context['request'].user.pk:
@@ -294,3 +294,97 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
             logs += [SetLog(session_exercise=session_exercise, position=i, logged_by=user, **s) for i, s in enumerate(sets)]
         SetLog.objects.bulk_create(logs)
         return session
+
+
+class SessionExerciseEditSerializer(serializers.Serializer):
+    """One exercise of a finished workout being corrected; matched to the saved one by position."""
+
+    exercise_id = serializers.UUIDField()
+    notes = serializers.CharField(max_length=300, allow_blank=True, required=False, default='')
+    sets = SetLogSerializer(many=True)
+
+    def validate_sets(self, value):
+        if not value:
+            raise serializers.ValidationError(_('An exercise needs at least one set.'))
+        if len(value) > MAX_SESSION_SETS_PER_EXERCISE:
+            raise serializers.ValidationError(
+                _('At most %(count)d sets per exercise.') % {'count': MAX_SESSION_SETS_PER_EXERCISE}
+            )
+        return value
+
+
+class WorkoutSessionEditSerializer(serializers.ModelSerializer):
+    """Correcting a finished workout: values of its sets, notes, feeling and the check-in.
+
+    The exercises and times stay as they were done: exercises are matched by position and
+    must be the same ones. `revision` is the `updated_at` the client loaded; the view refuses
+    the edit if the workout changed since (another device), instead of overwriting it.
+    """
+
+    revision = serializers.DateTimeField(write_only=True)
+    readiness = ReadinessSerializer(source='*', required=False)
+    exercises = SessionExerciseEditSerializer(many=True)
+
+    class Meta:
+        model = WorkoutSession
+        fields = ['revision', 'name', 'feeling', 'notes', 'readiness', 'exercises']
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError(_('Enter the workout name.'))
+        return value
+
+    def validate_exercises(self, value):
+        saved = list(self.instance.exercises.order_by('position').values_list('exercise_id', flat=True))
+        if [item['exercise_id'] for item in value] != saved:
+            raise serializers.ValidationError(_('The exercises of a finished workout cannot be changed.'))
+        return value
+
+    SET_FIELDS = ('set_type', 'weight_kg', 'reps', 'duration_seconds', 'distance_m', 'rpe', 'completed_at')
+
+    def matches_saved(self, session) -> bool:
+        """Would this edit leave the workout exactly as it is now (e.g. a retried request)?
+
+        Compares the complete state the PUT would write - an omitted optional set field means
+        "empty", an omitted session field means "unchanged" - with what is saved, so a stale
+        edit that clears a value the other device has set is a conflict, not a match.
+        """
+        data = self.validated_data
+        defaults = {'set_type': SetLog._meta.get_field('set_type').default}
+        for field in ('name', 'feeling', 'notes', *READINESS_FIELDS):
+            if field in data and data[field] != getattr(session, field):
+                return False
+        saved = list(session.exercises.order_by('position').prefetch_related('sets'))
+        for session_exercise, item in zip(saved, data['exercises'], strict=True):
+            if item.get('notes', '') != session_exercise.notes:
+                return False
+            current = [{f: getattr(s, f) for f in self.SET_FIELDS} for s in session_exercise.sets.order_by('position')]
+            wanted = [{f: values.get(f, defaults.get(f)) for f in self.SET_FIELDS} for values in item['sets']]
+            if current != wanted:
+                return False
+        return True
+
+    @transaction.atomic
+    def update(self, session, validated_data):
+        validated_data.pop('revision', None)
+        exercises = validated_data.pop('exercises')
+        for field, value in validated_data.items():
+            setattr(session, field, value)
+        session.edited_at = timezone.now()
+        session.save()
+        user = self.context['request'].user
+        logs = []
+        for session_exercise, item in zip(session.exercises.order_by('position'), exercises, strict=True):
+            session_exercise.notes = item.get('notes', '')
+            session_exercise.save(update_fields=['notes', 'updated_at'])
+            session_exercise.sets.all().delete()
+            # The client sends each set's original `completed_at` back (null for a set added during
+            # the correction), so removing a set never shifts the others' times.
+            logs += [
+                SetLog(session_exercise=session_exercise, position=i, logged_by=user, **values)
+                for i, values in enumerate(item['sets'])
+            ]
+        SetLog.objects.bulk_create(logs)
+        return session
+

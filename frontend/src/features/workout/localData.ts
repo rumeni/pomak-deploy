@@ -1,11 +1,13 @@
 import { db } from '../../lib/db'
+import { clearUserEditDrafts, countEditDrafts } from './edit'
 import { cancelRestEnd } from './restNotification'
 
-/** Koliko lokalnih podataka naloga još nije na serveru: treninzi i izmene dnevnika (za upozorenje pri odjavi). */
+/** Koliko lokalnih podataka naloga još nije na serveru: treninzi, izmene dnevnika i nesačuvane ispravke treninga (za upozorenje pri odjavi). */
 export async function unsentSummary(ownerId: string): Promise<{ active: boolean; pending: number }> {
   const row = await db.activeWorkout.get(ownerId)
   const pending =
     (await db.outbox.where('ownerId').equals(ownerId).count()) + (await db.diaryOps.where('ownerId').equals(ownerId).count())
+    + countEditDrafts(ownerId)
   return { active: row?.ownerId === ownerId, pending }
 }
 
@@ -24,5 +26,7 @@ export async function clearLocalData(ownerId: string, accountDeleted = false): P
     await db.diaryDays.where('ownerId').equals(ownerId).delete()
     await db.foodCache.where('ownerId').equals(ownerId).delete()
   })
+  // Unsaved workout corrections are personal data too.
+  clearUserEditDrafts(ownerId)
   await cancelRestEnd()
 }

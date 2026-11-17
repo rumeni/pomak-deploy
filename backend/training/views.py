@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -12,11 +13,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.search import search_and_order
-from core.views import IdempotentCreateMixin, SharedLibraryMixin
+from core.views import IdempotentCreateMixin, SharedLibraryMixin, require_object_body
 
 from . import progress
 from .models import Exercise, Routine, RoutineExercise, SessionExercise, WorkoutSession
-from .serializers import ExerciseSerializer, RoutineSerializer, SetLogSerializer, WorkoutSessionSerializer
+from .serializers import (
+    ExerciseSerializer, RoutineSerializer, SetLogSerializer, WorkoutSessionEditSerializer, WorkoutSessionSerializer,
+)
 
 MAX_PREVIOUS_LOOKUP = 50
 
@@ -84,11 +87,41 @@ class WorkoutSessionViewSet(
     IdempotentCreateMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
     mixins.DestroyModelMixin, viewsets.GenericViewSet,
 ):
-    """Odrađeni treninzi. Klijent šalje ceo trening jednom, na kraju, sa svojim ID-jem."""
+    """Odrađeni treninzi. Klijent šalje ceo trening jednom, na kraju, sa svojim ID-jem.
+
+    PUT corrects a finished workout (set values, notes, feeling, check-in); see `update`.
+    """
 
     serializer_class = WorkoutSessionSerializer
     owner_field = 'owner'
     HISTORY_LIMIT = 50
+    http_method_names = ['get', 'post', 'put', 'delete', 'head', 'options']
+
+    def update(self, request, *args, **kwargs):
+        """Correct a finished workout, guarded by `revision` (the `updated_at` the client loaded).
+
+        If the workout changed since, the edit is applied only when it is identical to what is
+        saved (a retry after a lost response returns 200); otherwise 409 with the current
+        workout, so a correction from one device never silently overwrites another.
+        """
+        body = require_object_body(request)
+        with transaction.atomic():
+            session = self.get_queryset().select_for_update(of=('self',)).filter(pk=kwargs['pk']).first()
+            if session is None:
+                raise NotFound()
+            serializer = WorkoutSessionEditSerializer(session, data=body, context=self.get_serializer_context())
+            serializer.is_valid(raise_exception=True)
+            if serializer.validated_data['revision'] != session.updated_at:
+                current = self.get_serializer(session).data
+                if serializer.matches_saved(session):
+                    return Response(current)
+                return Response(
+                    {'detail': _('This workout was changed elsewhere. Reload it and edit again.'), 'current': current},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            serializer.save()
+        session = self.get_queryset().get(pk=session.pk)
+        return Response(self.get_serializer(session).data)
 
     def get_queryset(self):
         return WorkoutSession.objects.filter(owner=self.request.user).prefetch_related(

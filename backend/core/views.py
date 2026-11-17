@@ -26,7 +26,7 @@ _TRIMMED_WRITE_FIELDS = frozenset({'name', 'notes', 'note', 'portion_name'})
 _NUMERIC_WRITE_FIELDS = frozenset({
     'value', 'target_value', 'start_value', 'grams', 'mass_g', 'weight_kg',
     'reps_min', 'reps_max', 'rest_seconds', 'duration_seconds', 'distance_m',
-    'kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'servings',
+    'kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'servings', 'rpe',
 })
 
 
