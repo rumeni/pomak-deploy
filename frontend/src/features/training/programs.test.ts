@@ -6,6 +6,7 @@ import {
   createRoutines,
   describePrescription,
   importProgram,
+  isImportingProgram,
   loadPendingProgram,
   ProgramImportAuthChanged,
   programToRoutines,
@@ -113,8 +114,45 @@ describe('suggested programs', () => {
         create: async (body) => { await api.create(body); current = false }, // logged out after the first
       })).rejects.toBeInstanceOf(ProgramImportAuthChanged)
       expect(api.created).toEqual([batch[0].id])
-      expect(loadPendingProgram('athlete-1', program)?.done).toEqual([batch[0].id])
+      // Nothing is written after the login changed; resuming later finds routine 1 on the server.
+      expect(loadPendingProgram('athlete-1', program)?.done).toEqual([])
       expect(loadPendingProgram('athlete-2', program)).toBeNull()
+    })
+
+    it('a late answer after logout cleanup never brings the record back', async () => {
+      const api = server()
+      let release!: () => void
+      const create = (body: { id?: string }) => new Promise<void>((resolve) => {
+        release = () => { void api.create(body); resolve() }
+      })
+      const run = importProgram('athlete-1', program.key, { batch: programToRoutines(program, ids()), done: [] },
+        { isCurrent: () => true, exists: api.exists, create })
+      await Promise.resolve()
+      clearUserPendingPrograms('athlete-1') // logout or account deletion while the POST is out
+      release()
+      await expect(run).rejects.toBeInstanceOf(ProgramImportAuthChanged)
+      expect([...storage.keys()]).toEqual([])
+    })
+
+    it('starting the same import again while it runs joins it instead of a second loop', async () => {
+      const api = server()
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      const deps = {
+        isCurrent: () => true,
+        exists: api.exists,
+        create: async (body: { id?: string }) => { await gate; await api.create(body) },
+      }
+      const record = { batch: programToRoutines(program, ids()), done: [] }
+      const first = importProgram('athlete-1', program.key, record, deps)
+      expect(isImportingProgram('athlete-1', program.key)).toBe(true)
+      // Leave and reopen the screen, tap "Add" again (even with a new batch): the same import.
+      const second = importProgram('athlete-1', program.key, { batch: programToRoutines(program, () => crypto.randomUUID()), done: [] }, deps)
+      expect(second).toBe(first)
+      release()
+      await Promise.all([first, second])
+      expect(api.created).toEqual(record.batch.map((b) => b.id))
+      expect(isImportingProgram('athlete-1', program.key)).toBe(false)
     })
 
     it('clears its record on success by itself, whether or not the screen is still open', async () => {

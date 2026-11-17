@@ -70,6 +70,18 @@ export interface ImportDeps {
   create: (body: RoutinePayload) => Promise<unknown>
 }
 
+/** Bumped when an account's local data is cleared, so imports already in flight stop writing. */
+const cleanupGeneration = new Map<string, number>()
+const generationOf = (ownerId: string) => cleanupGeneration.get(ownerId) ?? 0
+
+/** Imports in flight, one per account and program, shared by every screen that starts it. */
+const running = new Map<string, Promise<void>>()
+
+/** Whether this account is importing this program right now (e.g. started before leaving the screen). */
+export function isImportingProgram(ownerId: string, programKey: string): boolean {
+  return running.has(`${ownerId}:${programKey}`)
+}
+
 /**
  * Copies a program's routines into the user's own, resumably and without ever overwriting.
  *
@@ -77,22 +89,42 @@ export interface ImportDeps {
  *   reload) continues with the same IDs instead of duplicating.
  * - On a resumed import a routine that already exists (created before a lost response) is left
  *   exactly as it is: the user may have edited it since, and a repeated create would replace it.
- * - Every step runs only while the account and session that started it are current; if the
- *   login changes, the import stops and its record stays with the original account.
+ * - One import per account and program at a time: starting it again (e.g. after leaving and
+ *   reopening the screen) joins the one in flight instead of running a second loop.
+ * - Every step - including writing progress after a request returns - runs only while the
+ *   account and session that started it are current and its local data has not been cleared
+ *   (logout, account deletion); otherwise the import stops without writing anything.
  * - Success removes the record here, not in the screen, so leaving mid-import cannot leave a
  *   stale record behind.
  */
-export async function importProgram(ownerId: string, programKey: string, record: PendingProgram, deps: ImportDeps): Promise<void> {
+export function importProgram(ownerId: string, programKey: string, record: PendingProgram, deps: ImportDeps): Promise<void> {
+  const key = `${ownerId}:${programKey}`
+  const inFlight = running.get(key)
+  if (inFlight) return inFlight
+  const run = runImport(ownerId, programKey, record, deps).finally(() => running.delete(key))
+  running.set(key, run)
+  return run
+}
+
+async function runImport(ownerId: string, programKey: string, record: PendingProgram, deps: ImportDeps): Promise<void> {
+  const generation = generationOf(ownerId)
+  const valid = () => deps.isCurrent() && generationOf(ownerId) === generation
+  const guard = () => {
+    if (!valid()) throw new ProgramImportAuthChanged()
+  }
+  guard()
   const resumed = record.done.length > 0 || loadPendingRecord(ownerId, programKey) !== null
   const done = new Set(record.done)
   savePendingRecord(ownerId, programKey, { batch: record.batch, done: [...done] })
   for (const body of record.batch) {
     const id = body.id!
     if (done.has(id)) continue
-    if (!deps.isCurrent()) throw new ProgramImportAuthChanged()
-    if (!(resumed && await deps.exists(id))) {
-      if (!deps.isCurrent()) throw new ProgramImportAuthChanged()
+    guard()
+    const exists = resumed && await deps.exists(id)
+    guard() // the answer may arrive after a logout
+    if (!exists) {
       await deps.create(body)
+      guard()
     }
     done.add(id)
     savePendingRecord(ownerId, programKey, { batch: record.batch, done: [...done] })
@@ -133,8 +165,9 @@ export function clearPendingProgram(ownerId: string, programKey: string): void {
   try { localStorage.removeItem(pendingKey(ownerId, programKey)) } catch { /* storage unavailable */ }
 }
 
-/** Removes every unfinished import of a user (logout, account deletion). */
+/** Removes every unfinished import of a user (logout, account deletion); imports in flight stop. */
 export function clearUserPendingPrograms(ownerId: string): void {
+  cleanupGeneration.set(ownerId, generationOf(ownerId) + 1)
   const prefix = `${PENDING_PROGRAM_PREFIX}${ownerId}.`
   try {
     const keys: string[] = []

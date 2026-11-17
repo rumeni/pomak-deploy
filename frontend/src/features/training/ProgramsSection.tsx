@@ -11,7 +11,7 @@ import { tokens } from '../../lib/tokens'
 import { uuid } from '../../lib/uuid'
 import { useAuth } from '../../lib/auth'
 import type { Routine, RoutinePayload } from './api'
-import { describePrescription, importProgram, loadPendingProgram, programToRoutines, type PendingProgram, type Program } from './programs'
+import { describePrescription, importProgram, isImportingProgram, loadPendingProgram, programToRoutines, type PendingProgram, type Program } from './programs'
 
 function usePrograms() {
   return useQuery({
@@ -97,11 +97,12 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
   const onAdd = () => {
     if (!me) return
     // A persisted batch takes precedence even when this component was unmounted or reloaded.
-    // The stored record wins over this screen's memory: it has the latest progress.
+    // An import of this program already running (started before leaving the screen) is joined,
+    // never started twice. Otherwise the stored record wins over this screen's memory.
     const previous = loadPendingProgram(me.id, program)
       ?? (pending.current?.ownerId === me.id ? pending.current.record : null)
-    if (previous) {
-      pending.current = { ownerId: me.id, record: previous }
+    if (previous || isImportingProgram(me.id, program.key)) {
+      pending.current = { ownerId: me.id, record: previous ?? pending.current?.record ?? { batch: [], done: [] } }
     } else {
       if (alreadyThere && !window.confirm(t('programs.addAgainConfirm'))) return
       pending.current = { ownerId: me.id, record: { batch: programToRoutines(program, uuid), done: [] } }

@@ -114,12 +114,20 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
     setScanNote(result.note)
   }
 
-  // A hand-typed barcode gets the same protection as a scanned one (never mix two products).
-  const onBarcodeCommitted = () => {
-    if (editing) return setProductBarcode(barcode)
+  /**
+   * A hand-typed barcode gets the same protection as a scanned one (never mix two products).
+   * Runs when the field is left and again on submit (Enter can submit without leaving it).
+   * Returns false when the form was reset for another product, so it must not be submitted.
+   */
+  const onBarcodeCommitted = (): boolean => {
+    if (editing) {
+      setProductBarcode(barcode)
+      return true
+    }
     const change = barcodeEdit({ name, barcode, values, sourceRef }, productBarcode, barcode)
-    if (change === 'same') return
-    if (change === 'other' && window.confirm(t('newFood.otherProductConfirm'))) {
+    if (change === 'same') return true
+    const otherProduct = change === 'other' && window.confirm(t('newFood.otherProductConfirm'))
+    if (otherProduct) {
       const fresh = forNewProduct(barcode.trim())
       setName(fresh.name)
       setValues(fresh.values)
@@ -131,6 +139,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
     }
     // Either the first barcode of this draft or the athlete's own correction of a typo.
     setProductBarcode(barcode.trim())
+    return !otherProduct
   }
 
   const openExistingFood = (food: Food) => {
@@ -185,6 +194,8 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    // Enter in the barcode field submits without leaving it: decide about the barcode first.
+    if (!onBarcodeCommitted()) return
     try {
       const body = toBody()
       const success = (food: Food) => {
@@ -303,7 +314,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
           placeholder={t('newFood.barcodePlaceholder')}
           value={barcode}
           onChange={(e) => { markEdited(); setBarcode(e.target.value.replace(/\s/g, '')); setExistingFood(null) }}
-          onBlur={onBarcodeCommitted}
+          onBlur={() => void onBarcodeCommitted()}
         />
         {!editing && (
           <label className={`flex items-start gap-3 rounded-xl bg-card p-3 ring-1 ring-line/60 ${fromOpenFoodFacts ? 'opacity-70' : ''}`}>
