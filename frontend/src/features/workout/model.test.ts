@@ -7,6 +7,8 @@ import {
   describeLogged,
   previousSet,
   prepareSessionPayload,
+  rpeTargetWeight,
+  targetRpe,
   MAX_WORKOUT_SNAPSHOT_BYTES,
   SetInputError,
   startFromRoutine,
@@ -348,6 +350,20 @@ describe('RPE and readiness', () => {
     // Never falls back to last time's 100 kg for a 12-rep set at RPE 8.
     expect(suggestion(w, w.exercises[0], 0).weight).toBe('')
     expect(() => confirmSet(w, ex.key, ex.sets[0].key, t0)).toThrow(SetInputError)
+  })
+
+  it('drops the RPE target and its load when a working set becomes a warm-up', () => {
+    let w = startFromRoutine(rpeRoutine, lastTime, t0)
+    const ex = w.exercises[0]
+    expect(targetRpe(w.exercises[0].sets[0])).toBe(8)
+    w = updateSet(w, ex.key, ex.sets[0].key, { set_type: 'warmup' })
+    expect(targetRpe(w.exercises[0].sets[0])).toBeNull()
+    expect(rpeTargetWeight(w, w.exercises[0], 0)).toBeNull()
+    // No 105 kg "@8" load on a warm-up; there is no earlier warm-up either, so the field stays empty.
+    expect(suggestion(w, w.exercises[0], 0).weight).toBe('')
+    // Switching back restores the plan.
+    w = updateSet(w, ex.key, ex.sets[0].key, { set_type: 'working' })
+    expect(suggestion(w, w.exercises[0], 0)).toMatchObject({ weight: '105', reps: '3' })
   })
 
   it('keeps an API-set RPE outside the picker range', () => {

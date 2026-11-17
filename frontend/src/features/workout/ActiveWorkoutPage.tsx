@@ -17,6 +17,7 @@ import {
   previousSet,
   rpeTargetWeight,
   SetInputError,
+  targetRpe,
   suggestion,
   unconfirmSet,
   updateSet,
@@ -265,7 +266,7 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
         <RpeSheet
           title={`${exercise.name} · ${t('routine.set')} ${labels[rpeSetIndex]}`}
           value={rpeSet.rpe ?? null}
-          target={rpeSet.target?.rpe ?? null}
+          target={targetRpe(rpeSet)}
           onPick={(rpe) => {
             update((w) => updateSet(w, item.key, rpeSet.key, { rpe }))
             setRpeFor(null)
@@ -371,7 +372,7 @@ function SetRow({
               : 'bg-surface text-muted ring-1 ring-line'
           }`}
         >
-          {typeof set.rpe === 'number' ? formatRpe(set.rpe) : set.target?.rpe ? `@${formatRpe(set.target.rpe)}` : '–'}
+          {typeof set.rpe === 'number' ? formatRpe(set.rpe) : targetRpe(set) !== null ? `@${formatRpe(targetRpe(set)!)}` : '–'}
         </button>
       )}
       <button

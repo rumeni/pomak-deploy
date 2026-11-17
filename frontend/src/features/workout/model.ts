@@ -119,6 +119,14 @@ export function previousSet(workout: ActiveWorkout, item: ActiveExercise, index:
   return previous.filter((s) => s.set_type === set.set_type)[nth] ?? null
 }
 
+/**
+ * The planned RPE that applies to a set right now. The plan targets working sets only, so a
+ * set switched to a warm-up during the workout drops it (and its RPE-based load).
+ */
+export function targetRpe(set: ActiveSet | undefined): number | null {
+  return set?.set_type === 'working' ? set.target?.rpe ?? null : null
+}
+
 /** Best estimated 1RM from last time's working sets (RPE-aware), or null. */
 export function previousEstimated1rm(workout: ActiveWorkout, item: ActiveExercise): number | null {
   const sets = workout.previous[item.exercise.id]?.sets ?? []
@@ -145,12 +153,13 @@ export function rpeTargetWeight(workout: ActiveWorkout, item: ActiveExercise, in
   const set = item.sets[index]
   const target = set?.target
   const planned = target?.reps_max ?? target?.reps_min ?? null
-  if (item.exercise.measurement !== 'weight_reps' || !target?.rpe || planned === null || target.weight_kg !== null) return null
+  const rpe = targetRpe(set)
+  if (item.exercise.measurement !== 'weight_reps' || !target || rpe === null || planned === null || target.weight_kg !== null) return null
   const e1rm = previousEstimated1rm(workout, item)
   if (e1rm === null) return null
   const typed = /^\d{1,4}$/.test(set.reps.trim()) ? Number(set.reps.trim()) : null
   const reps = typed !== null && typed > 0 ? typed : planned
-  return { weight: weightForTarget(e1rm, reps, target.rpe, item.exercise.load_mode === 'per_side' ? 1 : 2.5), reps }
+  return { weight: weightForTarget(e1rm, reps, rpe, item.exercise.load_mode === 'per_side' ? 1 : 2.5), reps }
 }
 
 /**
