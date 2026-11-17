@@ -145,6 +145,7 @@ function ClientWorkspace({ connection, assignments }: { connection: Connection |
         }}>
           {t('coach.disconnect')}
         </Button>
+        <FormError message={disconnect.error ? errorMessage(disconnect.error) : null} />
       </Card>
       <Card title={t('coach.assignedRoutines')}>
         {assignments.length === 0 && <p className="text-muted">{t('coach.noAssignments')}</p>}

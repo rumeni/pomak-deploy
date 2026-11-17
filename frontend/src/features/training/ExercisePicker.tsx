@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Field, FormError, ScreenHeader, SelectField } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
+import { uuid } from '../../lib/uuid'
 import { useDebounced } from '../../lib/useDebounced'
 import { useCreateExercise, useExercises, type Exercise, type Muscle, type NewExercise } from './api'
 import { EQUIPMENT, MEASUREMENTS, MUSCLES } from './labels'
@@ -147,6 +148,8 @@ function CreateExerciseForm({
 }) {
   const { t } = useTranslation()
   const create = useCreateExercise()
+  // Repeated POSTs for this form reuse one UUID, including after a lost response.
+  const [createId] = useState(uuid)
   const [form, setForm] = useState<NewExercise>({
     name: initialName,
     equipment: 'machine',
@@ -164,7 +167,7 @@ function CreateExerciseForm({
         className="mx-auto flex max-w-xl flex-col gap-4 p-4"
         onSubmit={(e) => {
           e.preventDefault()
-          create.mutate({ ...form, load_mode: perSideRelevant ? form.load_mode : 'total' }, { onSuccess: onCreated })
+          create.mutate({ ...form, id: createId, load_mode: perSideRelevant ? form.load_mode : 'total' }, { onSuccess: onCreated })
         }}
       >
         <Field label={t('newExercise.name')} name="name" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />

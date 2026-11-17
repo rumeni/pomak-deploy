@@ -28,6 +28,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
 
+from core.views import require_object_body
+
 from .email_security import VERIFICATION_SALT, send_reset_email, send_verification_email_safe
 from .models import User
 from .password_security import replace_password_and_revoke_sessions
@@ -148,8 +150,9 @@ class PasswordResetRequestView(APIView):
 
     def post(self, request):
         require_email_configured()
+        data = require_object_body(request)
         from rest_framework.fields import EmailField
-        email = EmailField().run_validation(request.data.get('email', '')).strip().lower()
+        email = EmailField().run_validation(data.get('email', '')).strip().lower()
         if not _queue_configured():
             raise EmailNotConfigured()
         try:
@@ -169,8 +172,9 @@ class PasswordResetConfirmView(APIView):
 
     def post(self, request):
         require_email_configured()
-        uid = request.data.get('uid', '')
-        token = request.data.get('token', '')
+        data = require_object_body(request)
+        uid = data.get('uid', '')
+        token = data.get('token', '')
         if not isinstance(uid, str) or not isinstance(token, str) or len(uid) > 128 or len(token) > 256:
             raise ValidationError(GENERIC_INVALID)
         try:
@@ -182,7 +186,7 @@ class PasswordResetConfirmView(APIView):
             user = User.objects.select_for_update().get(pk=user.pk)
             if not default_token_generator.check_token(user, token):
                 raise ValidationError(GENERIC_INVALID)
-            new_password = request.data.get('new_password', '')
+            new_password = data.get('new_password', '')
             password_validated(user, new_password)
             replace_password_and_revoke_sessions(user, new_password)
         response = Response(status=status.HTTP_204_NO_CONTENT)
@@ -190,8 +194,11 @@ class PasswordResetConfirmView(APIView):
 
 
 class PasswordChangeView(APIView):
+    sensitive_action_scope = 'password-change'
     throttle_classes = [DatabaseAccountDeletionThrottle]
+
     def post(self, request):
+        require_object_body(request)
         old_password = request.data.get('old_password', '')
         new_password = request.data.get('new_password', '')
         with transaction.atomic():
@@ -212,7 +219,8 @@ class EmailVerificationView(APIView):
 
     def post(self, request):
         require_email_configured()
-        token = request.data.get('token', '')
+        data = require_object_body(request)
+        token = data.get('token', '')
         if not isinstance(token, str) or not 0 < len(token) <= 2048:
             raise ValidationError(GENERIC_INVALID)
         try:
@@ -238,11 +246,13 @@ class EmailVerificationView(APIView):
 
 class EmailVerificationResendView(APIView):
     permission_classes = [IsAuthenticated]
+    sensitive_action_scope = 'email-verification-resend'
     # Explicit authentication lets an unverified user request a new email.
     throttle_classes = [DatabaseAccountDeletionThrottle]
 
     def post(self, request):
         require_email_configured()
+        require_object_body(request)
         if request.user.email_verified_at is None:
             send_verification_email_safe(request.user.pk)
         return Response(status=status.HTTP_204_NO_CONTENT)

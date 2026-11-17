@@ -10,6 +10,7 @@ import { formatCoachSet } from './formatCoach'
 import { useRoutines } from '../training/api'
 import { useAssignCoachRoutine, useCoachClient, useDisconnectCoach } from './api'
 import { CoachMessages } from './CoachMessages'
+import { CoachNutritionDays } from './CoachNutritionDays'
 
 function dateLabel(value: string) {
   return new Date(value).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' })
@@ -75,11 +76,7 @@ export function CoachClientPage() {
         <Card title={t('coach.nutrition')}>
           {data.nutrition_days === null ? <p className="text-muted">{t('coach.notShared')}</p> : (
             data.nutrition_days.length === 0 ? <p className="text-muted">{t('coach.noNutrition')}</p> :
-            data.nutrition_days.map((day) => (
-              <p key={day.date} className="border-b border-line py-2 text-sm last:border-0">
-                {day.date}: <strong>{Math.round(Number(day.kcal))} kcal</strong> · {t('coach.protein')} {day.protein_g === null ? '—' : formatDecimal(Number(day.protein_g))} g
-              </p>
-            ))
+            <CoachNutritionDays days={data.nutrition_days} />
           )}
         </Card>
         <Card title={t('coach.assignRoutine')}>

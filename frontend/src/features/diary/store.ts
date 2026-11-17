@@ -12,11 +12,17 @@ import type { DayStatus, DiaryDay, DiaryEntry, EntryWrite } from './types'
 
 const dayKey = (ownerId: string, date: string) => `${ownerId}:${date}`
 
-// Redni broj izmena: vreme + brojač, da dve izmene u istoj milisekundi zadrže redosled.
-let lastSeq = 0
-function nextSeq(): number {
-  lastSeq = Math.max(Date.now() * 1000, lastSeq + 1)
-  return lastSeq
+/**
+ * Assign the sequence in the SAME IndexedDB readwrite transaction as the insert.
+ * Browser tabs have separate JS counters, but IndexedDB serializes overlapping
+ * write transactions, so the next queued operation always follows the latest
+ * committed one even if both tabs see the same millisecond or the clock moves back.
+ * The existing seq index also covers rows written by older app versions.
+ */
+async function addQueuedOp(ownerId: string, date: string, op: NewOp): Promise<void> {
+  const latest = await db.diaryOps.orderBy('seq').last()
+  const seq = Math.max(Date.now() * 1000, (latest?.seq ?? 0) + 1)
+  await db.diaryOps.add({ ...op, id: uuid(), ownerId, date, seq, error: null } as DiaryOpRow)
 }
 
 type NewOp =
@@ -25,7 +31,7 @@ type NewOp =
   | { type: 'status'; status: DayStatus }
 
 async function enqueue(ownerId: string, date: string, op: NewOp): Promise<void> {
-  await db.diaryOps.add({ ...op, id: uuid(), ownerId, date, seq: nextSeq(), error: null } as DiaryOpRow)
+  await db.transaction('rw', db.diaryOps, () => addQueuedOp(ownerId, date, op))
   requestSync()
 }
 
@@ -42,7 +48,7 @@ export async function deleteEntry(ownerId: string, date: string, entryId: string
     const rows = await db.diaryOps.where('ownerId').equals(ownerId).toArray()
     const rejected = rows.filter((op) => op.type === 'upsert' && op.entryId === entryId && op.error)
     await db.diaryOps.bulkDelete(rejected.map((op) => op.id))
-    await db.diaryOps.add({ type: 'delete', entryId, id: uuid(), ownerId, date, seq: nextSeq(), error: null } as DiaryOpRow)
+    await addQueuedOp(ownerId, date, { type: 'delete', entryId })
   })
   requestSync()
 }

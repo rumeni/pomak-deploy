@@ -47,6 +47,37 @@ class RoutineTests(APITestCase):
         self.assertEqual(self.create(body).status_code, 200)
         self.assertEqual(Routine.objects.count(), 1)
 
+    def test_retry_changed_post_updates_owned_routine_instead_of_silently_dropping_changes(self):
+        body = self.payload(id=str(uuid.uuid4()), name='Prva')
+        first = self.create(body)
+        self.assertEqual(first.status_code, 201, first.data)
+        initial_set_ids = set(RoutineSet.objects.values_list('pk', flat=True))
+        repeated = self.create(body)
+        self.assertEqual(repeated.status_code, 200, repeated.data)
+        self.assertEqual(set(RoutineSet.objects.values_list('pk', flat=True)), initial_set_ids)
+
+        changed = self.payload(id=body['id'], name='Izmenjena')
+        changed['exercises'][0]['sets'][0]['reps_min'] = 6
+        changed['exercises'][0]['sets'][0]['reps_max'] = 8
+        updated = self.create(changed)
+        self.assertEqual(updated.status_code, 200, updated.data)
+        self.assertEqual(updated.data['name'], 'Izmenjena')
+        self.assertEqual(updated.data['exercises'][0]['sets'][0]['reps_min'], 6)
+        self.assertEqual(Routine.objects.count(), 1)
+
+        invalid = self.payload(id=body['id'], name='Never saved')
+        invalid['exercises'][0]['sets'][0]['reps_min'] = 1000
+        self.assertEqual(self.create(invalid).status_code, 400)
+        self.assertEqual(Routine.objects.get(pk=body['id']).name, 'Izmenjena')
+
+    def test_retry_post_cannot_reactivate_archived_routine(self):
+        body = self.payload(id=str(uuid.uuid4()))
+        self.assertEqual(self.create(body).status_code, 201)
+        self.assertEqual(self.client.delete(f"/api/training/routines/{body['id']}/").status_code, 204)
+        retry = self.create(self.payload(id=body['id'], name='Back from archive'))
+        self.assertEqual(retry.status_code, 409)
+        self.assertIsNotNone(Routine.objects.get(pk=body['id']).archived_at)
+
     def test_update_replaces_exercises(self):
         rid = self.create().data['id']
         body = self.payload(name='Trening A2')

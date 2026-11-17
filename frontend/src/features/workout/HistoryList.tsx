@@ -10,11 +10,12 @@ import { usePendingSessions } from './outbox'
 export function HistoryList() {
   const { t } = useTranslation()
   const { me } = useAuth()
-  const { data: sessions, isLoading, isError } = useSessions()
+  const { data, isLoading, isError, hasNextPage, isFetchingNextPage, fetchNextPage } = useSessions(me?.id)
   const pending = usePendingSessions(me?.id)
 
-  // Bez interneta istorija sa servera nije dostupna, ali neposlati treninzi jesu.
-  const items = combineHistory((sessions ?? []).map(fromServer), (pending ?? []).map(fromOutbox))
+  // All fetched pages plus unsent local workouts; no duplicates after a sync.
+  const sessions = data?.pages.flat() ?? []
+  const items = combineHistory(sessions.map(fromServer), (pending ?? []).map(fromOutbox))
 
   return (
     <section className="flex flex-col gap-2">
@@ -25,6 +26,16 @@ export function HistoryList() {
       {items.map((s) => (
         <HistoryItem key={s.id} session={s} />
       ))}
+      {hasNextPage && (
+        <button
+          type="button"
+          disabled={isFetchingNextPage}
+          onClick={() => void fetchNextPage()}
+          className="min-h-12 rounded-xl bg-card px-4 font-semibold text-brand-dark ring-1 ring-line/60 disabled:opacity-50"
+        >
+          {t(isFetchingNextPage ? 'history.loadingMore' : 'history.loadMore')}
+        </button>
+      )}
     </section>
   )
 }
@@ -35,7 +46,7 @@ function HistoryItem({ session: s }: { session: SessionView }) {
   return (
     <Link to={`/trening/istorija/${s.id}`} className="block rounded-2xl bg-card p-4 shadow-sm ring-1 ring-line/60 active:bg-brand-soft">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold">{s.name}</h3>
+        <h3 className="font-semibold">{s.name || t('history.deleting')}</h3>
         {s.status !== 'sent' && <StatusBadge status={s.status} />}
       </div>
       <p className="text-sm text-muted">
@@ -49,10 +60,10 @@ function HistoryItem({ session: s }: { session: SessionView }) {
 export function StatusBadge({ status }: { status: SessionView['status'] }) {
   const { t } = useTranslation()
   if (status === 'sent') return null
-  const tone = status === 'pending' ? 'bg-accent/20 text-ink' : 'bg-danger/15 text-danger'
+  const tone = status === 'pending' || status === 'deleting' ? 'bg-accent/20 text-ink' : 'bg-danger/15 text-danger'
   return (
     <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>
-      {status === 'pending' ? t('history.pending') : t('history.rejected')}
+      {status === 'pending' ? t('history.pending') : status === 'deleting' ? t('history.deleting') : t('history.rejected')}
     </span>
   )
 }

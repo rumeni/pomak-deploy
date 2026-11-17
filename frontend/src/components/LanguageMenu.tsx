@@ -2,10 +2,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { changeLanguage, LANGUAGES, toServerLanguage, type Language } from '../i18n'
-import { api } from '../lib/api'
+import { changeLanguage, LANGUAGES, type Language } from '../i18n'
+import { queueLanguage } from '../lib/languagePreference'
 import { useAuth } from '../lib/auth'
-import type { Me } from '../lib/types'
 
 // Naziv jezika je uvek na tom jeziku, da ga prepozna i neko ko ne razume trenutni jezik aplikacije.
 const NATIVE: Record<Language, string> = { 'sr-Latn': 'Srpski', en: 'English' }
@@ -47,14 +46,9 @@ export function LanguageMenu({ variant = 'icon' }: { variant?: 'icon' | 'row' })
     if (language === current) return
     await changeLanguage(language)
     setNotice(`${i18n.t('language.label')}: ${NATIVE[language]}`)
-    if (me) {
-      try {
-        const { data } = await api.patch<Me>('/auth/me/', { profile: { language: toServerLanguage(language) } })
-        queryClient.setQueryData(['me'], data)
-      } catch {
-        // Bez interneta jezik važi na ovom telefonu; na nalogu se promeni sledeći put.
-      }
-    }
+    if (me) queueLanguage(me.id, language)
+    // AuthProvider persists it on the server immediately if online, or after
+    // reconnect/relaunch. The pending choice always takes precedence locally.
     // Nazivi vežbi i namirnica i poruke sa servera zavise od jezika.
     await queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'me' })
   }

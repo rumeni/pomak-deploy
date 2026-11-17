@@ -21,3 +21,16 @@ def normalize_search(text: str) -> str:
     decomposed = unicodedata.normalize('NFKD', text)
     stripped = ''.join(c for c in decomposed if not unicodedata.combining(c))
     return ' '.join(stripped.split())
+
+
+# Production may still use the pre-reindex varchar(600)/varchar(450) columns.
+# Bound input using their limits until the schema migrations are applied.
+# A byte cap also avoids oversized PostgreSQL B-tree index entries.
+SEARCH_INDEX_BYTE_BUDGET = 2000
+FOOD_PREMIGRATION_KEY_LIMIT = 600
+EXERCISE_PREMIGRATION_KEY_LIMIT = 450
+
+
+def search_key_fits(name: str, name_en: str = '', aliases: str = '', *, max_chars: int) -> bool:
+    key = normalize_search(f'{name} {name_en} {aliases}')
+    return len(key) <= max_chars and len(key.encode('utf-8')) <= SEARCH_INDEX_BYTE_BUDGET

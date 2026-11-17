@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 
@@ -34,7 +34,16 @@ export interface CoachClientDetails {
   recent_workouts: { id: string; name: string; started_at: string; finished_at: string; feeling: number | null; notes: string; exercises: { name: string; sets: { set_type: 'warmup' | 'working'; reps: number | null; weight_kg: string | null; duration_seconds: number | null; distance_m: number | null }[] }[] }[]
   goals: { kind: string; target_value: string; target_date: string | null }[]
   measurements: { kind: string; value: string; unit: string; measured_on: string }[] | null
-  nutrition_days: { date: string; kcal: string; protein_g: string | null; carbs_g: string | null; fat_g: string | null }[] | null
+  nutrition_days: {
+    date: string
+    kcal: string
+    protein_g: string | null
+    carbs_g: string | null
+    fat_g: string | null
+    protein_unknown: number
+    carbs_unknown: number
+    fat_unknown: number
+  }[] | null
   assignments: CoachAssignment[]
 }
 
@@ -65,10 +74,21 @@ export function useCoachClient(id: string | undefined) {
   })
 }
 
+const CHAT_PAGE_SIZE = 80
+type MessageCursor = { before: string; before_id: string } | null
+
 export function useCoachMessages(clientId?: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['coach-messages', clientId ?? 'own'],
-    queryFn: async () => (await api.get<CoachMessage[]>('/coach/messages/', { params: clientId ? { client_id: clientId } : {} })).data,
+    initialPageParam: null as MessageCursor,
+    queryFn: async ({ pageParam }) =>
+      (await api.get<CoachMessage[]>('/coach/messages/', {
+        params: { ...(clientId ? { client_id: clientId } : {}), ...(pageParam ?? {}) },
+      })).data,
+    // Each page is chronological, so its FIRST message is the oldest.
+    getNextPageParam: (page) => page.length < CHAT_PAGE_SIZE ? undefined : {
+      before: page[0].created_at, before_id: page[0].id,
+    },
     refetchInterval: 15000,
     retry: false,
   })

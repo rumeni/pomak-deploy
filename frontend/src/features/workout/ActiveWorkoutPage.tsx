@@ -28,14 +28,21 @@ import { cancelRestEnd, restEndedFeedback, restNotificationAction, scheduleRestE
 import { usePersistentWorkout } from './store'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 
+// Match backend WorkoutSessionSerializer boundaries so a finished offline
+// workout is never rejected merely for having too many items.
+const MAX_SESSION_EXERCISES = 40
+const MAX_SESSION_SETS = 20
+
 type Update = (change: (w: ActiveWorkout) => ActiveWorkout) => void
 
 export function ActiveWorkoutPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { loaded, row, update } = usePersistentWorkout()
+  const { loaded, row, update, flush, conflict } = usePersistentWorkout()
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [finishOpen, setFinishOpen] = useState(false)
+  // Never let a live cross-tab update swap the workout underneath an open
+  // finish form (its local feeling/notes belong to the original workout).
+  const [finishId, setFinishId] = useState<string | null>(null)
   const now = useNow()
   const workout = row?.workout
 
@@ -55,13 +62,23 @@ export function ActiveWorkoutPage() {
   if (!loaded) return <LoadingScreen />
   if (!row || !workout) return <Navigate to="/trening" replace />
 
-  if (finishOpen) {
+  if (finishId) {
+    if (conflict || workout.id !== finishId) return (
+      <div className="mx-auto max-w-xl p-4" role="alert">
+        <p>{t('workout.staleWorkout')}</p>
+        <Button variant="secondary" onClick={() => navigate('/trening', { replace: true })}>{t('common.retry')}</Button>
+      </div>
+    )
     return (
-      <FinishWorkout workout={workout} ownerId={row.ownerId} onBack={() => setFinishOpen(false)} onDone={() => navigate('/trening', { replace: true })} />
+      <FinishWorkout key={finishId} workout={workout} ownerId={row.ownerId} flush={flush} onBack={() => setFinishId(null)} onDone={() => navigate('/trening', { replace: true })} />
     )
   }
 
   const addExercises = async (exercises: Exercise[]) => {
+    if (workout.exercises.length + exercises.length > MAX_SESSION_EXERCISES) {
+      window.alert(t('workout.errors.tooManyExercises', { count: MAX_SESSION_EXERCISES }))
+      return
+    }
     update((w) => ({ ...w, exercises: [...w.exercises, ...exercises.map(newActiveExercise)] }))
     const missing = exercises.map((e) => e.id).filter((id) => !workout.previous[id])
     const previous = await loadPrevious(missing)
@@ -72,11 +89,17 @@ export function ActiveWorkoutPage() {
 
   return (
     <div className="min-h-full pb-48">
+      {conflict && (
+        <div role="alert" className="mx-auto max-w-xl rounded-xl bg-danger/10 p-3 text-danger">
+          <p>{t('workout.concurrentEdit')}</p>
+          <Button variant="secondary" onClick={() => window.location.reload()}>{t('common.retry')}</Button>
+        </div>
+      )}
       <ScreenHeader
         title={workout.name}
         onBack={() => navigate('/trening')}
         action={
-          <Button className="min-h-10 px-4 text-sm" onClick={() => setFinishOpen(true)}>
+          <Button className="min-h-10 px-4 text-sm" onClick={() => setFinishId(workout.id)}>
             {t('workout.finish')}
           </Button>
         }
@@ -129,11 +152,16 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
     }
   }
 
-  const addSet = () =>
+  const addSet = () => {
+    if (item.sets.length >= MAX_SESSION_SETS) {
+      setError(t('workout.errors.tooManySets', { count: MAX_SESSION_SETS }))
+      return
+    }
     update((w) => ({
       ...w,
       exercises: w.exercises.map((e) => (e.key === item.key ? { ...e, sets: [...e.sets, emptyActiveSet()] } : e)),
     }))
+  }
 
   const removeSet = (key: string) =>
     update((w) => ({

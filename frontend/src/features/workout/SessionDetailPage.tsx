@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -9,10 +10,11 @@ import { useAuth } from '../../lib/auth'
 import { db } from '../../lib/db'
 import { getFormatLocale } from '../../lib/format'
 import { useDeleteSession, useSession } from './api'
-import { durationSeconds, formatWorkoutDuration, fromOutbox, fromServer, type SessionView } from './history'
+import { durationSeconds, formatWorkoutDuration, fromOutbox, fromServer, sessionExerciseKey, type SessionView } from './history'
 import { StatusBadge } from './HistoryList'
 import { describeLogged } from './model'
-import { discardOutboxItem } from './outbox'
+import { discardOutboxItem, restoreRejectedWorkout } from './outbox'
+import { requestSync } from './sync'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 
 /** Detalj treninga iz istorije: sa servera ili, dok nije poslat, sa telefona. */
@@ -28,6 +30,10 @@ export function SessionDetailPage() {
   }, [id, me?.id])
   const remote = useSession(id, local === null)
   const remove = useDeleteSession()
+  const [restoring, setRestoring] = useState(false)
+  const [restoreError, setRestoreError] = useState<string | null>(null)
+  const [discarding, setDiscarding] = useState(false)
+  const [discardError, setDiscardError] = useState<string | null>(null)
 
   const session: SessionView | null = local ? fromOutbox(local) : remote.data ? fromServer(remote.data) : null
   const back = () => navigate('/trening')
@@ -51,9 +57,32 @@ export function SessionDetailPage() {
       if (!window.confirm(t('history.deleteConfirm', { name: session.name }))) return
       remove.mutate(session.id, { onSuccess: back })
     } else {
-      if (!window.confirm(t('history.discardConfirm'))) return
-      await discardOutboxItem(session.id)
-      back()
+      if (!me) return
+      if (session.status !== 'deleting' && !window.confirm(t('history.discardConfirm'))) return
+      setDiscardError(null)
+      setDiscarding(true)
+      try {
+        await discardOutboxItem(me.id, session.id)
+        requestSync()
+        back()
+      } catch (cause) {
+        setDiscardError(errorMessage(cause))
+        setDiscarding(false)
+      }
+    }
+  }
+
+  const onRestore = async () => {
+    if (!local || !me) return
+    setRestoreError(null)
+    setRestoring(true)
+    try {
+      await restoreRejectedWorkout(me.id, local.id)
+      navigate('/trening/aktivan', { replace: true })
+    } catch (cause) {
+      setRestoreError(t(cause instanceof Error && cause.message === 'ACTIVE_WORKOUT_EXISTS'
+        ? 'history.restoreActiveFirst' : 'history.restoreFailed'))
+      setRestoring(false)
     }
   }
 
@@ -78,18 +107,19 @@ export function SessionDetailPage() {
         </div>
 
         {session.status === 'pending' && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.pendingHint')}</p>}
+        {session.status === 'deleting' && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.deletingHint')}</p>}
         {session.status === 'rejected' && (
           <p className="rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">{t('history.rejectedHint', { error: session.error })}</p>
         )}
 
-        {session.exercises.map(({ exercise, sets }) => {
+        {session.exercises.map(({ exercise, sets }, position) => {
           // Radne serije 1, 2, 3…; zagrevanje ne ulazi u brojanje.
           const labels = sets.reduce<string[]>((acc, set) => {
             const done = acc.filter((l) => l !== warmup).length
             return [...acc, set.set_type === 'warmup' ? warmup : String(done + 1)]
           }, [])
           return (
-            <section key={exercise.id} className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-line/60">
+            <section key={sessionExerciseKey(exercise.id, position)} className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-line/60">
               <div className="flex">
                 <ExerciseHeading exercise={exercise} />
               </div>
@@ -116,9 +146,14 @@ export function SessionDetailPage() {
           </p>
         )}
 
-        <FormError message={remove.isError ? errorMessage(remove.error) : null} />
-        <Button variant="ghost" className="mt-4 text-danger" onClick={() => void onDelete()} disabled={remove.isPending}>
-          {session.status === 'sent' ? t('history.delete') : t('history.discard')}
+        <FormError message={restoreError ?? discardError ?? (remove.isError ? errorMessage(remove.error) : null)} />
+        {session.status === 'rejected' && local && (
+          <Button onClick={() => void onRestore()} disabled={restoring}>
+            {t('history.restoreToEdit')}
+          </Button>
+        )}
+        <Button variant="ghost" className="mt-4 text-danger" onClick={() => void onDelete()} disabled={remove.isPending || discarding}>
+          {session.status === 'sent' ? t('history.delete') : session.status === 'deleting' ? t('history.retryDelete') : t('history.discard')}
         </Button>
       </div>
     </div>

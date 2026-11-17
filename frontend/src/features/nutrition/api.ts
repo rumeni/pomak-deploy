@@ -27,7 +27,7 @@ export interface Food {
   is_custom: boolean
 }
 
-export type NewFood = Pick<Food, 'name' | 'state' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'portions'>
+export type NewFood = Pick<Food, 'name' | 'state' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'portions'> & { id?: string }
 
 export function useFoods(q: string) {
   return useQuery({

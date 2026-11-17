@@ -45,6 +45,10 @@ export interface ActiveWorkout {
   name: string
   startedAt: string
   planSnapshot: Routine | null
+  /** Preserved when a rejected outbox session is restored for editing. */
+  draftFeeling?: number | null
+  draftNotes?: string
+  recoveredFinishedAt?: string
   exercises: ActiveExercise[]
   previous: Record<string, PreviousPerformance>
   rest: { endsAt: string; totalSeconds: number } | null
@@ -298,11 +302,17 @@ export function finishTimeForWorkout(workout: ActiveWorkout, openedAt: Date): Da
   const opened = openedAt.getTime()
   if (!Number.isFinite(start) || !Number.isFinite(opened)) return openedAt
   const maxEnd = start + 24 * 3600 * 1000
-  if (opened <= maxEnd) return new Date(Math.max(start, opened))
   const completed = workout.exercises.flatMap((e) => e.sets)
     .filter((s) => s.done && s.completedAt)
     .map((s) => new Date(s.completedAt!).getTime())
     .filter((timestamp) => Number.isFinite(timestamp) && timestamp >= start && timestamp <= opened)
+  const savedEnd = workout.recoveredFinishedAt
+    ? new Date(workout.recoveredFinishedAt).getTime() : Number.NaN
+  if (Number.isFinite(savedEnd) && savedEnd >= start && savedEnd <= maxEnd) {
+    const newlyConfirmed = completed.filter((timestamp) => timestamp > savedEnd)
+    return new Date(newlyConfirmed.length ? Math.min(Math.max(...newlyConfirmed), maxEnd) : savedEnd)
+  }
+  if (opened <= maxEnd) return new Date(Math.max(start, opened))
   const end = completed.length ? Math.max(...completed) : opened
   return new Date(Math.max(start, Math.min(end, maxEnd)))
 }
@@ -319,9 +329,84 @@ export interface SessionPayload {
   exercises: { exercise_id: string; notes: string; sets: (LoggedSet & { completed_at: string | null })[] }[]
 }
 
+/**
+ * API stores snapshots for the historical plan, not the workout's confirmed
+ * results (those are separate SetLog rows). A valid routine can contain very
+ * long notes/instructions. Keep the original snapshot while exercising, and
+ * remove bulky presentation-only fields only if its upload would breach the
+ * server's 256 KiB cap.
+ *
+ * The same converter is used for old, unsent workouts created before this fix.
+ */
+export const MAX_WORKOUT_SNAPSHOT_BYTES = 256 * 1024
+
+function snapshotBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength
+}
+
+/** Trim by Unicode code points, never in the middle of an emoji/surrogate pair. */
+function unicodePrefix(text: string, limit: number): string {
+  let prefix = ''
+  for (const symbol of text) {
+    if (limit-- <= 0) break
+    const code = symbol.codePointAt(0) ?? 0
+    prefix += code >= 0xD800 && code <= 0xDFFF ? String.fromCodePoint(0xFFFD) : symbol
+  }
+  return prefix
+}
+
+export function uploadSafePlanSnapshot(snapshot: Routine | null): Routine | null {
+  if (snapshot === null || snapshotBytes(snapshot) <= MAX_WORKOUT_SNAPSHOT_BYTES) return snapshot
+
+  // Preserve exercise identity, targets and ordering. Only human-readable,
+  // unbounded text (instructions and routine notes) is abbreviated.
+  const compact: Routine = {
+    id: snapshot.id,
+    name: unicodePrefix(snapshot.name, 100),
+    notes: unicodePrefix(snapshot.notes, 8192),
+    created_at: snapshot.created_at,
+    updated_at: snapshot.updated_at,
+    exercises: snapshot.exercises.slice(0, 40).map((item) => ({
+      exercise: {
+        id: item.exercise.id,
+        slug: item.exercise.slug,
+        name: unicodePrefix(item.exercise.name, 120),
+        aliases: '',
+        equipment: item.exercise.equipment,
+        measurement: item.exercise.measurement,
+        load_mode: item.exercise.load_mode,
+        muscle: item.exercise.muscle,
+        instructions: '',
+        is_custom: item.exercise.is_custom,
+      },
+      rest_seconds: item.rest_seconds,
+      notes: unicodePrefix(item.notes, 300),
+      sets: item.sets.slice(0, 20).map((set) => ({
+        set_type: set.set_type,
+        reps_min: set.reps_min,
+        reps_max: set.reps_max,
+        weight_kg: set.weight_kg,
+        duration_seconds: set.duration_seconds,
+        distance_m: set.distance_m,
+      })),
+    })),
+  }
+  if (snapshotBytes(compact) <= MAX_WORKOUT_SNAPSHOT_BYTES) return compact
+  // Defensive fallback for malformed legacy snapshots: logged sets and
+  // exercise IDs still travel independently of this optional historical plan.
+  return { ...compact, notes: '', exercises: compact.exercises.map((item) => ({
+    ...item, notes: '', sets: item.sets,
+  })) }
+}
+
+export function prepareSessionPayload(payload: SessionPayload): SessionPayload {
+  const safe = uploadSafePlanSnapshot(payload.plan_snapshot)
+  return safe === payload.plan_snapshot ? payload : { ...payload, plan_snapshot: safe }
+}
+
 /** Telo zahteva za server: samo potvrđene serije. */
 export function toSessionPayload(workout: ActiveWorkout, finishedAt: Date, feeling: number | null, notes: string): SessionPayload {
-  return {
+  return prepareSessionPayload({
     id: workout.id,
     routine_id: workout.routineId,
     name: workout.name,
@@ -335,5 +420,5 @@ export function toSessionPayload(workout: ActiveWorkout, finishedAt: Date, feeli
       notes: item.notes,
       sets: item.sets.filter((s) => s.done).map((s) => ({ ...setResult(s, item.exercise), completed_at: s.completedAt })),
     })),
-  }
+  })
 }

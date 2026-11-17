@@ -33,10 +33,13 @@ def _record(value, session, **extra) -> dict:
     return {'value': value, 'date': timezone.localdate(session.started_at), 'session_id': session.id, **extra}
 
 
-def analyze(measurement: str, session_exercises) -> dict:
+def analyze(measurement: str, session_exercises, *, load_mode: str = Exercise.LoadMode.TOTAL) -> dict:
     """`session_exercises`: SessionExercise sa učitanim session i sets, od najstarijeg ka najnovijem."""
     records: dict[str, dict] = {}
     points = []
+    # API stores kilograms per dumbbell/side, whereas volume is a total for
+    # both sides (matching the finished-workout screen).
+    volume_factor = 2 if load_mode == Exercise.LoadMode.PER_SIDE else 1
 
     def better(key, value, session, **extra):
         # Pri istoj vrednosti ostaje raniji rekord (datum kad je prvi put postignut).
@@ -53,11 +56,11 @@ def analyze(measurement: str, session_exercises) -> dict:
             loaded = [s for s in sets if s.weight_kg is not None and s.reps]
             for s in loaded:
                 better('heaviest', s.weight_kg, session, reps=s.reps)
-                better('best_set_volume', s.weight_kg * s.reps, session, weight=s.weight_kg, reps=s.reps)
+                better('best_set_volume', s.weight_kg * s.reps * volume_factor, session, weight=s.weight_kg, reps=s.reps)
                 if s.reps <= MAX_E1RM_REPS and s.weight_kg > 0:
                     better('e1rm', epley(s.weight_kg, s.reps).quantize(Decimal('0.1')), session, weight=s.weight_kg, reps=s.reps)
             if loaded:
-                better('session_volume', sum(s.weight_kg * s.reps for s in loaded), session)
+                better('session_volume', sum(s.weight_kg * s.reps * volume_factor for s in loaded), session)
                 point = max(s.weight_kg for s in loaded)
         elif measurement in REPS_ONLY:
             reps = [s.reps for s in sets if s.reps]

@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 
 import { DateOfBirthField } from '../../components/DateOfBirthField'
 import { Button, ChoiceCards, Field, FormError, Segmented } from '../../components/ui'
-import { api, errorMessage } from '../../lib/api'
+import { api, errorMessage, type ScopedRequestConfig } from '../../lib/api'
+import { applyOwnProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
 import type { Me, Profile } from '../../lib/types'
@@ -26,13 +27,23 @@ export function OnboardingPage() {
   const [tracking, setTracking] = useState<Tracking>('both')
 
   const saveProfile = async (profile: Partial<Profile>) => {
-    const { data } = await api.patch<Me>('/auth/me/', { profile })
-    queryClient.setQueryData(['me'], data)
+    if (!me) throw new Error('Authentication changed')
+    const scope = profileScope(me.id)
+    const data = await patchOwnProfile(me.id, profile, scope)
+    if (!data) throw new Error('Authentication changed')
+    applyOwnProfileResponse(queryClient, scope, data, profile)
   }
 
   const finish = useMutation({
-    mutationFn: async () => (await api.post<Me>('/auth/me/onboarding/complete/')).data,
-    onSuccess: (data) => queryClient.setQueryData(['me'], data),
+    mutationFn: async (ownerId: string) => {
+      const scope = profileScope(ownerId)
+      const config: ScopedRequestConfig = { __pomakScope: scope }
+      const { data } = await api.post<Me>('/auth/me/onboarding/complete/', {}, config)
+      return { data, scope }
+    },
+    onSuccess: ({ data, scope }) => {
+      applyOwnProfileResponse(queryClient, scope, data, { onboarding_completed_at: data.profile.onboarding_completed_at })
+    },
   })
 
   const tracksTraining = tracking !== 'nutrition'
@@ -42,7 +53,7 @@ export function OnboardingPage() {
   const next = () => {
     const following = steps[steps.indexOf(step) + 1]
     if (following) setStep(following)
-    else finish.mutate()
+    else if (me) finish.mutate(me.id)
   }
 
   return (

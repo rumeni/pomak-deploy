@@ -2,12 +2,14 @@ import axios from 'axios'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
-import i18n, { changeLanguage, fromServerLanguage } from '../i18n'
-import { api, revokePendingWebLogout, webHeaders, withAuthLock } from './api'
+import i18n, { changeLanguage, fromServerLanguage, toServerLanguage } from '../i18n'
+import { api, revokePendingWebLogout, webHeaders, withAuthLock, type AuthScope, type ScopedRequestConfig } from './api'
 import { performLogin } from './login'
 import { performRegistration } from './registration'
 import { AuthContext, type RegisterData } from './authContext'
-import { setCurrentUserId } from './currentUser'
+import { getCurrentUserId, setCurrentUserId } from './currentUser'
+import { flushPendingLanguage, pendingLanguage } from './languagePreference'
+import { mergeProfileResponse } from './profileMutation'
 import { tokens } from './tokens'
 import type { Me } from './types'
 
@@ -36,11 +38,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Jezik sa naloga važi na svakom uređaju na kome se korisnik prijavi.
   const accountLanguage = me ? fromServerLanguage(me.profile.language) : null
+  const ownerId = me?.id
   useEffect(() => {
-    if (!accountLanguage || accountLanguage === i18n.language) return
-    // Podaci učitani na prethodnom jeziku (nazivi vežbi, namirnica, poruke) se učitavaju ponovo.
-    void changeLanguage(accountLanguage).then(() => queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'me' }))
-  }, [accountLanguage, queryClient])
+    // A locally changed offline preference wins over a stale cached/server
+    // profile until its PATCH is confirmed. Do not silently revert on launch.
+    const preferred = ownerId ? pendingLanguage(ownerId) ?? accountLanguage : null
+    if (!preferred || preferred === i18n.language) return
+    void changeLanguage(preferred).then(() => queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'me' }))
+  }, [accountLanguage, ownerId, queryClient])
+
+  useEffect(() => {
+    if (!hasToken || !ownerId) return
+    let alive = true
+    let sending = false
+    const run = async () => {
+      if (!alive || sending || (typeof navigator !== 'undefined' && navigator.onLine === false)) return
+      const desired = pendingLanguage(ownerId)
+      if (!desired) return
+      const session = tokens.session()
+      const isCurrent = () => alive && getCurrentUserId() === ownerId && tokens.isCurrent(session)
+      if (!isCurrent()) return
+      sending = true
+      try {
+        const result = await flushPendingLanguage(ownerId, async (language) => {
+          const scope: AuthScope = { ownerId, session }
+          const requestConfig: ScopedRequestConfig = { __pomakScope: scope }
+          const { data } = await api.patch<Me>('/auth/me/', {
+            profile: { language: toServerLanguage(language) },
+          }, requestConfig)
+          return data
+        }, isCurrent)
+        if (result.synced && result.data && isCurrent()) {
+          const serverData = result.data
+          queryClient.setQueryData<Me>(['me'], (cached) => mergeProfileResponse(cached, serverData, { language: toServerLanguage(desired) }))
+        }
+      } catch {
+        // Keep the durable preference for the next online/relaunch attempt.
+      } finally {
+        sending = false
+        // Last selected language wins if it changed while an older PATCH was in flight.
+        if (alive && pendingLanguage(ownerId) && pendingLanguage(ownerId) !== desired) void run()
+      }
+    }
+    window.addEventListener('online', run)
+    window.addEventListener('pomak:language-pending', run)
+    void run()
+    return () => {
+      alive = false
+      window.removeEventListener('online', run)
+      window.removeEventListener('pomak:language-pending', run)
+    }
+  }, [hasToken, ownerId, queryClient])
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {

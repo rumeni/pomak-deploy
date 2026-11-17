@@ -10,7 +10,7 @@ import { uuid } from '../../lib/uuid'
 import { AmountPicker } from '../nutrition/AmountPicker'
 import { useFood, type Food } from '../nutrition/api'
 import { fmtValue } from '../nutrition/macroFormat'
-import { entryFromFood, isFromFood, withAmount } from './model'
+import { entryFromFood, isFromFood, validDiaryGrams, withAmount } from './model'
 import { cachedFood, deleteEntry, saveEntry, useDiaryDay } from './store'
 import { mealLabel, mealSettings, selectableMeals } from './meals'
 import { MEALS, type DiaryEntry, type MealKey } from './types'
@@ -77,7 +77,7 @@ function EntryForm({ date, meal: initialMeal, food, entry }: { date: string; mea
   const [newId] = useState(uuid)
 
   const amount = parseDecimal(grams)
-  const valid = amount !== null && amount > 0 && amount <= 5000
+  const valid = validDiaryGrams(amount)
   // Izmena računa iz snimka stavke; `food` tada služi samo za porcije.
   const draft = valid
     ? entry

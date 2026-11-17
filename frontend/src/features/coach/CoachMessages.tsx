@@ -1,16 +1,62 @@
-import { useState, type FormEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Card, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { getFormatLocale } from '../../lib/format'
 import { useCoachMessages, useSendCoachMessage } from './api'
+import { mergeCoachMessagePages } from './messages'
+import { chatScrollTop, nearChatBottom } from './chatScroll'
 
 export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?: string }) {
   const { t } = useTranslation()
   const messages = useCoachMessages(clientId)
   const send = useSendCoachMessage(clientId)
   const [text, setText] = useState('')
+  const items = mergeCoachMessagePages(messages.data?.pages ?? [])
+  const newestId = items.at(-1)?.id ?? null
+  const listRef = useRef<HTMLDivElement>(null)
+  const restoreScroll = useRef<{ top: number; height: number } | null>(null)
+  const previousCount = useRef(0)
+  const previousNewestId = useRef<string | null>(null)
+  const readerNearBottom = useRef(true)
+  const conversationKey = `${selfId}:${clientId ?? 'own'}`
+  const lastConversation = useRef(conversationKey)
+
+  // Initial load shows the newest chat message. Polling follows new messages
+  // only when the reader was already near the bottom. Loading older pages
+  // preserves the reader's original position, even across a refetch.
+  useLayoutEffect(() => {
+    if (lastConversation.current !== conversationKey) {
+      lastConversation.current = conversationKey
+      previousCount.current = 0
+      previousNewestId.current = null
+      readerNearBottom.current = true
+      restoreScroll.current = null
+    }
+    const box = listRef.current
+    if (!box) return
+    const target = chatScrollTop({
+      previousCount: previousCount.current,
+      count: items.length,
+      previousNewestId: previousNewestId.current,
+      newestId,
+      nearBottom: readerNearBottom.current,
+      scrollHeight: box.scrollHeight,
+      restore: restoreScroll.current,
+    })
+    if (target !== null) box.scrollTop = target
+    previousCount.current = items.length
+    previousNewestId.current = newestId
+    restoreScroll.current = null
+  }, [items.length, messages.data, conversationKey, newestId])
+
+  const loadOlder = () => {
+    const box = listRef.current
+    if (box) restoreScroll.current = { top: box.scrollTop, height: box.scrollHeight }
+    void messages.fetchNextPage()
+  }
+
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!text.trim()) return
@@ -18,11 +64,24 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
   }
   return (
     <Card title={t('coach.messages')}>
-      <div aria-live="polite" className="mb-3 flex max-h-80 flex-col gap-2 overflow-y-auto rounded-xl border border-line p-3">
+      <div
+        ref={listRef}
+        aria-live="polite"
+        onScroll={(event) => {
+          const box = event.currentTarget
+          readerNearBottom.current = nearChatBottom(box.scrollTop, box.clientHeight, box.scrollHeight)
+        }}
+        className="mb-3 flex max-h-80 flex-col gap-2 overflow-y-auto rounded-xl border border-line p-3"
+      >
         {messages.isLoading && <p className="text-sm text-muted">{t('common.loading')}</p>}
         {messages.isError && <FormError message={t('errors.loadFailed')} />}
-        {messages.data?.length === 0 && <p className="text-sm text-muted">{t('coach.noMessages')}</p>}
-        {!messages.isError && messages.data?.map((message) => (
+        {messages.hasNextPage && (
+          <Button variant="secondary" disabled={messages.isFetchingNextPage} onClick={loadOlder}>
+            {t(messages.isFetchingNextPage ? 'coach.loadingOlderMessages' : 'coach.loadOlderMessages')}
+          </Button>
+        )}
+        {messages.data && items.length === 0 && <p className="text-sm text-muted">{t('coach.noMessages')}</p>}
+        {items.map((message) => (
           <div key={message.id} className={`max-w-[90%] rounded-xl px-3 py-2 ${message.sender_id === selfId ? 'self-end bg-brand-soft' : 'self-start bg-surface'}`}>
             <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
             <p className="mt-1 text-right text-xs text-muted">

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import i18n from '../../i18n'
 import { api } from '../../lib/api'
 import type { SavedMealItem } from './model'
+import { savedMealConflict } from './savedMealValidation'
 
 export interface SavedMeal {
   id: string
@@ -24,6 +25,13 @@ export function useCreateSavedMeal() {
     mutationFn: async (body: { id: string; name: string; items: Record<string, string | null>[] }) =>
       (await api.post<SavedMeal>('/nutrition/saved-meals/', body)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['saved-meals'] }),
+    onError: (error) => {
+      if (savedMealConflict(error)) {
+        // The first request may have committed even when its response was lost.
+        // Show the server's existing saved meal on the next visit to the list.
+        void queryClient.invalidateQueries({ queryKey: ['saved-meals'] })
+      }
+    },
   })
 }
 

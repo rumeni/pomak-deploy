@@ -37,6 +37,33 @@ try {
   page.on('console', message => { if (message.type() === 'error') console.error('PAGE CONSOLE:', message.text()) })
   await page.goto(url, { waitUntil: 'domcontentloaded' })
 
+  // Photo-header language menus must remain reachable beyond the header
+  // on narrow phones (regression for an overflow:hidden clipping bug).
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 640 })
+    const result = await page.evaluate(() => {
+      const header = document.createElement('header')
+      header.className = 'page-header page-header--photo'
+      Object.assign(header.style, {
+        display: 'flex', position: 'fixed', top: '20px', left: '16px',
+        width: 'calc(100% - 32px)', margin: '0', zIndex: '10000',
+      })
+      header.innerHTML = '<div><h1>Trening</h1></div><div style="position:relative;margin-left:auto"><button style="height:44px">SR</button><div data-menu-probe style="position:absolute;top:52px;right:0;width:140px;height:140px;background:white;z-index:40"></div></div>'
+      document.body.append(header)
+      const menu = header.querySelector('[data-menu-probe]')
+      const rect = menu.getBoundingClientRect()
+      const headerRect = header.getBoundingClientRect()
+      const protrudes = rect.bottom > headerRect.bottom
+      const clickable = document.elementFromPoint(rect.left + 8, rect.bottom - 8) === menu
+      header.remove()
+      return { protrudes, clickable }
+    })
+    assert.ok(result.protrudes, 'Menu test must extend beyond photo header')
+    assert.ok(result.clickable, 'Mobile language popup clipped at ' + width + 'px')
+  }
+  await page.setViewportSize({ width: 1280, height: 720 })
+  console.log('Photo header dropdown remains visible at 320px and 390px')
+
   // Safari on iPhone relies on Apple-specific standalone metadata and PNG icon.
   const ios = await page.evaluate(() => ({
     capable: document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.getAttribute('content'),

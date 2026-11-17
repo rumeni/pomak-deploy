@@ -29,12 +29,14 @@ SEARCH_LIMIT = 50
 
 
 class FoodViewSet(
-    SharedLibraryMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
+    IdempotentCreateMixin, SharedLibraryMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
     mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet,
 ):
     """Zajedničke namirnice (USDA) + lične. Pretraga bez kvačica i na oba jezika (?q=piletina)."""
 
     serializer_class = FoodSerializer
+    owner_field = 'owner'
+    retry_action = 'update'
     shared_readonly_message = _('Foods from the shared database cannot be changed.')
     http_method_names = ['get', 'post', 'patch', 'delete']
 
@@ -121,6 +123,7 @@ class SavedMealViewSet(
 
     serializer_class = SavedMealSerializer
     owner_field = 'owner'
+    retry_action = 'compare'
 
     def get_queryset(self):
         items = SavedMealItem.objects.select_related('food').prefetch_related('food__portions')
@@ -138,6 +141,7 @@ class RecipeViewSet(
 
     serializer_class = RecipeSerializer
     owner_field = 'owner'
+    retry_action = 'update'
     http_method_names = ['get', 'post', 'put', 'patch', 'delete']
 
     def get_queryset(self):

@@ -64,4 +64,10 @@ export interface EntryWrite {
   carbs_g: string | null
   fat_g: string | null
   fiber_g: string | null
+  /** Only COPIES send all five historical values. Fresh food entries omit them. */
+  per100_kcal?: string
+  per100_protein_g?: string | null
+  per100_carbs_g?: string | null
+  per100_fat_g?: string | null
+  per100_fiber_g?: string | null
 }

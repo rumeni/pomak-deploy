@@ -5,12 +5,14 @@ import type { Food } from '../features/nutrition/api'
 import type { Exercise } from '../features/training/api'
 import type { ActiveWorkout, SessionPayload } from '../features/workout/model'
 
-/** Aktivan trening; uvek najviše jedan, pod ključem "current". */
+/** At most one unfinished workout per account, keyed by its owner ID. */
 export interface ActiveWorkoutRow {
-  slot: 'current'
+  slot: string
   /** Nalog kome trening pripada; na istom telefonu može da se prijavi više ljudi. */
   ownerId: string
   workout: ActiveWorkout
+  /** Each committed edit increments this; legacy IndexedDB rows start at 0. */
+  revision?: number
 }
 
 /** Završen trening koji čeka slanje na server (npr. nije bilo interneta). */
@@ -22,6 +24,11 @@ export interface OutboxRow {
   exercises: Exercise[]
   queuedAt: string
   attempts: number
+  /** At least one POST may already have reached the server, even after a network error. */
+  sendingAt?: number | null
+  /** Durable delete intent: do not re-POST; reconcile with DELETE after reconnection. */
+  deleteRequested?: boolean
+  deletingAt?: number | null
   /** Poruka servera ako je trening odbijen; takav zapis se ne šalje ponovo sam od sebe. */
   error: string | null
 }
@@ -48,6 +55,13 @@ export type DiaryOpRow = {
   | { type: 'status'; status: DayStatus }
 )
 
+/** Recoverable cross-tab lease for diary sync when Web Locks are unavailable. */
+export interface DiarySyncLeaseRow {
+  key: string
+  holder: string
+  expiresAt: number
+}
+
 /** Namirnica koju je korisnik koristio: "Nedavno" i unos bez interneta. */
 export interface FoodCacheRow {
   key: string
@@ -63,6 +77,7 @@ export const db = new Dexie('pomak') as Dexie & {
   diaryDays: EntityTable<DiaryDayRow, 'key'>
   diaryOps: EntityTable<DiaryOpRow, 'id'>
   foodCache: EntityTable<FoodCacheRow, 'key'>
+  diarySyncLeases: EntityTable<DiarySyncLeaseRow, 'key'>
 }
 
 db.version(1).stores({
@@ -83,4 +98,28 @@ db.version(3).stores({
   diaryDays: 'key, ownerId',
   diaryOps: 'id, [ownerId+date], ownerId, seq',
   foodCache: 'key, ownerId, usedAt',
+})
+
+/**
+ * Re-key a pre-existing global "current" workout on an IndexedDB upgrade.
+ * Do not drop its sets: account A's offline workout must survive a login by B.
+ * The upgrade callback runs transactionally; all other local stores persist.
+ */
+db.version(4).stores({
+  activeWorkout: 'slot',
+}).upgrade(async (tx) => {
+  const table = tx.table('activeWorkout')
+  const legacy = await table.get('current') as ActiveWorkoutRow | undefined
+  if (legacy?.ownerId) {
+    if (!(await table.get(legacy.ownerId))) {
+      await table.put({ ...legacy, slot: legacy.ownerId })
+    }
+    await table.delete('current')
+  }
+})
+
+
+/** Add-only store: upgrading a device must never clear its existing offline diary. */
+db.version(5).stores({
+  diarySyncLeases: 'key',
 })

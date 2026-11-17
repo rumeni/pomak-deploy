@@ -4,8 +4,12 @@ import { AxiosError, AxiosHeaders } from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from '../../lib/db'
+import { setCurrentUserId } from '../../lib/currentUser'
+import { StaleWorkoutError } from './store'
 import type { SessionPayload } from './model'
-import { classifySendError, finishWorkout, mergePrevious, pendingSessions, previousFromOutbox, syncOutbox } from './outbox'
+import type { Exercise } from '../training/api'
+import { classifySendError, discardOutboxItem, finishWorkout as finishWorkoutAtomic, mergePrevious, pendingSessions, previousFromOutbox, restoreRejectedWorkout, syncOutbox } from './outbox'
+import { MAX_WORKOUT_SNAPSHOT_BYTES } from './model'
 
 function payload(id: string, startedAt: string, exerciseId = 'bench', weight = '60'): SessionPayload {
   return {
@@ -30,23 +34,71 @@ function httpError(status: number, data: unknown = {}): AxiosError {
 
 const networkError = () => new AxiosError('Network Error', 'ERR_NETWORK')
 
+/** Existing upload tests enqueue real completed workouts one after another. */
+async function finishWorkout(ownerId: string, result: SessionPayload, exercises: Exercise[], now?: Date): Promise<void> {
+  setCurrentUserId(ownerId)
+  await db.activeWorkout.put({ slot: ownerId, ownerId, workout: { id: result.id, name: result.name } as never })
+  await finishWorkoutAtomic(ownerId, result, exercises, now)
+}
+
 beforeEach(async () => {
   await db.outbox.clear()
   await db.activeWorkout.clear()
+  setCurrentUserId(null)
 })
 
 describe('finishWorkout', () => {
   it('upisuje u red i briše aktivan trening u istoj transakciji', async () => {
-    await db.activeWorkout.put({ slot: 'current', ownerId: 'u1', workout: {} as never })
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: {} as never })
     await finishWorkout('u1', payload('a', '2026-09-30T10:00:00Z'), [])
     expect(await db.activeWorkout.count()).toBe(0)
     expect((await pendingSessions('u1')).map((r) => r.id)).toEqual(['a'])
+  })
+
+  it('finishing B preserves A\'s unfinished workout on the same device', async () => {
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { name: 'A unfinished' } as never })
+    await db.activeWorkout.put({ slot: 'u2', ownerId: 'u2', workout: { name: 'B finished' } as never })
+    await finishWorkout('u2', payload('b', '2026-09-30T11:00:00Z'), [])
+    expect((await db.activeWorkout.get('u1'))?.workout.name).toBe('A unfinished')
+    expect(await db.activeWorkout.get('u2')).toBeUndefined()
   })
 
   it('red je odvojen po nalogu', async () => {
     await finishWorkout('u1', payload('a', '2026-09-30T10:00:00Z'), [])
     await finishWorkout('u2', payload('b', '2026-09-30T11:00:00Z'), [])
     expect((await pendingSessions('u1')).map((r) => r.id)).toEqual(['a'])
+  })
+})
+
+describe('stale-tab finish protection (#51)', () => {
+  const when = '2026-11-16T14:00:00Z'
+
+  it('refuses to queue A or remove B after another tab replaces A with B', async () => {
+    setCurrentUserId('u1')
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { id: 'A', name: 'A' } as never })
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { id: 'B', name: 'B' } as never })
+
+    await expect(finishWorkoutAtomic('u1', payload('A', when), [])).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect((await db.activeWorkout.get('u1'))?.workout).toMatchObject({ id: 'B', name: 'B' })
+    expect(await db.outbox.get('A')).toBeUndefined()
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('rejects a stale save when the active workout has already been removed', async () => {
+    setCurrentUserId('u1')
+    await expect(finishWorkoutAtomic('u1', payload('A', when), [])).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('rejects a stale save after account switch, preserving both accounts', async () => {
+    setCurrentUserId('u1')
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { id: 'A' } as never })
+    await db.activeWorkout.put({ slot: 'u2', ownerId: 'u2', workout: { id: 'B' } as never })
+    setCurrentUserId('u2')
+    await expect(finishWorkoutAtomic('u1', payload('A', when), [])).rejects.toBeInstanceOf(StaleWorkoutError)
+    expect((await db.activeWorkout.get('u1'))?.workout.id).toBe('A')
+    expect((await db.activeWorkout.get('u2'))?.workout.id).toBe('B')
+    expect(await db.outbox.count()).toBe(0)
   })
 })
 
@@ -59,6 +111,23 @@ describe('syncOutbox', () => {
     expect(sent).toEqual(['stari', 'novi'])
     expect(report).toEqual({ sent: 2, rejected: 0, pending: 0 })
     expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('repairs an older oversized queued snapshot at upload without touching its logged sets', async () => {
+    const old = payload('oversized', '2026-09-30T10:00:00Z')
+    old.plan_snapshot = {
+      id: 'r1', name: 'Huge', created_at: '', updated_at: '',
+      notes: 'n'.repeat(300_000),
+      exercises: [],
+    }
+    await finishWorkout('u1', old, [])
+    const send = vi.fn(async (ready: SessionPayload) => {
+      expect(JSON.stringify(ready.plan_snapshot).length).toBeLessThan(MAX_WORKOUT_SNAPSHOT_BYTES)
+      expect(ready.exercises).toEqual(old.exercises)
+      expect(ready.id).toBe('oversized')
+    })
+    expect((await syncOutbox('u1', send)).sent).toBe(1)
+    expect(send).toHaveBeenCalledTimes(1)
   })
 
   it('bez interneta staje i ništa ne gubi', async () => {
@@ -122,6 +191,86 @@ describe('syncOutbox', () => {
   })
 })
 
+describe('durable workout deletion reconciliation (#47)', () => {
+  it('discards a never-uploaded workout locally without contacting the server', async () => {
+    await finishWorkout('u1', payload('local', '2026-09-30T10:00:00Z'), [])
+    await discardOutboxItem('u1', 'local')
+    expect(await db.outbox.get('local')).toBeUndefined()
+  })
+
+  it('does not delete local identity until a concurrent POST is followed by DELETE', async () => {
+    await finishWorkout('u1', payload('race', '2026-09-30T10:00:00Z'), [])
+    let sendStarted!: () => void
+    let finishSend!: () => void
+    const started = new Promise<void>((resolve) => { sendStarted = resolve })
+    const continueSend = new Promise<void>((resolve) => { finishSend = resolve })
+    let posted = false
+    const send = vi.fn(async () => {
+      sendStarted()
+      await continueSend
+      posted = true
+    })
+    const remove = vi.fn(async (id: string) => {
+      expect(posted).toBe(true)
+      expect(id).toBe('race')
+    })
+    const running = syncOutbox('u1', send, () => true, 'race-session', remove)
+    await started
+    await discardOutboxItem('u1', 'race')
+    const tombstone = (await db.outbox.get('race'))!
+    expect(tombstone.deleteRequested).toBe(true)
+    expect(tombstone.payload.exercises).toEqual([])
+    expect(tombstone.exercises).toEqual([])
+    finishSend()
+    const report = await running
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(report.deleted).toBe(1)
+    expect(report.sent).toBe(0)
+    expect(await db.outbox.get('race')).toBeUndefined()
+  })
+
+  it('reconciles an upload whose HTTP response was lost and retries a failed DELETE', async () => {
+    await finishWorkout('u1', payload('uncertain', '2026-09-30T10:00:00Z'), [])
+    const send = vi.fn().mockRejectedValue(networkError())
+    expect((await syncOutbox('u1', send)).pending).toBe(1)
+    expect((await db.outbox.get('uncertain'))?.attempts).toBe(1)
+
+    await discardOutboxItem('u1', 'uncertain')
+    const remove = vi.fn().mockRejectedValueOnce(networkError()).mockResolvedValueOnce(undefined)
+    const first = await syncOutbox('u1', send, () => true, 'recovery1', remove)
+    expect(first.deleted).toBeUndefined()
+    expect((await db.outbox.get('uncertain'))?.deleteRequested).toBe(true)
+    const second = await syncOutbox('u1', send, () => true, 'recovery2', remove)
+    expect(second.deleted).toBe(1)
+    expect(await db.outbox.get('uncertain')).toBeUndefined()
+    expect(send).toHaveBeenCalledTimes(1) // Never reupload after delete intent.
+  })
+
+  it('accepts 404 as deletion confirmed and never erases a different account', async () => {
+    await finishWorkout('u1', payload('known', '2026-09-30T10:00:00Z'), [])
+    await db.outbox.update('known', { attempts: 1 })
+    await expect(discardOutboxItem('u2', 'known')).rejects.toThrow('NOT_FOUND')
+    expect((await db.outbox.get('known'))?.deleteRequested).toBeUndefined()
+    await discardOutboxItem('u1', 'known')
+    expect((await syncOutbox('u1', vi.fn(), () => true, 'delete404',
+      async () => { throw httpError(404) })).deleted).toBe(1)
+    expect(await db.outbox.get('known')).toBeUndefined()
+  })
+
+  it('recreates only a delete tombstone when POST completed just before user tapped Delete', async () => {
+    await finishWorkout('u1', payload('sent', '2026-09-30T10:00:00Z'), [])
+    await syncOutbox('u1', async () => undefined)
+    expect(await db.outbox.get('sent')).toBeUndefined()
+    await discardOutboxItem('u1', 'sent')
+    expect((await db.outbox.get('sent'))?.deleteRequested).toBe(true)
+    const remove = vi.fn().mockResolvedValue(undefined)
+    await syncOutbox('u1', vi.fn(), () => true, 'after-sent', remove)
+    expect(remove).toHaveBeenCalledWith('sent')
+    expect(await db.outbox.get('sent')).toBeUndefined()
+  })
+})
+
 describe('classifySendError', () => {
   it('razlikuje privremene greške od odbijenih podataka', () => {
     expect(classifySendError(networkError()).result).toBe('retry-later')
@@ -148,5 +297,79 @@ describe('prošli rezultati sa telefona', () => {
     const merged = mergePrevious(server, local)
     expect(merged.bench.session_id).toBe('nov')
     expect(merged.squat.session_id).toBe('s')
+  })
+})
+
+describe('workout instants across timezone offsets', () => {
+  it('selects the newest previous result by absolute timestamp', () => {
+    const server = { bench: { session_id: 'api', started_at: '2026-11-16T21:00:00+01:00', sets: [] } }
+    const local = { bench: { session_id: 'offline', started_at: '2026-11-16T20:30:00.000Z', sets: [] } }
+    expect(mergePrevious(server, local).bench.session_id).toBe('offline')
+    expect(mergePrevious(local, server).bench.session_id).toBe('offline')
+  })
+
+  it('uploads older workouts before newer ones even across offset formats', async () => {
+    await finishWorkout('u1', payload('older', '2026-11-16T21:00:00+01:00'), [])
+    await finishWorkout('u1', payload('newer', '2026-11-16T20:30:00.000Z'), [])
+    const sent: string[] = []
+    await syncOutbox('u1', async (p) => void sent.push(p.id))
+    expect(sent).toEqual(['older', 'newer'])
+  })
+})
+
+describe('restore rejected offline workout', () => {
+  const exercise: Exercise = {
+    id: 'bench', name: 'Bench', aliases: '', equipment: 'barbell', measurement: 'weight_reps',
+    load_mode: 'total', muscle: 'chest', instructions: '', is_custom: false,
+  }
+
+  it('recovers sets, notes and session identity atomically for editing', async () => {
+    const body = payload('rejected', '2026-09-29T10:00:00Z')
+    body.feeling = 4
+    body.notes = 'Previous notes'
+    await finishWorkout('u1', body, [exercise])
+    await db.outbox.update('rejected', { error: 'Too long' })
+
+    await restoreRejectedWorkout('u1', 'rejected')
+    const active = await db.activeWorkout.get('u1')
+    expect(active?.workout.id).toBe('rejected')
+    expect(active?.workout.draftFeeling).toBe(4)
+    expect(active?.workout.draftNotes).toBe('Previous notes')
+    expect(active?.workout.recoveredFinishedAt).toBe(body.finished_at)
+    expect(active?.workout.exercises[0].sets[0]).toMatchObject({ done: true, reps: '8', weight: '60' })
+    expect(await db.outbox.get('rejected')).toBeUndefined()
+  })
+
+  it('A\'s active workout does not block B from restoring B\'s rejected workout', async () => {
+    await finishWorkout('u2', payload('other', '2026-09-29T10:00:00Z'), [exercise])
+    await db.outbox.update('other', { error: 'Invalid' })
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: { name: 'A unfinished' } as never })
+    await restoreRejectedWorkout('u2', 'other')
+    expect((await db.activeWorkout.get('u1'))?.workout.name).toBe('A unfinished')
+    expect((await db.activeWorkout.get('u2'))?.workout.id).toBe('other')
+  })
+
+  it('restoring a rejected workout also repairs an oversized snapshot', async () => {
+    const old = payload('old', '2026-09-29T10:00:00Z')
+    old.plan_snapshot = {
+      id: 'routine', name: 'Large', notes: 'x'.repeat(300_000),
+      created_at: '', updated_at: '', exercises: [],
+    }
+    await finishWorkout('u1', old, [exercise])
+    await db.outbox.update('old', { error: 'The workout plan snapshot is too large.' })
+    await restoreRejectedWorkout('u1', 'old')
+    const restored = await db.activeWorkout.get('u1')
+    expect(restored?.workout.id).toBe('old')
+    expect(JSON.stringify(restored?.workout.planSnapshot).length).toBeLessThan(MAX_WORKOUT_SNAPSHOT_BYTES)
+    expect(restored?.workout.exercises[0].sets[0]).toMatchObject({ weight: '60', reps: '8', done: true })
+  })
+
+  it('never overwrites an active workout or another user’s queued workout', async () => {
+    await finishWorkout('u1', payload('one', '2026-09-29T10:00:00Z'), [exercise])
+    await db.outbox.update('one', { error: 'Invalid' })
+    await expect(restoreRejectedWorkout('u2', 'one')).rejects.toThrow('NOT_FOUND')
+    await db.activeWorkout.put({ slot: 'u1', ownerId: 'u1', workout: {} as never })
+    await expect(restoreRejectedWorkout('u1', 'one')).rejects.toThrow('ACTIVE_WORKOUT_EXISTS')
+    expect(await db.outbox.get('one')).toBeDefined()
   })
 })

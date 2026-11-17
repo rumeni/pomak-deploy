@@ -43,6 +43,27 @@ class SavedMealTests(APITestCase):
         self.client.force_authenticate(User.objects.create_user('c@d.rs', 'jaka-lozinka-123'))
         self.assertEqual(self.client.get('/api/nutrition/saved-meals/').data, [])
 
+    def test_exact_retry_after_server_trims_text_remains_idempotent(self):
+        mid = str(uuid.uuid4())
+        body = self.body(id=mid, name='  Moj doručak  ')
+        body['items'][0]['portion_name'] = '  2 jaja  '
+        first = self.client.post('/api/nutrition/saved-meals/', body, format='json')
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(first.data['name'], 'Moj doručak')
+        retried = self.client.post('/api/nutrition/saved-meals/', body, format='json')
+        self.assertEqual(retried.status_code, 200, retried.data)
+        self.assertEqual(SavedMeal.objects.count(), 1)
+
+    def test_changed_retry_returns_conflict_instead_of_false_success(self):
+        meal_id = str(uuid.uuid4())
+        original = self.body(id=meal_id, name='First breakfast')
+        self.assertEqual(self.client.post('/api/nutrition/saved-meals/', original, format='json').status_code, 201)
+        self.assertEqual(self.client.post('/api/nutrition/saved-meals/', original, format='json').status_code, 200)
+        changed = self.client.post('/api/nutrition/saved-meals/', self.body(id=meal_id, name='Changed breakfast'), format='json')
+        self.assertEqual(changed.status_code, 409, changed.data)
+        self.assertEqual(SavedMeal.objects.get(pk=meal_id).name, 'First breakfast')
+        self.assertEqual(SavedMeal.objects.count(), 1)
+
     def test_validation(self):
         post = lambda b: self.client.post('/api/nutrition/saved-meals/', b, format='json')  # noqa: E731
         self.assertEqual(post(self.body(items=[])).status_code, 400)

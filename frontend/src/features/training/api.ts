@@ -70,7 +70,7 @@ export interface RoutinePayload {
   exercises: (Omit<RoutineExercise, 'exercise'> & { exercise_id: string })[]
 }
 
-export type NewExercise = Pick<Exercise, 'name' | 'equipment' | 'measurement' | 'muscle' | 'load_mode'>
+export type NewExercise = Pick<Exercise, 'name' | 'equipment' | 'measurement' | 'muscle' | 'load_mode'> & { id?: string }
 
 export function useExercises(q: string, muscle: Muscle | '') {
   return useQuery({

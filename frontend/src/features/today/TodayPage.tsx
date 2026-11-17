@@ -22,7 +22,7 @@ import { useSessions } from '../workout/api'
 import { fromOutbox, fromServer } from '../workout/history'
 import { usePendingSessions } from '../workout/outbox'
 import { useStartWorkout } from '../workout/useStartWorkout'
-import { nextRoutine } from './next'
+import { nextRoutine, sessionsWithPending } from './next'
 import { progressDate, weekActivity, workoutCountWithPending } from './week'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
@@ -76,14 +76,15 @@ function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: stri
   const nutritionToday = toISODate(now)
   const monday = mondayOf(workoutToday)
   const week = useWeek(monday)
-  const { data: sessions } = useSessions()
+  const { data: pages } = useSessions(tracksTraining ? ownerId : undefined)
+  const sessions = pages?.pages.flat() ?? []
   // Treninzi koji čekaju slanje (bez interneta) se vide odmah.
   const pending = usePendingSessions(tracksTraining ? ownerId : undefined)
   const { data: weights } = useMeasurements('weight')
   const { day } = useDiaryDay(tracksNutrition ? ownerId : undefined, nutritionToday)
 
   const weekday = new Intl.DateTimeFormat(getFormatLocale(), { weekday: 'narrow' })
-  const { days, trained, unsentThisWeek } = weekActivity((sessions ?? []).map(fromServer), (pending ?? []).map(fromOutbox), monday)
+  const { days, trained, unsentThisWeek } = weekActivity((sessions ?? []).map(fromServer), (pending ?? []).filter((row) => !row.deleteRequested).map(fromOutbox), monday)
   const workouts = week.data?.workouts
   const latest = weights?.[0]
 
@@ -133,14 +134,21 @@ function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: stri
 function TrainingCard() {
   const { t } = useTranslation()
   const { data: routines, isLoading } = useRoutines()
-  const { data: sessions } = useSessions()
-  const week = useWeek(mondayOf(toISODate(new Date())))
+  const { me } = useAuth()
+  const { data: pages } = useSessions(me?.id)
+  const sessions = pages?.pages.flat() ?? []
+  const pending = usePendingSessions(me?.id)
+  const recent = sessionsWithPending(sessions, pending ?? [])
+  const today = progressDate(new Date())
+  const monday = mondayOf(today)
+  const week = useWeek(monday)
+  const { unsentThisWeek } = weekActivity(sessions.map(fromServer), (pending ?? []).map(fromOutbox), monday)
+  const weekCount = workoutCountWithPending(week.data?.workouts.count, unsentThisWeek)
   const start = useStartWorkout()
   const [starting, setStarting] = useState(false)
 
-  const today = toISODate(new Date())
-  const doneToday = sessions?.filter((s) => toISODate(new Date(s.started_at)) === today) ?? []
-  const next = routines ? nextRoutine(routines, sessions ?? []) : null
+  const doneToday = recent.filter((s) => progressDate(new Date(s.started_at)) === today)
+  const next = routines ? nextRoutine(routines, recent) : null
   const onStart = async (routine: Parameters<typeof start>[0]) => {
     setStarting(true)
     try {
@@ -155,15 +163,15 @@ function TrainingCard() {
       <div className="card-photo" style={photoStyle(trainingPhoto)} aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('today.training')}</h2>
-        {week.data && (
+        {weekCount !== null && (
           <span className="text-sm text-muted tabular-nums">
-            {week.data.workouts.target
+            {week.data?.workouts.target
               ? t('today.weekCount', {
-                  count: week.data.workouts.count,
+                  count: weekCount,
                   target: week.data.workouts.target,
                 })
               : t('today.weekCountNoTarget', {
-                  count: week.data.workouts.count,
+                  count: weekCount,
                 })}
           </span>
         )}

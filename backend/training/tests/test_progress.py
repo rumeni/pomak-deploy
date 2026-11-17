@@ -16,6 +16,7 @@ class ExerciseProgressTests(APITestCase):
         self.user = User.objects.create_user('a@b.rs', 'jaka-lozinka-123')
         self.client.force_authenticate(self.user)
         self.bench = Exercise.objects.get(slug='bench-press')
+        self.dumbbell = Exercise.objects.get(slug='dumbbell-bench-press')
         self.dips = Exercise.objects.get(slug='dips')
         self.plank = Exercise.objects.get(slug='plank')
 
@@ -49,6 +50,23 @@ class ExerciseProgressTests(APITestCase):
         self.assertEqual(data['chart']['metric'], 'heaviest')
         self.assertEqual([p['value'] for p in data['chart']['points']], ['70.00', '80.00', '70.00'])
         self.assertEqual([h['name'] for h in data['history']], ['Trening 15', 'Trening 8', 'Trening 1'])
+
+    def test_per_side_volumes_match_workout_summary_without_changing_strength_records(self):
+        self.workout(4, self.dumbbell, [
+            {'weight_kg': '20', 'reps': 10},
+            {'weight_kg': '25', 'reps': 4},
+        ])
+        records = self.progress(self.dumbbell)['records']
+        self.assertEqual(records['best_set_volume']['value'], '400.00')
+        self.assertEqual(records['session_volume']['value'], '600.00')
+        # Heaviest and estimated 1RM still refer to the displayed kg PER dumbbell.
+        self.assertEqual(records['heaviest']['value'], '25.00')
+        self.assertEqual(records['e1rm']['value'], '28.3')
+
+        self.workout(5, self.bench, [{'weight_kg': '20', 'reps': 10}])
+        barbell = self.progress(self.bench)['records']
+        self.assertEqual(barbell['best_set_volume']['value'], '200.00')
+        self.assertEqual(barbell['session_volume']['value'], '200.00')
 
     def test_bodyweight_and_duration_records(self):
         self.workout(1, self.dips, [{'reps': 8}, {'reps': 10}])

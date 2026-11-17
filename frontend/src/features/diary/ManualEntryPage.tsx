@@ -4,17 +4,19 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Button, Field, FormError, LoadingScreen, ScreenHeader, SelectField } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
-import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
+import { formatDecimal, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { manualEntry } from './model'
+import { findManualEntryForEdit } from './manualEntryLookup'
+import { parseManualValue, type ManualValueField } from './manualEntryValidation'
 import { deleteEntry, saveEntry, useDiaryDay } from './store'
 import { mealLabel, mealSettings, selectableMeals } from './meals'
 import { MEALS, type DiaryEntry, type MealKey } from './types'
 
-type ValueField = 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'
-
 /** Ručni unos poznatih vrednosti za celu pojedenu količinu (?datum=&obrok= ili ?stavka=&datum=). */
 export function ManualEntryPage() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
   const { me } = useAuth()
   const [params] = useSearchParams()
   const date = params.get('datum') ?? toISODate(new Date())
@@ -22,7 +24,13 @@ export function ManualEntryPage() {
   const { day } = useDiaryDay(me?.id, date)
 
   if (entryId && !day) return <LoadingScreen />
-  const entry = entryId ? day?.entries.find((e) => e.id === entryId) : undefined
+  const entry = findManualEntryForEdit(entryId, day)
+  if (entryId && !entry) return (
+    <div className="min-h-full pb-10">
+      <ScreenHeader title={t('diary.manualTitle')} onBack={() => navigate(-1)} />
+      <p className="p-6 text-center text-danger">{t('diary.entryNotFound')}</p>
+    </div>
+  )
   const meal = entry?.meal ?? ((MEALS.includes(params.get('obrok') as MealKey) ? params.get('obrok') : 'snack') as MealKey)
   return <ManualForm key={entry?.id ?? 'new'} date={date} meal={meal} entry={entry} />
 }
@@ -36,7 +44,7 @@ function ManualForm({ date, meal: initialMeal, entry }: { date: string; meal: Me
   const [meal, setMeal] = useState<MealKey>(initialMeal)
   const settings = mealSettings(me?.profile.meals)
   const initial = (v: string | null | undefined) => (v == null ? '' : formatDecimal(Number(v)))
-  const [values, setValues] = useState<Record<ValueField, string>>({
+  const [values, setValues] = useState<Record<ManualValueField, string>>({
     kcal: initial(entry?.kcal),
     protein_g: initial(entry?.protein_g),
     carbs_g: initial(entry?.carbs_g),
@@ -45,11 +53,12 @@ function ManualForm({ date, meal: initialMeal, entry }: { date: string; meal: Me
   })
   const [error, setError] = useState<string | null>(null)
 
-  const fields: [ValueField, string][] = [
+  const fields: [ManualValueField, string][] = [
     ['kcal', t('diary.manualKcal')],
     ['protein_g', `${t('nutrition.protein')} (g)`],
     ['carbs_g', `${t('nutrition.carbs')} (g)`],
     ['fat_g', `${t('nutrition.fat')} (g)`],
+    ['fiber_g', `${t('nutrition.fiber')} (g)`],
   ]
 
   const back = () => navigate(`/ishrana?datum=${date}`, { replace: true })
@@ -58,13 +67,17 @@ function ManualForm({ date, meal: initialMeal, entry }: { date: string; meal: Me
     e.preventDefault()
     if (!me) return
     if (!name.trim()) return setError(t('newFood.errors.nameRequired'))
-    const parsed: Record<ValueField, string | null> = { kcal: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null }
+    if (name.trim().length > 150) return setError(t('diary.manualNameTooLong', { max: 150 }))
+    const parsed: Record<ManualValueField, string | null> = { kcal: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null }
     for (const [field, label] of fields) {
       const text = values[field].trim()
-      if (!text) continue
-      const n = parseDecimal(text)
-      if (n === null) return setError(t('newFood.errors.invalidNumber', { field: label, value: text }))
-      parsed[field] = String(n)
+      const result = parseManualValue(field, text)
+      if (!result.ok) {
+        if (result.error === 'invalid') return setError(t('newFood.errors.invalidNumber', { field: label, value: text }))
+        if (result.error === 'range') return setError(t('diary.manualValueRange', { field: label, max: result.max }))
+        return setError(t('diary.manualValuePrecision', { field: label, places: result.places }))
+      }
+      parsed[field] = result.value
     }
     if (parsed.kcal === null) return setError(t('newFood.errors.kcalRequired'))
     const draft = manualEntry(entry?.id ?? newId, date, meal, name.trim(), parsed, new Date(), entry)

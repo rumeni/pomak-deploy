@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.db import transaction
@@ -6,14 +7,20 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from core.i18n import localized_name
+from core.text import EXERCISE_PREMIGRATION_KEY_LIMIT, search_key_fits
 
 from .models import Exercise, Routine, RoutineExercise, RoutineSet, SessionExercise, SetLog, WorkoutSession
 
 MAX_EXERCISES_PER_ROUTINE = 40
 MAX_SETS_PER_EXERCISE = 20
+# Finished workouts use the same practical caps as the routine editor.
+MAX_SESSION_EXERCISES = 40
+MAX_SESSION_SETS_PER_EXERCISE = 20
+MAX_WORKOUT_SNAPSHOT_BYTES = 256 * 1024
 
 
 class ExerciseSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(required=False)
     is_custom = serializers.SerializerMethodField()
 
     class Meta:
@@ -39,6 +46,18 @@ class ExerciseSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError(_('Enter the exercise name.'))
         return value
+
+    def update(self, instance, validated_data):
+        validated_data.pop('id', None)  # Never re-key an existing exercise.
+        return super().update(instance, validated_data)
+
+    def validate(self, attrs):
+        name = attrs.get('name', getattr(self.instance, 'name', ''))
+        aliases = attrs.get('aliases', getattr(self.instance, 'aliases', ''))
+        if not search_key_fits(name, getattr(self.instance, 'name_en', ''),
+                               aliases, max_chars=EXERCISE_PREMIGRATION_KEY_LIMIT):
+            raise serializers.ValidationError({'name': _('Name or aliases are too long for search.')})
+        return attrs
 
 
 class RoutineSetSerializer(serializers.ModelSerializer):
@@ -169,6 +188,13 @@ class SessionExerciseSerializer(serializers.ModelSerializer):
         model = SessionExercise
         fields = ['exercise', 'exercise_id', 'notes', 'sets']
 
+    def validate_sets(self, value):
+        if len(value) > MAX_SESSION_SETS_PER_EXERCISE:
+            raise serializers.ValidationError(
+                _('At most %(count)d sets per exercise.') % {'count': MAX_SESSION_SETS_PER_EXERCISE}
+            )
+        return value
+
     def validate_exercise_id(self, exercise):
         if exercise.owner_id not in (None, self.context['request'].user.pk):
             raise serializers.ValidationError(_('This exercise is not available.'))
@@ -194,6 +220,24 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
         if routine is not None and routine.owner_id != self.context['request'].user.pk:
             raise serializers.ValidationError(_('This routine is not available.'))
         return routine
+
+    def validate_exercises(self, value):
+        if len(value) > MAX_SESSION_EXERCISES:
+            raise serializers.ValidationError(
+                _('At most %(count)d exercises per workout.') % {'count': MAX_SESSION_EXERCISES}
+            )
+        return value
+
+    def validate_plan_snapshot(self, value):
+        if value is None:
+            return value
+        try:
+            size = len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+        except (TypeError, ValueError, OverflowError, RecursionError, UnicodeError):
+            raise serializers.ValidationError(_('Invalid workout plan snapshot.')) from None
+        if size > MAX_WORKOUT_SNAPSHOT_BYTES:
+            raise serializers.ValidationError(_('The workout plan snapshot is too large.'))
+        return value
 
     def validate(self, attrs):
         started, finished = attrs['started_at'], attrs['finished_at']

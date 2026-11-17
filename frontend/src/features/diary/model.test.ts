@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { DiaryOpRow } from '../../lib/db'
 import type { Food } from '../nutrition/api'
-import { applyOps, copyEntry, entryFromFood, entryFromSavedItem, manualEntry, savedItemFromEntry, totals, withAmount } from './model'
+import { applyOps, copyEntry, entryFromFood, entryFromSavedItem, manualEntry, savedItemFromEntry, totals, validDiaryGrams, withAmount } from './model'
 import type { DiaryDay } from './types'
 
 const egg: Food = {
@@ -14,6 +14,18 @@ const DAY = '2026-09-30'
 
 const op = (seq: number, rest: Partial<DiaryOpRow> & Pick<DiaryOpRow, 'type'>): DiaryOpRow =>
   ({ id: `op${seq}`, ownerId: 'u', date: DAY, seq, error: null, ...rest }) as DiaryOpRow
+
+describe('entry amount bounds aligned with the server', () => {
+  it('rejects sub-0.1 g amounts before they could be rounded to 0.0 g', () => {
+    expect(validDiaryGrams(0.01)).toBe(false)
+    expect(validDiaryGrams(0.05)).toBe(false)
+    expect(validDiaryGrams(0.099)).toBe(false)
+    expect(validDiaryGrams(0.1)).toBe(true)
+    expect(validDiaryGrams(5000)).toBe(true)
+    expect(validDiaryGrams(5000.1)).toBe(false)
+    expect(validDiaryGrams(null)).toBe(false)
+  })
+})
 
 describe('stavke', () => {
   it('iz namirnice računa isto kao server (143 kcal/100 g × 50 g = 71,5)', () => {
@@ -98,13 +110,40 @@ describe('kopiranje i sačuvani obroci', () => {
   it('kopija ima novi ID, datum i obrok, a vrednosti iste', () => {
     const { body, preview } = copyEntry(eggEntry, 'b', '2026-10-01', 'lunch', now)
     expect(preview).toMatchObject({ id: 'b', date: '2026-10-01', meal: 'lunch', kcal: '143.0', portion_name: '2 jaja' })
-    expect(body).toMatchObject({ food_id: 'egg', grams: '100.0' })
+    expect(body).toMatchObject({
+      food_id: 'egg', grams: '100.0',
+      per100_kcal: '143.0', per100_protein_g: '12.56',
+      per100_carbs_g: '0.72', per100_fat_g: '9.51', per100_fiber_g: '0.00',
+    })
+  })
+
+  it('kopira offline izvor koji i sam čeka slanje, sa tačnim lokalnim zbirom', () => {
+    const original = entryFromFood('pending-original', DAY, 'breakfast', egg, 50, '', now)
+    const copied = copyEntry(original.preview, 'pending-copy', DAY, 'lunch', now)
+    const pending = [
+      op(1, { type: 'upsert', entryId: original.preview.id, body: original.body, preview: original.preview }),
+      op(2, { type: 'upsert', entryId: copied.preview.id, body: copied.body, preview: copied.preview }),
+    ]
+    const day = applyOps(DAY, null, pending)
+    expect(day.entries.map((entry) => entry.id)).toEqual(['pending-original', 'pending-copy'])
+    expect(totals(day.entries).kcal).toBe(143)
+    expect(copied.body.per100_kcal).toBe('143.0')
+    expect(original.body.per100_kcal).toBeUndefined()
+  })
+
+  it('nov unos i sačuvani obrok bez kopiranja ne šalju stari snimak', () => {
+    const fresh = entryFromFood('fresh', DAY, 'lunch', { ...egg, kcal: '160.0' }, 100, '', now)
+    expect(fresh.body.per100_kcal).toBeUndefined()
+    const saved = entryFromSavedItem({ food: { ...egg, kcal: '160.0' }, grams: '100', portion_name: '', name: '', kcal: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null }, 'saved', DAY, 'dinner', now)
+    expect(saved?.preview.kcal).toBe('160.0')
+    expect(saved?.body.per100_kcal).toBeUndefined()
   })
 
   it('stavka čija je namirnica obrisana kopira se kao ručni unos', () => {
     const orphan = { ...eggEntry, food_id: null }
     const { body } = copyEntry(orphan, 'b', DAY, 'lunch', now)
     expect(body).toMatchObject({ food_id: null, grams: null, name: 'Jaje (sirovo)', kcal: '143.0' })
+    expect(body.per100_kcal).toBeUndefined()
   })
 
   it('sačuvani obrok: namirnica daje vrednosti, ručna stavka svoje; tuđa/obrisana se preskače', () => {

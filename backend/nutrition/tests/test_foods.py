@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 
 from rest_framework.test import APITestCase
@@ -104,8 +105,90 @@ class FoodDatabaseTests(APITestCase):
         self.client.force_authenticate(self.user)
         self.assertEqual(self.client.get(url).data['name'], 'Ispravljena namirnica')
 
+
+    def test_custom_food_client_uuid_retry_updates_without_duplicate_or_rekey(self):
+        food_id = str(uuid.uuid4())
+        post = lambda body: self.client.post('/api/nutrition/foods/', body, format='json')  # noqa: E731
+        payload = {
+            'id': food_id, 'name': 'My oats', 'kcal': '380', 'state': 'raw',
+            'protein_g': '13', 'portions': [{'name': 'bowl', 'grams': '80'}],
+        }
+        first = post(payload)
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(first.data['id'], food_id)
+
+        # Retry after a lost response. The database contains only the original.
+        same = post(payload)
+        self.assertEqual(same.status_code, 200, same.data)
+        self.assertEqual(same.data['id'], food_id)
+        self.assertEqual(Food.objects.filter(owner=self.user, source='custom').count(), 1)
+        self.assertEqual(Food.objects.get(pk=food_id).portions.count(), 1)
+
+        # Retry after the user edits the form: apply updated data to the same row.
+        edited = post({
+            **payload, 'name': 'My oats (corrected)', 'kcal': '370.0',
+            'portions': [{'name': 'serving', 'grams': '70'}],
+        })
+        self.assertEqual(edited.status_code, 200, edited.data)
+        self.assertEqual(edited.data['name'], 'My oats (corrected)')
+        self.assertEqual(edited.data['kcal'], '370.0')
+        self.assertEqual(edited.data['portions'], [{'name': 'serving', 'grams': '70.00'}])
+        self.assertEqual(Food.objects.filter(owner=self.user, source='custom').count(), 1)
+
+        # Even direct PATCH requests carrying an ID cannot move the existing record.
+        other_id = str(uuid.uuid4())
+        patched = self.client.patch(
+            f'/api/nutrition/foods/{food_id}/', {'id': other_id, 'name': 'Changed'}, format='json',
+        )
+        self.assertEqual(patched.status_code, 200, patched.data)
+        self.assertEqual(patched.data['id'], food_id)
+        self.assertFalse(Food.objects.filter(pk=other_id).exists())
+
+    def test_custom_food_retry_rejects_others_shared_and_archived_ids(self):
+        another = User.objects.create_user('anotherfood@example.com', 'jaka-lozinka-123')
+        private = Food.objects.create(owner=another, source='custom', name='Private', kcal='120')
+        shared = Food.objects.get(slug='banana')
+        for food_id in (str(private.pk), str(shared.pk)):
+            result = self.client.post(
+                '/api/nutrition/foods/',
+                {'id': food_id, 'name': 'Collision', 'kcal': '100', 'state': 'raw'},
+                format='json',
+            )
+            self.assertEqual(result.status_code, 400, result.data)
+        private.refresh_from_db()
+        self.assertEqual(private.name, 'Private')
+
+        archived_id = str(uuid.uuid4())
+        payload = {'id': archived_id, 'name': 'Archived', 'kcal': '100', 'state': 'raw'}
+        created = self.client.post('/api/nutrition/foods/', payload, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(self.client.delete(f'/api/nutrition/foods/{archived_id}/').status_code, 204)
+        replay = self.client.post('/api/nutrition/foods/', payload, format='json')
+        self.assertEqual(replay.status_code, 409, replay.data)
+        self.assertEqual(Food.objects.filter(pk=archived_id).count(), 1)
+
     def test_existing_cyrillic_food_with_legacy_search_key_still_matches(self):
         food = Food.objects.create(owner=self.user, source='custom', name='Моја пилетина', kcal=110)
         # Simulate a record that predates Cyrillic transliteration.
         Food.objects.filter(pk=food.pk).update(search_name='моја пилетина')
         self.assertIn('Моја пилетина', self.names('пилетина'))
+
+    def test_long_unicode_normalization_is_rejected_without_500_or_partial_update(self):
+        # U+FDFA expands to a long Arabic phrase under NFKD normalization.
+        exotic = '\ufdfa' * 100
+        created = self.client.post(
+            '/api/nutrition/foods/',
+            {'name': exotic, 'kcal': '120', 'state': 'prepared'},
+            format='json',
+        )
+        self.assertEqual(created.status_code, 400, created.data)
+        self.assertIn('name', created.data)
+        self.assertFalse(Food.objects.filter(owner=self.user, name=exotic).exists())
+
+        own = Food.objects.create(owner=self.user, source='custom', name='Normal food', kcal=100)
+        changed = self.client.patch(
+            f'/api/nutrition/foods/{own.pk}/', {'name': exotic}, format='json',
+        )
+        self.assertEqual(changed.status_code, 400, changed.data)
+        own.refresh_from_db()
+        self.assertEqual(own.name, 'Normal food')

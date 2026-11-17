@@ -4,6 +4,7 @@ import i18n from '../../i18n'
 import { api } from '../../lib/api'
 import type { Exercise } from '../training/api'
 import type { LoggedSet } from '../workout/model'
+import { goalAlreadySavedConflict, invalidateGoalRelatedQueries } from './goalRetry'
 
 export type RecordKey =
   | 'heaviest'
@@ -74,7 +75,7 @@ export function useMeasurements(kind: MeasurementKind) {
 
 /** Merenja menjaju i stanje ciljeva i nedeljni pregled. */
 function invalidateBody(queryClient: ReturnType<typeof useQueryClient>) {
-  for (const key of ['measurements', 'goals', 'week']) void queryClient.invalidateQueries({ queryKey: [key] })
+  invalidateGoalRelatedQueries(queryClient)
 }
 
 export function useAddMeasurement() {
@@ -132,11 +133,10 @@ export function useCreateGoal() {
   return useMutation({
     mutationFn: async (body: { id: string; kind: GoalKind; target_value: string; start_value: string | null; target_date: string | null }) =>
       (await api.post<Goal>('/progress/goals/', body)).data,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['goals'] })
-      // Polazna vrednost bez ranijeg merenja postaje prvo merenje.
-      void queryClient.invalidateQueries({ queryKey: ['measurements'] })
-      void queryClient.invalidateQueries({ queryKey: ['week'] })
+    onSuccess: () => invalidateBody(queryClient),
+    onError: (e) => {
+      // A timed-out first POST may have created the goal AND its initial measurement.
+      if (goalAlreadySavedConflict(e)) invalidateBody(queryClient)
     },
   })
 }

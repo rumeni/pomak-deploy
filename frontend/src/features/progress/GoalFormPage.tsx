@@ -7,6 +7,8 @@ import { errorMessage } from '../../lib/api'
 import { addDays, formatDecimal, formatShortDate, parseDecimal, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { GOAL_KINDS, useCreateGoal, useMeasurements, type GoalKind, type MeasurementKind } from './api'
+import { goalRange, goalValueInRange } from './goalLimits'
+import { goalAlreadySavedConflict } from './goalRetry'
 
 /** Novi cilj napretka: telesna mera (polazna vrednost = poslednje merenje) ili broj treninga nedeljno. */
 export function GoalFormPage() {
@@ -65,14 +67,29 @@ function GoalForm({ kind, latest }: { kind: GoalKind; latest?: { value: number; 
     setError(null)
     const targetValue = workouts ? (/^\d+$/.test(target.trim()) ? Number(target) : null) : parseDecimal(target)
     if (targetValue === null) return setError(t(workouts ? 'progress.errors.workouts' : 'progress.invalidValue'))
+    const [low, high] = goalRange(kind)
+    if (!goalValueInRange(kind, targetValue)) {
+      return setError(workouts ? t('progress.errors.workouts') : t('progress.errors.range', { low, high }))
+    }
     let startValue: number | null = null
     if (!workouts && !latest) {
       startValue = parseDecimal(start)
       if (startValue === null) return setError(t('progress.errors.start'))
+      if (!goalValueInRange(kind, startValue)) return setError(t('progress.errors.range', { low, high }))
     }
     create.mutate(
       { id: id.current, kind, target_value: String(targetValue), start_value: startValue === null ? null : String(startValue), target_date: until || null },
-      { onSuccess: () => navigate('/napredak', { replace: true }) },
+      {
+        onSuccess: () => navigate('/napredak', { replace: true }),
+        onError: (e) => {
+          if (!goalAlreadySavedConflict(e)) return
+          // A previous request may already have created the goal; its original
+          // ID must not trap subsequent submissions in repeated 409 conflicts.
+          // useCreateGoal refreshes goals, measurements and week before navigation.
+          id.current = uuid()
+          navigate('/napredak', { replace: true, state: { goalConflictNotice: true } })
+        },
+      },
     )
   }
 

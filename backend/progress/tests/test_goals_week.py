@@ -6,7 +6,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from nutrition.models import MealEntry, NutritionDay, NutritionTarget
-from progress.models import Measurement
+from progress.models import Goal, Measurement
 from training.models import WorkoutSession
 
 TODAY = timezone.localdate
@@ -50,6 +50,27 @@ class GoalTests(Base):
         self.assertTrue(Measurement.objects.filter(user=self.user, kind='arm', value=36).exists())
         self.assertEqual(res.data['state']['progress'], 0.0)
 
+    def test_first_goal_rejects_out_of_bounds_initial_measurement(self):
+        for kind, start, target in [
+            ('weight', '785', '78'),
+            ('weight', '24.99', '78'),
+            ('arm', '251', '40'),
+            ('arm', '9', '40'),
+        ]:
+            with self.subTest(kind=kind, start=start):
+                response = self.post(kind=kind, target_value=target, start_value=start)
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertIn('start_value', response.data)
+                self.assertFalse(Measurement.objects.filter(user=self.user, kind=kind).exists())
+                self.assertFalse(Goal.objects.filter(user=self.user, kind=kind).exists())
+
+    def test_first_goal_accepts_measurement_boundaries(self):
+        for kind, start, target in [('weight', '350', '75'), ('arm', '10', '40')]:
+            with self.subTest(kind=kind):
+                response = self.post(kind=kind, start_value=start, target_value=target)
+                self.assertEqual(response.status_code, 201, response.data)
+                self.assertTrue(Measurement.objects.filter(user=self.user, kind=kind).exists())
+
     def test_workouts_goal_counts_this_week_and_recent_weeks(self):
         monday = TODAY() - datetime.timedelta(days=TODAY().weekday())
         self.workout(local(monday))
@@ -74,6 +95,45 @@ class GoalTests(Base):
         self.assertEqual(self.post(kind='workouts_per_week', target_value='4').status_code, 201)
         # Aktivni prvi
         self.assertEqual([g['status'] for g in self.client.get('/api/progress/goals/').data], ['active', 'achieved'])
+
+    def test_repeat_goal_post_identical_is_success_changed_is_conflict(self):
+        goal_id = str(uuid.uuid4())
+        original = {'id': goal_id, 'kind': 'workouts_per_week', 'target_value': '3'}
+        first = self.client.post('/api/progress/goals/', original, format='json')
+        self.assertEqual(first.status_code, 201, first.data)
+        same = self.client.post('/api/progress/goals/', original, format='json')
+        self.assertEqual(same.status_code, 200, same.data)
+        equivalent = self.client.post('/api/progress/goals/', {**original, 'target_value': '3.00', 'target_date': None}, format='json')
+        self.assertEqual(equivalent.status_code, 200, equivalent.data)
+        retry = self.client.post('/api/progress/goals/', {**original, 'target_value': '4'}, format='json')
+        self.assertEqual(retry.status_code, 409, retry.data)
+        self.assertEqual(Goal.objects.get(pk=goal_id).target_value, 3)
+        self.assertEqual(Goal.objects.count(), 1)
+
+    def test_goal_replay_ignores_server_managed_start_fields_but_checks_target_date(self):
+        self.weigh(84, TODAY() - datetime.timedelta(days=1))
+        goal_id = str(uuid.uuid4())
+        end = (TODAY() + datetime.timedelta(days=20)).isoformat()
+        original = {'id': goal_id, 'kind': 'weight', 'target_value': '80', 'target_date': end, 'start_value': '99'}
+        created = self.client.post('/api/progress/goals/', original, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data['start_value'], '84.00')
+
+        # A lost response should not require re-validating against the now-active goal.
+        same = self.client.post('/api/progress/goals/', {**original, 'target_value': '80.00', 'start_value': None}, format='json')
+        self.assertEqual(same.status_code, 200, same.data)
+        self.assertEqual(same.data['start_value'], '84.00')
+
+        changed_date = self.client.post(
+            '/api/progress/goals/',
+            {**original, 'target_date': (TODAY() + datetime.timedelta(days=21)).isoformat()},
+            format='json',
+        )
+        self.assertEqual(changed_date.status_code, 409, changed_date.data)
+        changed_kind = self.client.post('/api/progress/goals/', {**original, 'kind': 'waist'}, format='json')
+        self.assertEqual(changed_kind.status_code, 409, changed_kind.data)
+        self.assertEqual(Goal.objects.filter(pk=goal_id, target_date=end).count(), 1)
+        self.assertEqual(Measurement.objects.filter(user=self.user, kind='weight').count(), 1)
 
     def test_goals_are_private(self):
         gid = self.post(kind='workouts_per_week', target_value='3', id=str(uuid.uuid4())).data['id']

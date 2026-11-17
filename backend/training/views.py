@@ -1,10 +1,13 @@
+from uuid import UUID
+
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Count, Max, Prefetch
+from django.db.models import Count, Max, Prefetch, Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.translation import gettext_lazy as _
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -19,12 +22,14 @@ MAX_PREVIOUS_LOOKUP = 50
 
 
 class ExerciseViewSet(
-    SharedLibraryMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
+    IdempotentCreateMixin, SharedLibraryMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
     mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet,
 ):
     """Zajednička biblioteka + lične vežbe. Pretraga radi i bez kvačica (?q=cucanj)."""
 
     serializer_class = ExerciseSerializer
+    owner_field = 'owner'
+    retry_action = 'update'
     shared_readonly_message = _('Exercises from the shared library cannot be changed.')
     http_method_names = ['get', 'post', 'patch', 'delete']
 
@@ -41,6 +46,7 @@ class ExerciseViewSet(
 class RoutineViewSet(IdempotentCreateMixin, viewsets.ModelViewSet):
     serializer_class = RoutineSerializer
     owner_field = 'owner'
+    retry_action = 'update'
     http_method_names = ['get', 'post', 'put', 'delete']
 
     def get_queryset(self):
@@ -90,7 +96,24 @@ class WorkoutSessionViewSet(
         )
 
     def list(self, request, *args, **kwargs):
-        sessions = self.get_queryset()[: self.HISTORY_LIMIT]
+        # Cursor pagination, but retain the original array response for old
+        # Android/PWA clients. New clients pass the last received timestamp and
+        # UUID; new workouts cannot shift subsequent pages or cause duplicates.
+        queryset = self.get_queryset().order_by('-started_at', '-pk')
+        params = request.query_params
+        if 'before' in params or 'before_id' in params:
+            raw_date, raw_id = params.get('before', ''), params.get('before_id', '')
+            try:
+                before = parse_datetime(raw_date) if len(raw_date) <= 64 else None
+                before_id = UUID(raw_id)
+            except (ValueError, TypeError, AttributeError):
+                before, before_id = None, None
+            if before is None or before_id is None or timezone.is_naive(before):
+                raise ValidationError({'before': _('Invalid history cursor.')})
+            queryset = queryset.filter(
+                Q(started_at__lt=before) | Q(started_at=before, pk__lt=before_id)
+            )
+        sessions = queryset[: self.HISTORY_LIMIT]
         return Response(self.get_serializer(sessions, many=True).data)
 
     def perform_create(self, serializer):
@@ -157,7 +180,7 @@ class ExerciseProgressView(APIView):
             .prefetch_related('sets')
             .order_by('session__started_at')
         )
-        result = progress.analyze(exercise.measurement, done)
+        result = progress.analyze(exercise.measurement, done, load_mode=exercise.load_mode)
         return Response({
             'exercise': ExerciseSerializer(exercise).data,
             **result,

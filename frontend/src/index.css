@@ -110,7 +110,6 @@ a, button { -webkit-tap-highlight-color: transparent; }
 .page-header--photo {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
   min-height: 172px;
   margin: 12px 16px 16px;
   padding: 16px 18px 18px;
@@ -118,7 +117,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   background: var(--color-ink);
   color: #fff;
 }
-.page-header--photo::before, .page-header--photo::after { content: ''; position: absolute; inset: 0; z-index: -1; }
+.page-header--photo::before, .page-header--photo::after { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; }
 .page-header--photo::before { background: var(--photo) center / cover no-repeat; filter: grayscale(.35) contrast(1.05); }
 .page-header--photo::after { background: linear-gradient(180deg, rgba(20, 22, 21, .1) 0%, rgba(20, 22, 21, .35) 45%, rgba(20, 22, 21, .88) 100%); }
 .page-header--photo > div:first-child { align-self: flex-end; }

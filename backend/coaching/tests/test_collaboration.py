@@ -112,6 +112,83 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual(response.data['measurements'][0]['value'], '74.20')
         self.assertIsNone(response.data['nutrition_days'])
 
+    def test_nutrition_totals_indicate_missing_macro_values_only_with_consent(self):
+        self.connect(nutrition=False)
+        day = timezone.localdate()
+        MealEntry.objects.create(
+            owner=self.client_user, date=day, meal='lunch', name='Known protein and fat',
+            kcal='250.0', protein_g='25.00', carbs_g=None, fat_g='5.00',
+        )
+        MealEntry.objects.create(
+            owner=self.client_user, date=day, meal='dinner', name='Known carbs',
+            kcal='150.0', protein_g=None, carbs_g='12.00', fat_g=None,
+        )
+        # Another person's meals must not be counted in any macro sum or unknown count.
+        MealEntry.objects.create(
+            owner=self.other_client, date=day, meal='lunch', name='Other client',
+            kcal='1000.0', protein_g=None, carbs_g=None, fat_g=None,
+        )
+
+        self.as_user(self.coach)
+        url = f'/api/coach/clients/{self.client_user.pk}/'
+        self.assertIsNone(self.client.get(url).data['nutrition_days'])
+
+        self.as_user(self.client_user)
+        self.assertEqual(
+            self.client.patch('/api/coach/connection/', {'share_nutrition': True}, format='json').status_code,
+            200,
+        )
+        self.as_user(self.coach)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(len(res.data['nutrition_days']), 1)
+        summary = res.data['nutrition_days'][0]
+        self.assertEqual(summary['kcal'], '400.0')
+        self.assertEqual(summary['protein_g'], '25.00')
+        self.assertEqual(summary['carbs_g'], '12.00')
+        self.assertEqual(summary['fat_g'], '5.00')
+        self.assertEqual(
+            (summary['protein_unknown'], summary['carbs_unknown'], summary['fat_unknown']),
+            (1, 1, 1),
+        )
+
+        # Revoking nutrition sharing must hide sums and all missing-data counts.
+        self.as_user(self.client_user)
+        self.assertEqual(
+            self.client.patch('/api/coach/connection/', {'share_nutrition': False}, format='json').status_code,
+            200,
+        )
+        self.as_user(self.coach)
+        self.assertIsNone(self.client.get(url).data['nutrition_days'])
+
+    def test_nutrition_all_null_or_complete_values_have_correct_unknown_counts(self):
+        self.connect(nutrition=True)
+        day = timezone.localdate()
+        MealEntry.objects.create(owner=self.client_user, date=day, meal='lunch', name='Unknown macros', kcal='200.0')
+        self.as_user(self.coach)
+        url = f'/api/coach/clients/{self.client_user.pk}/'
+        summary = self.client.get(url).data['nutrition_days'][0]
+        self.assertIsNone(summary['protein_g'])
+        self.assertIsNone(summary['carbs_g'])
+        self.assertIsNone(summary['fat_g'])
+        self.assertEqual(
+            (summary['protein_unknown'], summary['carbs_unknown'], summary['fat_unknown']),
+            (1, 1, 1),
+        )
+
+        MealEntry.objects.create(
+            owner=self.client_user, date=day, meal='dinner', name='All macros',
+            kcal='250.0', protein_g='20.00', carbs_g='25.00', fat_g='8.00',
+        )
+        summary = self.client.get(url).data['nutrition_days'][0]
+        self.assertEqual(summary['protein_g'], '20.00')
+        self.assertEqual(summary['carbs_g'], '25.00')
+        self.assertEqual(summary['fat_g'], '8.00')
+        self.assertEqual(
+            (summary['protein_unknown'], summary['carbs_unknown'], summary['fat_unknown']),
+            (1, 1, 1),
+        )
+
     def test_foreign_coach_cannot_view_message_assign_or_remove_client(self):
         self.connect()
         self.as_user(self.another_coach)
@@ -197,6 +274,81 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual(self.client.get(url).status_code, 404)
         self.as_user(self.coach)
         self.assertEqual(self.client.get(url, {'client_id': str(self.client_user.pk)}).status_code, 404)
+
+    def test_message_history_cursor_loads_all_messages_with_new_messages_arriving(self):
+        self.connect()
+        connection = CoachConnection.objects.get(client=self.client_user)
+        base = timezone.now() - timedelta(days=1)
+        for i in range(86):
+            msg = CoachMessage.objects.create(connection=connection, sender=self.coach, text=f'Message {i}')
+            CoachMessage.objects.filter(pk=msg.pk).update(created_at=base + timedelta(seconds=i))
+        url = '/api/coach/messages/'
+        self.as_user(self.coach)
+        params = {'client_id': str(self.client_user.pk)}
+        first = self.client.get(url, params)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(len(first.data), 80)
+        self.assertEqual(first.data[0]['text'], 'Message 6')
+        cursor = {
+            **params, 'before': first.data[0]['created_at'], 'before_id': first.data[0]['id'],
+        }
+        CoachMessage.objects.create(connection=connection, sender=self.client_user, text='Just arrived')
+        second = self.client.get(url, cursor)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual([m['text'] for m in second.data], [f'Message {i}' for i in range(6)])
+        self.assertFalse({m['id'] for m in first.data} & {m['id'] for m in second.data})
+        self.assertEqual(len({m['id'] for m in first.data + second.data}), 86)
+
+        self.as_user(self.client_user)
+        # Client can retrieve their own history, including older messages.
+        self.assertEqual(len(self.client.get(url, cursor).data), 6)
+        self.as_user(self.another_coach)
+        self.assertEqual(self.client.get(url, cursor).status_code, 404)
+
+    def test_message_history_cursor_handles_equal_timestamps_and_rejects_invalid_input(self):
+        self.connect()
+        connection = CoachConnection.objects.get(client=self.client_user)
+        base = timezone.now() - timedelta(days=1)
+        for i in range(83):
+            msg = CoachMessage.objects.create(connection=connection, sender=self.client_user, text=f'Message {i}')
+            CoachMessage.objects.filter(pk=msg.pk).update(created_at=base)
+        self.as_user(self.client_user)
+        url = '/api/coach/messages/'
+        first = self.client.get(url)
+        self.assertEqual(len(first.data), 80)
+        cursor = {'before': first.data[0]['created_at'], 'before_id': first.data[0]['id']}
+        older = self.client.get(url, cursor)
+        self.assertEqual(older.status_code, 200)
+        self.assertEqual(len(older.data), 3)
+        self.assertEqual(len({m['id'] for m in first.data + older.data}), 83)
+
+        for bad in (
+            {'before': cursor['before']},
+            {'before_id': cursor['before_id']},
+            {'before': 'bad', 'before_id': cursor['before_id']},
+            {'before': cursor['before'], 'before_id': 'not-a-uuid'},
+            {'before': base.isoformat().replace('+00:00', ''), 'before_id': cursor['before_id']},
+        ):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.client.get(url, bad).status_code, 400)
+
+    def test_coach_message_json_shape_is_validated_before_lookup(self):
+        self.connect()
+        self.as_user(self.coach)
+        url = '/api/coach/messages/'
+        for raw in ('[]', '"text"', 'null'):
+            with self.subTest(raw=raw):
+                invalid = self.client.post(url, data=raw, content_type='application/json')
+                self.assertEqual(invalid.status_code, 400, invalid.content)
+                self.assertIn('detail', invalid.data)
+                invalid_with_query = self.client.post(
+                    url + '?client_id=' + str(self.client_user.pk),
+                    data=raw, content_type='application/json',
+                )
+                self.assertEqual(invalid_with_query.status_code, 400, invalid_with_query.content)
+        self.assertEqual(CoachMessage.objects.count(), 0)
+        valid = self.client.post(url, {'client_id': str(self.client_user.pk), 'text': 'Hi'}, format='json')
+        self.assertEqual(valid.status_code, 201, valid.data)
 
     def test_invite_and_connection_not_cross_manageable(self):
         invite = self.invite()

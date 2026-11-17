@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from core.i18n import localized_name
+from core.text import FOOD_PREMIGRATION_KEY_LIMIT, search_key_fits
 
 from . import recipes, targets
 from .models import Food, FoodPortion, Meal, MealEntry, NutritionDay, NutritionTarget, RecipeIngredient, SavedMeal, SavedMealItem
@@ -13,6 +14,7 @@ MAX_PORTIONS = 10
 MAX_SAVED_MEAL_ITEMS = 30
 MAX_RECIPE_INGREDIENTS = 50
 MACRO_FIELDS = ('protein_g', 'carbs_g', 'fat_g')
+ENTRY_SNAPSHOT_FIELDS = tuple(f'per100_{field}' for field in MealEntry.VALUE_FIELDS)
 
 
 class FoodPortionSerializer(serializers.ModelSerializer):
@@ -30,6 +32,9 @@ class FoodPortionSerializer(serializers.ModelSerializer):
 class FoodSerializer(serializers.ModelSerializer):
     """Namirnica sa vrednostima na 100 g. Nepoznat makro je null, nikad 0."""
 
+    # TimeStampedModel's UUID is editable=False; make it writable for create
+    # retries with a client-assigned ID, but never permit changing an existing PK.
+    id = serializers.UUIDField(required=False)
     portions = FoodPortionSerializer(many=True, required=False)
     is_custom = serializers.SerializerMethodField()
 
@@ -68,6 +73,10 @@ class FoodSerializer(serializers.ModelSerializer):
         if self.instance is not None and self.instance.source == Food.Source.RECIPE:
             # Vrednosti recepta se računaju iz sastojaka; menja se preko /recipes/.
             raise serializers.ValidationError(_('A recipe is changed through its ingredients.'))
+        name = attrs.get('name', getattr(self.instance, 'name', ''))
+        aliases = attrs.get('aliases', getattr(self.instance, 'aliases', ''))
+        if not search_key_fits(name, getattr(self.instance, 'name_en', ''), aliases, max_chars=FOOD_PREMIGRATION_KEY_LIMIT):
+            raise serializers.ValidationError({'name': _('Name or aliases are too long for search.')})
         # Na 100 g namirnice ne može biti više od 100 g proteina, UH i masti zajedno.
         macros = [attrs.get(f, getattr(self.instance, f, None)) for f in MACRO_FIELDS]
         if sum(m for m in macros if m is not None) > 100:
@@ -83,6 +92,7 @@ class FoodSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, food, validated_data):
+        validated_data.pop('id', None)  # PATCH and repeated POST cannot change a primary key.
         portions = validated_data.pop('portions', None)
         food = super().update(food, validated_data)
         if portions is not None:
@@ -117,7 +127,11 @@ class MealEntrySerializer(serializers.ModelSerializer):
 
 
 class MealEntryWriteSerializer(serializers.Serializer):
-    """Upis stavke: iz namirnice (food_id + grams) ili ručno (name + kcal, makroi opcioni)."""
+    """Upis namirnice, ručne stavke ili kopije sa izvornim nutritivnim snimkom.
+
+    Bez per100_* server uzima trenutnu namirnicu. Kopiranje sa svih pet polja
+    ponavlja vrednosti starog unosa bez potrebe da original postoji na serveru.
+    """
 
     date = serializers.DateField()
     meal = serializers.ChoiceField(choices=Meal.choices)
@@ -131,9 +145,39 @@ class MealEntryWriteSerializer(serializers.Serializer):
     fat_g = serializers.DecimalField(max_digits=7, decimal_places=2, min_value=0, max_value=1000, required=False, allow_null=True)
     fiber_g = serializers.DecimalField(max_digits=7, decimal_places=2, min_value=0, max_value=1000, required=False, allow_null=True)
 
+    # Optional snapshot: all five keys together, including explicit nulls for
+    # unknown macros. Bounds mirror FoodSerializer and recipes.check_plausible.
+    per100_kcal = serializers.DecimalField(max_digits=6, decimal_places=1, min_value=0, max_value=900, required=False)
+    per100_protein_g = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+    per100_carbs_g = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+    per100_fat_g = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+    per100_fiber_g = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+
     def validate(self, attrs):
         user = self.context['request'].user
         existing = self.context.get('existing')
+        supplied = [key for key in ENTRY_SNAPSHOT_FIELDS if key in attrs]
+        if supplied:
+            if len(supplied) != len(ENTRY_SNAPSHOT_FIELDS):
+                raise serializers.ValidationError({
+                    'per100_kcal': _('Supply all per-100-g snapshot fields or none.'),
+                })
+            if not attrs.get('food_id'):
+                raise serializers.ValidationError({
+                    'food_id': _('A per-100-g snapshot requires a food.'),
+                })
+            macros = (attrs['per100_protein_g'], attrs['per100_carbs_g'], attrs['per100_fat_g'])
+            if sum(value for value in macros if value is not None) > 100:
+                raise serializers.ValidationError({
+                    'per100_protein_g': _('Protein, carbohydrates and fat together cannot exceed 100 g per 100 g.'),
+                })
+            # Retried PUTs for the same copy may resend identical snapshot data.
+            # Existing entries must never be re-keyed to new per100 values.
+            if existing is not None and any(attrs[key] != getattr(existing, key) for key in ENTRY_SNAPSHOT_FIELDS):
+                raise serializers.ValidationError({
+                    'per100_kcal': _('An existing entry nutritional snapshot cannot be changed.'),
+                })
+        attrs['has_per100_snapshot'] = bool(supplied)
         # Stavka iz namirnice se prepoznaje po snimku vrednosti (namirnica je mogla biti obrisana).
         from_food = existing is not None and existing.per100_kcal is not None
         food_id = attrs.get('food_id')
@@ -170,7 +214,11 @@ class MealEntryWriteSerializer(serializers.Serializer):
                 entry.food = food
                 entry.name = localized_name(food)
                 for field in MealEntry.VALUE_FIELDS:
-                    setattr(entry, f'per100_{field}', getattr(food, field))
+                    per100_field = f'per100_{field}'
+                    # A copy reuses validated historical values. Ordinary entries
+                    # and saved meals use the food's CURRENT snapshot as before.
+                    value = data[per100_field] if data['has_per100_snapshot'] else getattr(food, field)
+                    setattr(entry, per100_field, value)
 
         entry.date = data['date']
         entry.meal = data['meal']
@@ -308,6 +356,10 @@ class RecipeSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        name = attrs.get('name', getattr(self.instance, 'name', ''))
+        if not search_key_fits(name, getattr(self.instance, 'name_en', ''),
+                               getattr(self.instance, 'aliases', ''), max_chars=FOOD_PREMIGRATION_KEY_LIMIT):
+            raise serializers.ValidationError({'name': _('Name is too long for search.')})
         ingredients = attrs.get('ingredients')
         if ingredients is None:
             ingredients = [{'food': i.food, 'grams': i.grams} for i in self.instance.ingredients.select_related('food')]

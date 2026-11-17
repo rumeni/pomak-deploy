@@ -4,9 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 
 import { Button, FormError, ScreenHeader } from '../../components/ui'
-import { api, errorMessage } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
+import { applyOwnProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
-import type { Me } from '../../lib/types'
+import type { AuthScope } from '../../lib/api'
 import { mealSettings } from './meals'
 import type { MealSetting } from './types'
 
@@ -20,10 +21,12 @@ export function MealSettingsPage() {
   const [error, setError] = useState<string | null>(null)
 
   const save = useMutation({
-    mutationFn: async (list: MealSetting[]) => (await api.patch<Me>('/auth/me/', { profile: { meals: list } })).data,
-    onSuccess: (data) => {
-      queryClient.setQueryData(['me'], data)
-      navigate(-1)
+    mutationFn: async ({ list, scope }: { list: MealSetting[]; scope: AuthScope }) => {
+      const data = await patchOwnProfile(scope.ownerId, { meals: list }, scope)
+      return { data, scope, list }
+    },
+    onSuccess: ({ data, scope, list }) => {
+      if (data && applyOwnProfileResponse(queryClient, scope, data, { meals: list })) navigate(-1)
     },
   })
 
@@ -33,7 +36,8 @@ export function MealSettingsPage() {
   const onSave = () => {
     setError(null)
     if (!meals.some((m) => m.enabled)) return setError(t('mealSettings.atLeastOne'))
-    save.mutate(meals.map((m) => ({ ...m, name: m.name.trim() })))
+    if (!me) return
+    save.mutate({ list: meals.map((m) => ({ ...m, name: m.name.trim() })), scope: profileScope(me.id) })
   }
 
   return (
