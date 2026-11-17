@@ -431,7 +431,7 @@ export const sr = {
     record_session_reps: 'Najviše na treningu',
     record_longest_duration: 'Najduže trajanje',
     record_longest_distance: 'Najduža distanca',
-    e1rmNote: 'Procenjeni 1RM je procena najveće težine za jedno ponavljanje (Epley), iz serija do 10 ponavljanja. Zagrevanje se ne računa.',
+    e1rmNote: 'Procenjeni 1RM je procena najveće težine za jedno ponavljanje, iz serija do 10 ponavljanja. Serije sa upisanim RPE 6 ili više računaju se po RPE tabeli (ponavljanja u rezervi), ostale po Epley formuli, koja pretpostavlja seriju do otkaza. Zagrevanje se ne računa.',
     perSideNote: 'Težine su po bučici / strani.',
     chart_heaviest: 'Najveća težina po treningu',
     chart_most_reps: 'Najviše ponavljanja po treningu',

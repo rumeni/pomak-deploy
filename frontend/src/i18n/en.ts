@@ -424,7 +424,7 @@ export const en = {
     record_session_reps: 'Most in a workout',
     record_longest_duration: 'Longest duration',
     record_longest_distance: 'Longest distance',
-    e1rmNote: 'Estimated 1RM is an estimate of the most weight for one rep (Epley), from sets of up to 10 reps. Warm-ups are not counted.',
+    e1rmNote: 'Estimated 1RM is an estimate of the most weight for one rep, from sets of up to 10 reps. Sets logged at RPE 6 or higher use the RPE chart (reps in reserve); the rest use Epley, which assumes the set went to failure. Warm-ups are not counted.',
     perSideNote: 'Weights are per dumbbell / side.',
     chart_heaviest: 'Heaviest weight per workout',
     chart_most_reps: 'Most reps per workout',

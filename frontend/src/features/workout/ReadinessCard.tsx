@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, ScreenHeader } from '../../components/ui'
@@ -38,6 +39,7 @@ export function ReadinessStep({
   title,
   readiness,
   editing,
+  alert,
   onChange,
   onBack,
   onSkip,
@@ -47,6 +49,11 @@ export function ReadinessStep({
   readiness: Readiness | undefined
   /** Reopened during the workout: one "Done" button instead of Skip / Start. */
   editing: boolean
+  /**
+   * Persistence conflict (failed save, another tab): answers can no longer be saved, so the
+   * step shows the alert with its reload action and locks its controls.
+   */
+  alert: ReactNode | null
   onChange: (next: Readiness) => void
   onBack: () => void
   onSkip: () => void
@@ -54,6 +61,7 @@ export function ReadinessStep({
 }) {
   const { t } = useTranslation()
   const values = readiness ?? EMPTY_READINESS
+  const blocked = alert !== null
 
   const set = <K extends keyof Readiness>(field: K, value: Readiness[K]) =>
     onChange({ ...values, [field]: values[field] === value ? null : value })
@@ -64,6 +72,7 @@ export function ReadinessStep({
   return (
     <div className="flex h-dvh flex-col">
       <ScreenHeader title={title} onBack={onBack} />
+      {alert}
       <main className="min-h-0 flex-1 overflow-y-auto">
         {/* Short phones: tighter spacing and no subtitle, so all of it fits without scrolling. */}
         <div className="mx-auto flex max-w-xl flex-col gap-3 px-4 py-3 [@media(max-height:700px)]:gap-2">
@@ -85,6 +94,7 @@ export function ReadinessStep({
                   aria-pressed={values.sleep_hours === h}
                   aria-label={t('readiness.sleepValue', { value: sleepLabel(h) })}
                   onClick={() => set('sleep_hours', h)}
+                  disabled={blocked}
                   className={choice(values.sleep_hours === h)}
                 >
                   {sleepLabel(h)}
@@ -112,6 +122,7 @@ export function ReadinessStep({
                       aria-pressed={value === n}
                       aria-label={`${t(`readiness.${field}`)}: ${t(`readiness.${levels}.${n}`)}`}
                       onClick={() => set(field, n)}
+                      disabled={blocked}
                       className={choice(value === n)}
                     >
                       {n}
@@ -126,11 +137,11 @@ export function ReadinessStep({
       <footer className="pb-safe border-t border-line bg-surface">
         <div className="mx-auto flex max-w-xl gap-2 px-4 py-3">
           {editing ? (
-            <Button className="flex-1" onClick={onDone}>{t('readiness.done')}</Button>
+            <Button className="flex-1" onClick={onDone} disabled={blocked}>{t('readiness.done')}</Button>
           ) : (
             <>
-              <Button variant="secondary" className="flex-1" onClick={onSkip}>{t('readiness.skip')}</Button>
-              <Button className="flex-[2]" onClick={onDone}>{t('readiness.start')}</Button>
+              <Button variant="secondary" className="flex-1" onClick={onSkip} disabled={blocked}>{t('readiness.skip')}</Button>
+              <Button className="flex-[2]" onClick={onDone} disabled={blocked}>{t('readiness.start')}</Button>
             </>
           )}
         </div>

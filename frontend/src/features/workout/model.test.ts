@@ -366,6 +366,27 @@ describe('RPE and readiness', () => {
     expect(suggestion(w, w.exercises[0], 0)).toMatchObject({ weight: '105', reps: '3' })
   })
 
+  it('never falls back to the previous load when the RPE load cannot be estimated', () => {
+    // Only 12-rep sets last time: outside the 1-10 rep estimate range.
+    const highReps: Record<string, PreviousPerformance> = {
+      bench: { session_id: 's0', started_at: '2026-09-20T10:00:00Z', sets: [
+        { set_type: 'working', weight_kg: '100.00', reps: 12, duration_seconds: null, distance_m: null, rpe: '8.0' },
+      ] },
+    }
+    for (const history of [highReps, {}]) {
+      const w = startFromRoutine(rpeRoutine, history, t0)
+      const ex = w.exercises[0]
+      expect(rpeTargetWeight(w, ex, 0)).toEqual({ weight: null, reps: 3 })
+      // The prescription (3 reps) is offered, the old 100 x 12 is not.
+      expect(suggestion(w, ex, 0)).toMatchObject({ weight: '', reps: '3' })
+      expect(() => confirmSet(w, ex.key, ex.sets[0].key, t0)).toThrow(SetInputError)
+      // Typing the weight is enough.
+      const typed = updateSet(w, ex.key, ex.sets[0].key, { weight: '90' })
+      const done = confirmSet(typed, ex.key, ex.sets[0].key, t0)
+      expect(toSessionPayload(done, t0, null, '').exercises[0].sets[0]).toMatchObject({ weight_kg: '90', reps: 3 })
+    }
+  })
+
   it('keeps an API-set RPE outside the picker range', () => {
     const low: Routine = { ...rpeRoutine, exercises: [{ ...rpeRoutine.exercises[0], sets: [{ ...rpeRoutine.exercises[0].sets[0], rpe: '3.5' }] }] }
     const w = startFromRoutine(low, {}, t0)

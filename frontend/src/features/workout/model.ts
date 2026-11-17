@@ -143,11 +143,11 @@ export function previousEstimated1rm(workout: ActiveWorkout, item: ActiveExercis
  * Load for a set the routine prescribes by intensity (e.g. 5 @ RPE 8), worked out from last
  * time's estimated 1RM - what a coach does with an RPE chart.
  *
- * Returns null when RPE does not drive this set (no target RPE, a fixed weight in the plan,
- * or no history to estimate from). Otherwise `weight` is the load for the reps the athlete
- * typed, or the planned reps while the field is empty. When the chart has no value for those
- * reps (e.g. 12 @ 8), `weight` is null: the athlete must enter the weight, because last
- * time's load would not match the prescribed effort.
+ * Returns null only when RPE does not drive this set (no target RPE, or a fixed weight in the
+ * plan). Otherwise `reps` are the ones the athlete typed (the planned reps while the field is
+ * empty) and `weight` is the load for them. `weight` is null when it cannot be worked out -
+ * no history, history with no estimable set (e.g. only 12-rep sets), or reps outside the chart
+ * - and the athlete must enter it: last time's load would not match the prescribed effort.
  */
 export function rpeTargetWeight(workout: ActiveWorkout, item: ActiveExercise, index: number): { weight: number | null; reps: number } | null {
   const set = item.sets[index]
@@ -155,11 +155,11 @@ export function rpeTargetWeight(workout: ActiveWorkout, item: ActiveExercise, in
   const planned = target?.reps_max ?? target?.reps_min ?? null
   const rpe = targetRpe(set)
   if (item.exercise.measurement !== 'weight_reps' || !target || rpe === null || planned === null || target.weight_kg !== null) return null
-  const e1rm = previousEstimated1rm(workout, item)
-  if (e1rm === null) return null
   const typed = /^\d{1,4}$/.test(set.reps.trim()) ? Number(set.reps.trim()) : null
   const reps = typed !== null && typed > 0 ? typed : planned
-  return { weight: weightForTarget(e1rm, reps, rpe, item.exercise.load_mode === 'per_side' ? 1 : 2.5), reps }
+  const e1rm = previousEstimated1rm(workout, item)
+  const weight = e1rm === null ? null : weightForTarget(e1rm, reps, rpe, item.exercise.load_mode === 'per_side' ? 1 : 2.5)
+  return { weight, reps }
 }
 
 /**

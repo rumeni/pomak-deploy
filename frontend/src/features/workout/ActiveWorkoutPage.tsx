@@ -83,6 +83,14 @@ export function ActiveWorkoutPage() {
   // Check-in comes first, on its own screen, until it is skipped or confirmed. A workout
   // already under way (e.g. restored from history) goes straight to the sets.
   const needsCheckIn = !workout.checkInDone && !workout.exercises.some((e) => e.sets.some((s) => s.done))
+  // A failed save or another tab's edit stops all further writes; say so on every screen.
+  const conflictAlert = conflict ? (
+    <div role="alert" className="mx-auto max-w-xl rounded-xl bg-danger/10 p-3 text-danger">
+      <p>{t('workout.concurrentEdit')}</p>
+      <Button variant="secondary" onClick={() => window.location.reload()}>{t('common.retry')}</Button>
+    </div>
+  ) : null
+
   if (needsCheckIn || editingCheckIn) {
     const close = () => {
       update((w) => ({ ...w, checkInDone: true }))
@@ -93,6 +101,7 @@ export function ActiveWorkoutPage() {
         title={workout.name}
         readiness={workout.readiness}
         editing={editingCheckIn}
+        alert={conflictAlert}
         onChange={(readiness) => update((w) => ({ ...w, readiness }))}
         onBack={() => (editingCheckIn ? setEditingCheckIn(false) : navigate('/trening'))}
         onSkip={() => {
@@ -119,12 +128,7 @@ export function ActiveWorkoutPage() {
 
   return (
     <div className="min-h-full pb-48">
-      {conflict && (
-        <div role="alert" className="mx-auto max-w-xl rounded-xl bg-danger/10 p-3 text-danger">
-          <p>{t('workout.concurrentEdit')}</p>
-          <Button variant="secondary" onClick={() => window.location.reload()}>{t('common.retry')}</Button>
-        </div>
-      )}
+      {conflictAlert}
       <ScreenHeader
         title={workout.name}
         onBack={() => navigate('/trening')}
