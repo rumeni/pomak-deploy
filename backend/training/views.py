@@ -22,12 +22,14 @@ MAX_PREVIOUS_LOOKUP = 50
 
 
 class ExerciseViewSet(
-    SharedLibraryMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
+    IdempotentCreateMixin, SharedLibraryMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
     mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet,
 ):
     """Zajednička biblioteka + lične vežbe. Pretraga radi i bez kvačica (?q=cucanj)."""
 
     serializer_class = ExerciseSerializer
+    owner_field = 'owner'
+    retry_action = 'update'
     shared_readonly_message = _('Exercises from the shared library cannot be changed.')
     http_method_names = ['get', 'post', 'patch', 'delete']
 

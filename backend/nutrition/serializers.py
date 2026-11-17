@@ -32,6 +32,9 @@ class FoodPortionSerializer(serializers.ModelSerializer):
 class FoodSerializer(serializers.ModelSerializer):
     """Namirnica sa vrednostima na 100 g. Nepoznat makro je null, nikad 0."""
 
+    # TimeStampedModel's UUID is editable=False; make it writable for create
+    # retries with a client-assigned ID, but never permit changing an existing PK.
+    id = serializers.UUIDField(required=False)
     portions = FoodPortionSerializer(many=True, required=False)
     is_custom = serializers.SerializerMethodField()
 
@@ -89,6 +92,7 @@ class FoodSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, food, validated_data):
+        validated_data.pop('id', None)  # PATCH and repeated POST cannot change a primary key.
         portions = validated_data.pop('portions', None)
         food = super().update(food, validated_data)
         if portions is not None:

@@ -37,6 +37,9 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const id = initialFood?.id
+  // A timed-out first POST may have succeeded. Keep this UUID for every retry
+  // of this form (including retries after the user changes nutrition values).
+  const [createId] = useState(uuid)
   const editing = Boolean(id)
   const create = useCreateFood()
   const update = useUpdateFood()
@@ -98,7 +101,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
       const body = toBody()
       const success = (food: { id: string }) => navigate(`/ishrana/namirnice/${food.id}`, { replace: true })
       if (id) update.mutate({ id, body }, { onSuccess: success })
-      else create.mutate(body, { onSuccess: success })
+      else create.mutate({ ...body, id: createId }, { onSuccess: success })
     } catch (err) {
       if (err instanceof FormInputError) setError(t(`newFood.errors.${err.message}`, err.params))
       else throw err
