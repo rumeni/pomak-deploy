@@ -70,3 +70,25 @@ export function mergeScan(current: FoodDraft, scan: ScanData): { next: FoodDraft
     replaces: hasValues || (otherProduct && !!current.name.trim()),
   }
 }
+
+/**
+ * A barcode typed by hand, checked when the field is left (not on every digit), with the same
+ * rule as a scan: content in the form belongs to the product of `productBarcode`.
+ * - 'same': nothing changed.
+ * - 'first': the draft had no barcode yet; the typed one simply belongs to it.
+ * - 'other': it had one and now another - possibly a different product. The athlete decides:
+ *   a different product starts from `forNewProduct`, a corrected typo keeps the content.
+ */
+export function barcodeEdit(current: FoodDraft, productBarcode: string, typed: string): 'same' | 'first' | 'other' {
+  const code = typed.trim()
+  if (code === productBarcode) return 'same'
+  if (!productBarcode) return 'first'
+  const hasContent = !!current.name.trim() || !!current.sourceRef || FIELDS.some((f) => current.values[f].trim())
+  return hasContent ? 'other' : 'first'
+}
+
+/** A clean draft for another product: nothing of the previous one is kept. */
+export function forNewProduct(barcode: string): FoodDraft {
+  return { name: '', barcode, values: Object.fromEntries(FIELDS.map((f) => [f, ''])) as Record<ValueField, string>, sourceRef: '' }
+}
+

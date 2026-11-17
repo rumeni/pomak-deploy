@@ -21,6 +21,11 @@ class TrainingStatsTests(APITestCase):
 
     def workout(self, days_ago, exercises, readiness=None):
         start = timezone.make_aware(datetime.combine(self.today - timedelta(days=days_ago), time(18, 0)))
+        if days_ago == 0:
+            # Today, but never in the future (the API rejects that): before 18:00 use "a minute
+            # ago", and right after midnight the day's start.
+            midnight = timezone.make_aware(datetime.combine(self.today, time(0, 0)))
+            start = min(start, max(midnight, timezone.now() - timedelta(minutes=1)))
         body = {
             'id': str(uuid.uuid4()), 'name': f'T-{days_ago}', 'started_at': start.isoformat(),
             'finished_at': (start + timedelta(hours=1)).isoformat(),

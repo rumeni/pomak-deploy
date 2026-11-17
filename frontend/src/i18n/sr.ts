@@ -426,6 +426,7 @@ export const sr = {
   },
   newFood: {
     alreadyThere: '„{{name}}“ je već u bazi',
+    otherProductConfirm: 'Bar-kod je promenjen. Da li je ovo drugi proizvod? „U redu“ briše naziv, vrednosti i porcije prethodnog; „Otkaži“ ih zadržava (samo si ispravio bar-kod).',
     useForMeal: 'Dodaj nju u obrok',
     openExisting: 'Otvori namirnicu',
     kcalMismatch: 'Kalorije se ne slažu sa makroima (očekuje se oko {{expected}} kcal). Proveri vrednosti.',

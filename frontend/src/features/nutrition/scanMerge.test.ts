@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { mergeScan, safeLabelValues, type FoodDraft } from './scanMerge'
+import { barcodeEdit, forNewProduct, mergeScan, safeLabelValues, type FoodDraft } from './scanMerge'
 
 const empty: FoodDraft = { name: '', barcode: '', values: { kcal: '', protein_g: '', carbs_g: '', fat_g: '', fiber_g: '' }, sourceRef: '' }
 const nutella = {
@@ -66,4 +66,19 @@ describe('putting a scan into the food form', () => {
     expect(safeLabelValues({ ...data, column: 'assumed' })).toEqual({})
     expect(safeLabelValues({ ...data, column: 'servingOnly' })).toEqual({})
   })
+
+  it('a hand-typed barcode is checked like a scanned one', () => {
+    const off = mergeScan(empty, nutella).next
+    // Another code where an Open Food Facts product is in the form: possibly another product.
+    expect(barcodeEdit({ ...off, barcode: '5901234123457' }, off.barcode, '5901234123457')).toBe('other')
+    // Unchanged, or the first barcode for a typed product: nothing to protect.
+    expect(barcodeEdit(off, off.barcode, off.barcode)).toBe('same')
+    const typed = { ...empty, name: 'Moj jogurt', values: { ...empty.values, kcal: '60' } }
+    expect(barcodeEdit(typed, '', '8600939400017')).toBe('first')
+    // An empty draft with an old barcode: nothing to mix.
+    expect(barcodeEdit(empty, '8600939400017', '5901234123457')).toBe('first')
+    // "Different product" starts clean: no name, values or provenance of the previous one.
+    expect(forNewProduct('5901234123457')).toEqual({ ...empty, barcode: '5901234123457' })
+  })
 })
+

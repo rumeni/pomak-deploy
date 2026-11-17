@@ -68,6 +68,17 @@ describe('unsaved workout corrections are personal data', () => {
     expect([...store.keys()]).toEqual(['pomak.sessionEdit.u2.b'])
   })
 
+  it('unfinished program imports are removed on logout and account deletion, for that account only', async () => {
+    store.set('pomak.pendingProgram.u1.full-body-beginner', '[]')
+    store.set('pomak.pendingProgram.u2.full-body-beginner', '[]')
+    await clearLocalData('u1')
+    expect(store.has('pomak.pendingProgram.u1.full-body-beginner')).toBe(false)
+    expect(store.has('pomak.pendingProgram.u2.full-body-beginner')).toBe(true)
+    store.set('pomak.pendingProgram.u2.split-intermediate', '[]')
+    await clearLocalData('u2', true)
+    expect([...store.keys()].filter((k) => k.startsWith('pomak.pendingProgram.'))).toEqual([])
+  })
+
   it('are removed when the account is deleted', async () => {
     storeEditDraft('u1', draft('a'))
     await clearLocalData('u1', true)

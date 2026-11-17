@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import status
@@ -70,6 +71,14 @@ def _matches_saved_payload(incoming, saved, field=''):
     return incoming == saved
 
 
+class AlreadyCreated(APIException):
+    """412 for a create-only request whose ID already exists: nothing was changed."""
+
+    status_code = status.HTTP_412_PRECONDITION_FAILED
+    default_detail = _('This item already exists and was left unchanged.')
+    default_code = 'already_exists'
+
+
 class IdempotentCreateMixin:
     """A client-chosen UUID identifies a create attempt, not an unconditional success.
 
@@ -83,6 +92,10 @@ class IdempotentCreateMixin:
     owner_field = 'user'
     retry_action = 'return'
     retry_compare_fields = None
+
+    def find_existing(self, model, record_id):
+        """The record with this client-chosen ID, if it already exists."""
+        return model.objects.filter(pk=record_id).first()
 
     def created_by_user(self, record, user) -> bool:
         """Whether this user created the record (so a repeated create is a retry, not a clash)."""
@@ -99,15 +112,21 @@ class IdempotentCreateMixin:
     def create(self, request, *args, **kwargs):
         body = require_object_body(request)
         record_id = body.get('id')
+        # `?create_only=1`: create this ID or do nothing (412), never update an existing record -
+        # e.g. importing a program from two tabs at once must not overwrite a routine the user has
+        # edited since. Ordinary retries keep `retry_action`.
+        create_only = request.query_params.get('create_only') == '1'
         if record_id:
             model = self.get_serializer_class().Meta.model
             try:
-                existing = model.objects.filter(pk=record_id).first()
+                existing = self.find_existing(model, record_id)
             except (ValueError, TypeError, DjangoValidationError):
                 raise ValidationError({'id': _('Invalid ID.')}) from None
             if existing is not None:
                 if not self.created_by_user(existing, request.user):
                     raise ValidationError({'id': _('This ID is already taken.')})
+                if create_only:
+                    raise AlreadyCreated()
 
                 action = self.retry_action
                 if action == 'return':
@@ -129,6 +148,18 @@ class IdempotentCreateMixin:
                     self.perform_update(serializer)
                     return Response(serializer.data, status=status.HTTP_200_OK)
                 raise RuntimeError('Unsupported retry_action')
+        if create_only and record_id:
+            # Two requests creating the same new ID at once: the database decides, the loser
+            # gets the same 412 instead of an error (and nothing is overwritten).
+            try:
+                with transaction.atomic():
+                    return super().create(request, *args, **kwargs)
+            except IntegrityError:
+                model = self.get_serializer_class().Meta.model
+                existing = model.objects.filter(pk=record_id).first()
+                if existing is not None and self.created_by_user(existing, request.user):
+                    raise AlreadyCreated() from None
+                raise
         return super().create(request, *args, **kwargs)
 
 

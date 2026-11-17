@@ -420,6 +420,7 @@ export const en = {
   },
   newFood: {
     alreadyThere: '"{{name}}" is already in the database',
+    otherProductConfirm: 'The barcode changed. Is this a different product? "OK" clears the previous name, values and portions; "Cancel" keeps them (you only corrected the barcode).',
     useForMeal: 'Add it to the meal',
     openExisting: 'Open the food',
     kcalMismatch: 'Calories do not match the macros (about {{expected}} kcal expected). Check the values.',

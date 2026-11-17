@@ -81,6 +81,7 @@ SR = {
     'The workout cannot start in the future.': 'Trening ne može da počne u budućnosti.',
     'The workout has no confirmed sets.': 'Trening nema nijednu potvrđenu seriju.',
     'RPE goes in steps of 0.5.': 'RPE se upisuje u koracima od 0,5.',
+    'This item already exists and was left unchanged.': 'Ovo već postoji i nije menjano.',
     'Values taken from Open Food Facts can be saved as your own food, not shared.': 'Vrednosti preuzete iz Open Food Facts mogu da se sačuvaju kao tvoja namirnica, ali ne i da se dele.',
     'Invalid source.': 'Neispravan izvor.',
     'Community': 'Zajednica',
