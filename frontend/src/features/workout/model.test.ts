@@ -567,3 +567,33 @@ describe('review follow-ups: swap warnings and RPE load sources', () => {
     expect(rpeLoadRows(lw, lw.exercises[0])).toMatchObject({ calculated: [], missing: [0] })
   })
 })
+
+describe('timed prescriptions from a program', () => {
+  const plankEx: Exercise = { ...bench, id: 'plank', name: 'Plank', measurement: 'duration', muscle: 'core' }
+  const timed: Routine = {
+    ...routine,
+    exercises: [{
+      exercise: plankEx, rest_seconds: 60, notes: '',
+      sets: [1, 2].map(() => ({ set_type: 'working' as const, reps_min: null, reps_max: null, weight_kg: null, duration_seconds: 45, distance_m: null, rpe: null })),
+    }],
+  }
+
+  it('carries the planned time into the workout, its plan line and the confirmed set', () => {
+    let w = startFromRoutine(timed, {}, t0)
+    const ex = w.exercises[0]
+    expect(ex.sets[0].target).toMatchObject({ duration_seconds: 45 })
+    expect(suggestion(w, ex, 0).duration).toBe('0:45')
+    expect(planSummary(ex)).toEqual({ warmups: 0, groups: [{ count: 2, reps: null, weight: null, rpe: null, time: '0:45', km: null }] })
+    w = confirmSet(w, ex.key, ex.sets[0].key, t0)
+    expect(toSessionPayload(w, t0, null, '').exercises[0].sets[0]).toMatchObject({ duration_seconds: 45 })
+  })
+
+  it('still prefers last time over the plan', () => {
+    const last: Record<string, PreviousPerformance> = {
+      plank: { session_id: 's', started_at: '2026-09-20T10:00:00Z', sets: [{ set_type: 'working', weight_kg: null, reps: null, duration_seconds: 60, distance_m: null }] },
+    }
+    const w = startFromRoutine(timed, last, t0)
+    expect(suggestion(w, w.exercises[0], 0).duration).toBe('1:00')
+  })
+})
+

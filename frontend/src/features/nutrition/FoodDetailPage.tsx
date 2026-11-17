@@ -107,6 +107,21 @@ export function FoodDetailPage() {
         <p className="text-xs text-muted">
           {t('nutrition.source')}: {sourceText}
         </p>
+        {food.source_ref.startsWith('openfoodfacts:') && (
+          // ODbL attribution for values taken from Open Food Facts.
+          <p className="text-xs text-muted">
+            {t('nutrition.offAttribution')}{' '}
+            <a
+              href={`https://world.openfoodfacts.org/product/${food.source_ref.slice('openfoodfacts:'.length)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-brand-dark underline"
+            >
+              Open Food Facts
+            </a>{' '}
+            (ODbL)
+          </p>
+        )}
         {isCommunity && !canEdit && (
           <Button variant="ghost" className="text-sm" onClick={onReport} disabled={report.isPending}>
             {t('nutrition.report')}

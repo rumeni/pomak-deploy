@@ -8,6 +8,7 @@ import { parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { lookupBarcode, useCreateFood, useFood, useUpdateFood, type Food, type FoodState, type NewFood } from './api'
 import { FoodScanner, type ScanResult } from './FoodScanner'
+import { mergeScan } from './scanMerge'
 import { kcalCheck } from './labelCheck'
 import { foodFormValue } from './foodFormValues'
 import { useAuth } from '../../lib/auth'
@@ -70,8 +71,11 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
   )
   const [error, setError] = useState<string | null>(null)
   const [barcode, setBarcode] = useState(initialFood?.barcode ?? '')
-  // New foods go to the shared database by default, so the next person finds them.
-  const [shared, setShared] = useState(!initialFood)
+  // Private unless the athlete deliberately shares it: name, values and portions become public.
+  const [shared, setShared] = useState(false)
+  // Where the values came from ("openfoodfacts:<code>"), kept with the food.
+  const [sourceRef, setSourceRef] = useState('')
+  const fromOpenFoodFacts = sourceRef.startsWith('openfoodfacts:')
   // Fields filled by a scan, highlighted until the athlete checks them.
   const [scanned, setScanned] = useState<Set<ValueField>>(new Set())
   const [scanNote, setScanNote] = useState<string | null>(null)
@@ -79,17 +83,20 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
 
   const applyScan = (result: ScanResult) => {
     setExistingFood(null)
-    if (result.barcode) setBarcode(result.barcode)
     if (result.food) {
+      if (result.barcode) setBarcode(result.barcode)
       setExistingFood(result.food)
       return
     }
-    if (result.name && !name.trim()) setName(result.name)
-    const filled = Object.entries(result.values).filter(([, v]) => v !== null && v !== undefined) as [ValueField, string][]
-    if (filled.length) {
-      setValues((v) => ({ ...v, ...Object.fromEntries(filled.map(([f, val]) => [f, val.replace('.', ',')])) }))
-      setScanned(new Set(filled.map(([f]) => f)))
-    }
+    // Never mix two products: a different barcode replaces the whole draft (after asking).
+    const { next, filled, replaces } = mergeScan({ name, barcode, values, sourceRef }, result)
+    if (replaces && !window.confirm(t('scan.replaceConfirm'))) return
+    setName(next.name)
+    setBarcode(next.barcode)
+    setValues(next.values)
+    setSourceRef(next.sourceRef)
+    setScanned(new Set(filled))
+    if (next.sourceRef.startsWith('openfoodfacts:')) setShared(false)
     setScanNote(result.note)
   }
 
@@ -123,7 +130,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
     const code = barcode.trim()
     if (code && !/^\d{8,14}$/.test(code)) throw new FormInputError('invalidBarcode')
     return {
-      ...(editing ? {} : { shared }),
+      ...(editing ? {} : { shared: shared && !fromOpenFoodFacts, ...(sourceRef ? { source_ref: sourceRef } : {}) }),
       barcode: code,
       name: name.trim(),
       state,
@@ -264,11 +271,17 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
           onChange={(e) => setBarcode(e.target.value.replace(/\s/g, ''))}
         />
         {!editing && (
-          <label className="flex items-start gap-3 rounded-xl bg-card p-3 ring-1 ring-line/60">
-            <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} className="mt-1 size-5 shrink-0 accent-brand" />
+          <label className={`flex items-start gap-3 rounded-xl bg-card p-3 ring-1 ring-line/60 ${fromOpenFoodFacts ? 'opacity-70' : ''}`}>
+            <input
+              type="checkbox"
+              checked={shared && !fromOpenFoodFacts}
+              disabled={fromOpenFoodFacts}
+              onChange={(e) => setShared(e.target.checked)}
+              className="mt-1 size-5 shrink-0 accent-brand"
+            />
             <span>
               <span className="block font-semibold">{t('newFood.shareTitle')}</span>
-              <span className="block text-sm text-muted">{t('newFood.shareText')}</span>
+              <span className="block text-sm text-muted">{t(fromOpenFoodFacts ? 'newFood.shareOffText' : 'newFood.shareText')}</span>
             </span>
           </label>
         )}

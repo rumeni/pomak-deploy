@@ -312,7 +312,7 @@ function WorkoutExerciseCard({
   const planText = plan && [
     plan.warmups ? `${plan.warmups} ${warmup}` : null,
     ...plan.groups.map((g) =>
-      `${g.count} × ${g.reps ?? '–'}${g.weight ? ` · ${g.weight} kg` : ''}${g.rpe !== null ? ` @ ${formatRpe(g.rpe)}` : ''}`),
+      `${g.count} × ${g.km ? `${g.km} km` : ''}${g.km && g.time ? ' · ' : ''}${g.time ?? (g.km ? '' : g.reps ?? '–')}${g.weight ? ` · ${g.weight} kg` : ''}${g.rpe !== null ? ` @ ${formatRpe(g.rpe)}` : ''}`),
   ].filter(Boolean).join(' + ')
 
   return (

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Exercise } from './api'
-import { describePrescription, programToRoutines, type Program } from './programs'
+import { createRoutines, describePrescription, programToRoutines, type Program } from './programs'
 
 const bench: Exercise = {
   id: 'e-bench', slug: 'bench-press', name: 'Bench', aliases: '', equipment: 'barbell', measurement: 'weight_reps',
@@ -40,5 +40,22 @@ describe('suggested programs', () => {
   it('describes the prescription for the preview', () => {
     expect(describePrescription(program.routines[0].exercises[0], 's')).toBe('3 × 8–10 @ 6,5')
     expect(describePrescription(program.routines[0].exercises[1], 's')).toBe('1 × 45 s')
+  })
+
+  it('resumes a failed or lost import with the same routine IDs instead of new copies', async () => {
+    let n = 0
+    const batch = programToRoutines(program, () => `id-${++n}`)
+    const saved = new Map<string, unknown>()
+    let failAt: string | null = 'id-2'
+    // A server that keeps creates by ID (repeating one returns the existing routine).
+    const post = async (body: { id?: string }) => {
+      if (body.id === failAt) throw new Error('timeout')
+      saved.set(body.id!, body)
+    }
+    await expect(createRoutines(batch, post)).rejects.toThrow('timeout')
+    failAt = null
+    await createRoutines(batch, post) // the retry
+    expect([...saved.keys()]).toEqual(['id-1', 'id-2'])
+    expect(n).toBe(2) // no new IDs were made for the retry
   })
 })

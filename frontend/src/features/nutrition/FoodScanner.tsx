@@ -3,13 +3,11 @@ import { useTranslation } from 'react-i18next'
 
 import { lookupBarcode, type Food } from './api'
 import type { LabelField } from './labelText'
+import type { ScanData } from './scanMerge'
 
-export interface ScanResult {
-  barcode?: string
+export interface ScanResult extends ScanData {
   /** The product is already in the database. */
   food?: Food
-  name?: string
-  values: Partial<Record<LabelField, string | null>>
   /** What happened, for the athlete (what was read, what to check). */
   note: string | null
 }
@@ -35,18 +33,18 @@ export function FoodScanner({ onResult, autoStart = false }: { onResult: (result
     try {
       const { readBarcode } = await import('./scan')
       const code = await readBarcode(file)
-      if (!code) return onResult({ values: {}, note: t('scan.barcodeNotRead') })
-      if (!navigator.onLine) return onResult({ barcode: code, values: {}, note: t('scan.barcodeOffline', { code }) })
+      if (!code) return onResult({ kind: 'barcode', values: {}, note: t('scan.barcodeNotRead') })
+      if (!navigator.onLine) return onResult({ kind: 'barcode', barcode: code, values: {}, note: t('scan.barcodeOffline', { code }) })
       setBusy(t('scan.lookingUp', { code }))
       const { food, suggestion } = await lookupBarcode(code)
-      if (food) return onResult({ barcode: code, food, values: {}, note: null })
+      if (food) return onResult({ kind: 'barcode', barcode: code, food, values: {}, note: null })
       if (suggestion) {
-        const { name, barcode, source: _source, ...values } = suggestion
-        return onResult({ barcode, name, values, note: t('scan.fromOpenFoodFacts') })
+        const { name, barcode, source: _source, source_ref: sourceRef, source_url: _url, ...values } = suggestion
+        return onResult({ kind: 'barcode', barcode, name, values, sourceRef, note: t('scan.fromOpenFoodFacts') })
       }
-      onResult({ barcode: code, values: {}, note: t('scan.barcodeUnknown', { code }) })
+      onResult({ kind: 'barcode', barcode: code, values: {}, note: t('scan.barcodeUnknown', { code }) })
     } catch {
-      onResult({ values: {}, note: t('scan.failed') })
+      onResult({ kind: 'barcode', values: {}, note: t('scan.failed') })
     } finally {
       setBusy(null)
     }
@@ -59,18 +57,22 @@ export function FoodScanner({ onResult, autoStart = false }: { onResult: (result
     setBusy(t('scan.readingLabel', { percent: 0 }))
     try {
       const { readNutritionLabel } = await import('./scan')
-      const { values, found } = await readNutritionLabel(file, (share) => setBusy(t('scan.readingLabel', { percent: Math.round(share * 100) })))
-      if (!found.length) return onResult({ values: {}, note: t('scan.labelNotRead') })
+      const { values, found, column, perMl } = await readNutritionLabel(file, (share) => setBusy(t('scan.readingLabel', { percent: Math.round(share * 100) })))
+      if (column === 'servingOnly') return onResult({ kind: 'label', values: {}, note: t('scan.labelServingOnly') })
+      if (!found.length) return onResult({ kind: 'label', values: {}, note: t('scan.labelNotRead') })
       const missing = (['kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g'] as LabelField[]).filter((f) => !found.includes(f))
       onResult({
+        kind: 'label',
         values,
         note: [
           t('scan.labelRead', { fields: found.map(fieldName).join(', ') }),
           missing.length ? t('scan.labelMissing', { fields: missing.map(fieldName).join(', ') }) : null,
+          column === 'assumed' ? t('scan.labelColumnAssumed') : null,
+          perMl ? t('scan.labelPerMl') : null,
         ].filter(Boolean).join(' '),
       })
     } catch {
-      onResult({ values: {}, note: navigator.onLine ? t('scan.failed') : t('scan.labelOffline') })
+      onResult({ kind: 'label', values: {}, note: navigator.onLine ? t('scan.failed') : t('scan.labelOffline') })
     } finally {
       setBusy(null)
     }

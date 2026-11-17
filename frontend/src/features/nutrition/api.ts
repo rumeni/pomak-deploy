@@ -38,6 +38,8 @@ export type NewFood = Pick<Food, 'name' | 'state' | 'kcal' | 'protein_g' | 'carb
   barcode?: string
   /** Add to the shared database for everyone instead of keeping it private. */
   shared?: boolean
+  /** "openfoodfacts:<code>" when the values came from Open Food Facts. */
+  source_ref?: string
 }
 
 /** Values Open Food Facts has for a scanned barcode; shown in the form to confirm. */
@@ -50,6 +52,9 @@ export interface BarcodeSuggestion {
   fat_g: string | null
   fiber_g: string | null
   source: 'open_food_facts'
+  /** Provenance kept with the saved food ("openfoodfacts:<code>") and the product page. */
+  source_ref: string
+  source_url: string
 }
 
 /** A scanned barcode: the food we already have, or a suggestion to confirm, or neither. */

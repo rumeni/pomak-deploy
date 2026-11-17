@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '../../components/ui'
 import i18n from '../../i18n'
 import { api, errorMessage } from '../../lib/api'
 import { uuid } from '../../lib/uuid'
-import type { Routine } from './api'
-import { describePrescription, programToRoutines, type Program } from './programs'
+import type { Routine, RoutinePayload } from './api'
+import { createRoutines, describePrescription, programToRoutines, type Program } from './programs'
 
 function usePrograms() {
   return useQuery({
@@ -17,13 +17,11 @@ function usePrograms() {
   })
 }
 
-/** Copies all routines of a program into the athlete's own, one by one (each create is retry-safe). */
+/** Creates a prepared batch of routines; retried with the same batch, it never duplicates. */
 function useAddProgram() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (program: Program) => {
-      for (const body of programToRoutines(program, uuid)) await api.post('/training/routines/', body)
-    },
+    mutationFn: (batch: RoutinePayload[]) => createRoutines(batch, (body) => api.post('/training/routines/', body)),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['routines'] }),
   })
 }
@@ -67,12 +65,23 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
   const add = useAddProgram()
   const [open, setOpen] = useState(false)
   const [added, setAdded] = useState(false)
+  // The batch (with its routine IDs) of an add that has not finished: a retry resumes it.
+  const pending = useRef<RoutinePayload[] | null>(null)
   const names = new Set(program.routines.map((r) => r.name))
   const alreadyThere = !!routines?.some((r) => names.has(r.name) && r.notes === program.name)
 
   const onAdd = () => {
-    if (alreadyThere && !window.confirm(t('programs.addAgainConfirm'))) return
-    add.mutate(program, { onSuccess: () => setAdded(true) })
+    if (!pending.current) {
+      // A new, deliberate add (possibly again): new IDs.
+      if (alreadyThere && !window.confirm(t('programs.addAgainConfirm'))) return
+      pending.current = programToRoutines(program, uuid)
+    }
+    add.mutate(pending.current, {
+      onSuccess: () => {
+        pending.current = null
+        setAdded(true)
+      },
+    })
   }
 
   return (
@@ -119,7 +128,7 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
         <p role="status" className="rounded-xl bg-brand-soft px-3 py-2 text-sm font-semibold">{t('programs.added', { count: program.routines.length })}</p>
       ) : (
         <Button variant={program.recommended ? 'primary' : 'secondary'} onClick={onAdd} disabled={add.isPending}>
-          {add.isPending ? t('common.saving') : t('programs.add', { count: program.routines.length })}
+          {add.isPending ? t('common.saving') : add.isError ? t('programs.retry') : t('programs.add', { count: program.routines.length })}
         </Button>
       )}
     </article>

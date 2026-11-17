@@ -16,6 +16,8 @@ So 0,1 g 0,2 g`
     expect(parseLabelText(text)).toEqual({
       values: { kcal: '61', fat_g: '2.8', carbs_g: '4.6', fiber_g: '0', protein_g: '3.2' },
       found: ['kcal', 'fat_g', 'carbs_g', 'fiber_g', 'protein_g'],
+      column: 'per100',
+      perMl: false,
     })
   })
 
@@ -32,7 +34,7 @@ Bjelančevine/Protein 6,5 g`
   })
 
   it('leaves out what it cannot read instead of guessing', () => {
-    expect(parseLabelText('Sastojci: mleko, kultura\nČuvati na hladnom')).toEqual({ values: {}, found: [] })
+    expect(parseLabelText('Sastojci: mleko, kultura\nČuvati na hladnom')).toMatchObject({ values: {}, found: [] })
     // A value over 100 g per 100 g is an OCR slip (e.g. "28" read as "280").
     expect(parseLabelText('Proteini 280 g').values.protein_g).toBeUndefined()
     expect(parseLabelText('Energija 9000 kcal').values.kcal).toBeUndefined()
@@ -58,6 +60,39 @@ Ugljeni hidrati                       4,69g              9,2g
 od kojih šećeri                      4,69g              9,2g
 Proteini                                3,2g               6,4g`
     expect(parseLabelText(text).values).toEqual({ kcal: '61', fat_g: '2.8', carbs_g: '4.6', protein_g: '3.2' })
+  })
+})
+
+describe('which column is per 100 g', () => {
+  it('uses the per-100 g column when the serving comes first', () => {
+    const text = `Nutrition per 30 g | per 100 g
+Energy 502 kJ / 120 kcal | 1674 kJ / 400 kcal
+Fat 1,5 g 5 g
+Carbohydrate 22 g 73 g
+Protein 3 g 10 g`
+    expect(parseLabelText(text)).toMatchObject({
+      values: { kcal: '400', fat_g: '5', carbs_g: '73', protein_g: '10' }, column: 'per100',
+    })
+  })
+
+  it('fills nothing when the label shows only per-serving values', () => {
+    const text = `Hranljiva vrednost na porciju (30 g)
+Energija 502 kJ / 120 kcal
+Masti 1,5 g
+Proteini 3 g`
+    expect(parseLabelText(text)).toEqual({ values: {}, found: [], column: 'servingOnly', perMl: false })
+  })
+
+  it('reads drinks per 100 ml and flags it', () => {
+    const text = `Prosečne vrednosti na 100 ml / na čašu 250 ml
+Energija 180 kJ / 43 kcal 450 kJ / 108 kcal
+Ugljeni hidrati 10,6 g 26,5 g
+Proteini 0 g 0 g`
+    expect(parseLabelText(text)).toMatchObject({ values: { kcal: '43', carbs_g: '10.6', protein_g: '0' }, column: 'per100', perMl: true })
+  })
+
+  it('without a readable header uses the first column but says it assumed so', () => {
+    expect(parseLabelText('Masti 2,8 g 5,6 g').column).toBe('assumed')
   })
 })
 

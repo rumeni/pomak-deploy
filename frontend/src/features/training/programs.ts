@@ -40,3 +40,13 @@ export function describePrescription(item: RoutineExercise, secondsUnit: string)
   const rpe = s.rpe ? ` @ ${String(Number(s.rpe)).replace('.', ',')}` : ''
   return `${count} × ${amount}${rpe}`
 }
+
+/**
+ * Creates a prepared batch of routines one by one. Retrying the SAME batch after a network
+ * error or a lost response is safe: each routine keeps its ID, and the server answers a
+ * repeated create of an existing ID without making a second copy.
+ */
+export async function createRoutines(batch: RoutinePayload[], post: (body: RoutinePayload) => Promise<unknown>): Promise<void> {
+  for (const body of batch) await post(body)
+}
+
