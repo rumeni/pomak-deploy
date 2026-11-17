@@ -2,6 +2,7 @@ import { formatDecimal, parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import type { Exercise, Routine, SetType } from '../training/api'
 import { formatDuration } from '../training/labels'
+import { estimated1rm, formatRpe, hasReadiness, parseRpe, weightForTarget, type Readiness } from './rpe'
 
 /** Rezultat jedne serije sa servera (prošli put). */
 export interface LoggedSet {
@@ -10,6 +11,8 @@ export interface LoggedSet {
   reps: number | null
   duration_seconds: number | null
   distance_m: number | null
+  /** How hard the set felt; absent in sets logged before RPE existed. */
+  rpe?: string | null
 }
 
 export interface PreviousPerformance {
@@ -26,7 +29,9 @@ export interface ActiveSet {
   reps: string
   duration: string
   distance: string
-  target: { reps_min: number | null; reps_max: number | null; weight_kg: string | null } | null
+  /** Logged RPE; can be added or changed after the set is confirmed. */
+  rpe?: number | null
+  target: { reps_min: number | null; reps_max: number | null; weight_kg: string | null; rpe?: number | null } | null
   done: boolean
   completedAt: string | null
 }
@@ -49,6 +54,10 @@ export interface ActiveWorkout {
   draftFeeling?: number | null
   draftNotes?: string
   recoveredFinishedAt?: string
+  /** Pre-workout check-in (sleep, stress, soreness ...); every answer optional. */
+  readiness?: Readiness
+  /** The check-in step was answered or skipped; the workout itself shows from then on. */
+  checkInDone?: boolean
   exercises: ActiveExercise[]
   previous: Record<string, PreviousPerformance>
   rest: { endsAt: string; totalSeconds: number } | null
@@ -73,7 +82,7 @@ export function startFromRoutine(routine: Routine, previous: Record<string, Prev
       notes: e.notes,
       sets: e.sets.map((s) => ({
         ...emptyActiveSet(s.set_type),
-        target: { reps_min: s.reps_min, reps_max: s.reps_max, weight_kg: s.weight_kg },
+        target: { reps_min: s.reps_min, reps_max: s.reps_max, weight_kg: s.weight_kg, rpe: parseRpe(s.rpe) },
       })),
     })),
   }
@@ -84,7 +93,7 @@ export function startEmpty(name: string, now: Date): ActiveWorkout {
 }
 
 export function emptyActiveSet(set_type: SetType = 'working'): ActiveSet {
-  return { key: uuid(), set_type, weight: '', reps: '', duration: '', distance: '', target: null, done: false, completedAt: null }
+  return { key: uuid(), set_type, weight: '', reps: '', duration: '', distance: '', rpe: null, target: null, done: false, completedAt: null }
 }
 
 export function newActiveExercise(exercise: Exercise): ActiveExercise {
@@ -111,14 +120,60 @@ export function previousSet(workout: ActiveWorkout, item: ActiveExercise, index:
 }
 
 /**
+ * The planned RPE that applies to a set right now. The plan targets working sets only, so a
+ * set switched to a warm-up during the workout drops it (and its RPE-based load).
+ */
+export function targetRpe(set: ActiveSet | undefined): number | null {
+  return set?.set_type === 'working' ? set.target?.rpe ?? null : null
+}
+
+/** Best estimated 1RM from last time's working sets (RPE-aware), or null. */
+export function previousEstimated1rm(workout: ActiveWorkout, item: ActiveExercise): number | null {
+  const sets = workout.previous[item.exercise.id]?.sets ?? []
+  let best: number | null = null
+  for (const s of sets) {
+    if (s.set_type !== 'working' || s.weight_kg === null || s.reps === null) continue
+    const e1rm = estimated1rm(Number(s.weight_kg), s.reps, parseRpe(s.rpe))
+    if (e1rm !== null && (best === null || e1rm > best)) best = e1rm
+  }
+  return best
+}
+
+/**
+ * Load for a set the routine prescribes by intensity (e.g. 5 @ RPE 8), worked out from last
+ * time's estimated 1RM - what a coach does with an RPE chart.
+ *
+ * Returns null only when RPE does not drive this set (no target RPE, or a fixed weight in the
+ * plan). Otherwise `reps` are the ones the athlete typed (the planned reps while the field is
+ * empty) and `weight` is the load for them. `weight` is null when it cannot be worked out -
+ * no history, history with no estimable set (e.g. only 12-rep sets), or reps outside the chart
+ * - and the athlete must enter it: last time's load would not match the prescribed effort.
+ */
+export function rpeTargetWeight(workout: ActiveWorkout, item: ActiveExercise, index: number): { weight: number | null; reps: number } | null {
+  const set = item.sets[index]
+  const target = set?.target
+  const planned = target?.reps_max ?? target?.reps_min ?? null
+  const rpe = targetRpe(set)
+  if (item.exercise.measurement !== 'weight_reps' || !target || rpe === null || planned === null || target.weight_kg !== null) return null
+  const typed = /^\d{1,4}$/.test(set.reps.trim()) ? Number(set.reps.trim()) : null
+  const reps = typed !== null && typed > 0 ? typed : planned
+  const e1rm = previousEstimated1rm(workout, item)
+  const weight = e1rm === null ? null : weightForTarget(e1rm, reps, rpe, item.exercise.load_mode === 'per_side' ? 1 : 2.5)
+  return { weight, reps }
+}
+
+/**
  * Ponuđena vrednost za prazno polje: prošli rezultat, pa plan iz rutine.
  * Prikazuje se sivo i postaje rezultat tek kad korisnik potvrdi seriju.
+ * When the plan sets an RPE target (and no fixed weight), the weight comes from the RPE chart.
  */
-export function suggestion(workout: ActiveWorkout, item: ActiveExercise, index: number): Omit<ActiveSet, 'key' | 'set_type' | 'target' | 'done' | 'completedAt'> {
+export function suggestion(workout: ActiveWorkout, item: ActiveExercise, index: number): Pick<ActiveSet, 'weight' | 'reps' | 'duration' | 'distance'> {
   const prev = previousSet(workout, item, index)
   const target = item.sets[index]?.target
-  const weight = prev?.weight_kg ?? target?.weight_kg ?? null
-  const reps = prev?.reps ?? target?.reps_max ?? target?.reps_min ?? null
+  const fromRpe = rpeTargetWeight(workout, item, index)
+  // A prescription wins over last time's numbers when the load is derived from it.
+  const weight = fromRpe ? fromRpe.weight : prev?.weight_kg ?? target?.weight_kg ?? null
+  const reps = fromRpe ? fromRpe.reps : prev?.reps ?? target?.reps_max ?? target?.reps_min ?? null
   return {
     weight: weight === null ? '' : formatDecimal(Number(weight)),
     reps: reps === null ? '' : String(reps),
@@ -127,9 +182,15 @@ export function suggestion(workout: ActiveWorkout, item: ActiveExercise, index: 
   }
 }
 
-/** "60 × 10", "12 pon.", "2,5 km · 15:00" — prošli rezultat za kolonu PROŠLI PUT. */
-export function describeLogged(set: LoggedSet | null, exercise: Exercise, repsUnit: string): string {
+/** "60 × 10", "12 pon.", "2,5 km · 15:00" — prošli rezultat za kolonu PROŠLI PUT. With `withRpe`: "60 × 10 @ 8". */
+export function describeLogged(set: LoggedSet | null, exercise: Exercise, repsUnit: string, withRpe = false): string {
   if (!set) return '–'
+  const rpe = withRpe ? parseRpe(set.rpe) : null
+  const text = describeValues(set, exercise, repsUnit)
+  return rpe === null || text === '–' ? text : `${text} @ ${formatRpe(rpe)}`
+}
+
+function describeValues(set: LoggedSet, exercise: Exercise, repsUnit: string): string {
   const w = set.weight_kg === null ? null : formatDecimal(Number(set.weight_kg))
   switch (exercise.measurement) {
     case 'weight_reps':
@@ -197,6 +258,7 @@ function parseSeconds(text: string): number | null {
 export function setResult(set: ActiveSet, exercise: Exercise): LoggedSet {
   const m = exercise.measurement
   const result: LoggedSet = { set_type: set.set_type, weight_kg: null, reps: null, duration_seconds: null, distance_m: null }
+  const rpe = parseRpe(set.rpe ?? null)
   if (m === 'duration' || m === 'distance_duration') {
     result.duration_seconds = parseSeconds(set.duration)
     if (m === 'distance_duration') {
@@ -207,6 +269,7 @@ export function setResult(set: ActiveSet, exercise: Exercise): LoggedSet {
   }
   result.reps = parseReps(set.reps)
   if (result.reps === null) throw new SetInputError('workout.errors.needReps')
+  if (rpe !== null) result.rpe = String(rpe)
   if (m !== 'bodyweight_reps') {
     const weight = parseWeight(set.weight, set.done)
     if (weight === null && m === 'weight_reps') throw new SetInputError('workout.errors.needWeight')
@@ -326,6 +389,8 @@ export interface SessionPayload {
   plan_snapshot: Routine | null
   feeling: number | null
   notes: string
+  /** Omitted when the check-in was skipped (and by older app versions). */
+  readiness?: Readiness
   exercises: { exercise_id: string; notes: string; sets: (LoggedSet & { completed_at: string | null })[] }[]
 }
 
@@ -388,6 +453,7 @@ export function uploadSafePlanSnapshot(snapshot: Routine | null): Routine | null
         weight_kg: set.weight_kg,
         duration_seconds: set.duration_seconds,
         distance_m: set.distance_m,
+        rpe: set.rpe,
       })),
     })),
   }
@@ -415,6 +481,7 @@ export function toSessionPayload(workout: ActiveWorkout, finishedAt: Date, feeli
     plan_snapshot: workout.planSnapshot,
     feeling,
     notes,
+    ...(hasReadiness(workout.readiness) ? { readiness: workout.readiness } : {}),
     exercises: workout.exercises.map((item) => ({
       exercise_id: item.exercise.id,
       notes: item.notes,

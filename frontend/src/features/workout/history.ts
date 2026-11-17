@@ -2,6 +2,7 @@ import type { OutboxRow } from '../../lib/db'
 import type { Exercise } from '../training/api'
 import type { WorkoutSession } from './api'
 import type { LoggedSet } from './model'
+import { hasReadiness, type Readiness } from './rpe'
 
 export type SessionStatus = 'sent' | 'pending' | 'rejected' | 'deleting'
 
@@ -13,6 +14,7 @@ export interface SessionView {
   finishedAt: string
   feeling: number | null
   notes: string
+  readiness: Readiness | null
   status: SessionStatus
   error: string | null
   exercises: { exercise: Exercise; sets: LoggedSet[] }[]
@@ -26,6 +28,7 @@ export function fromServer(s: WorkoutSession): SessionView {
     finishedAt: s.finished_at,
     feeling: s.feeling,
     notes: s.notes,
+    readiness: hasReadiness(s.readiness) ? s.readiness : null,
     status: 'sent',
     error: null,
     exercises: s.exercises.map((e) => ({ exercise: e.exercise, sets: e.sets })),
@@ -41,6 +44,7 @@ export function fromOutbox(row: OutboxRow): SessionView {
     finishedAt: row.payload.finished_at,
     feeling: row.payload.feeling,
     notes: row.payload.notes,
+    readiness: hasReadiness(row.payload.readiness) ? row.payload.readiness : null,
     status: row.deleteRequested ? 'deleting' : row.error ? 'rejected' : 'pending',
     error: row.error,
     // Kao na serveru: vežba bez potvrđenih serija nije deo odrađenog treninga.

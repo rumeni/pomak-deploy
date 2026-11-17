@@ -80,6 +80,7 @@ SR = {
     'A workout cannot last longer than 24 hours.': 'Trening ne može da traje duže od 24 sata.',
     'The workout cannot start in the future.': 'Trening ne može da počne u budućnosti.',
     'The workout has no confirmed sets.': 'Trening nema nijednu potvrđenu seriju.',
+    'RPE goes in steps of 0.5.': 'RPE se upisuje u koracima od 0,5.',
     # Namirnice
     'Custom': 'Lična',
     'Raw': 'Sirovo',

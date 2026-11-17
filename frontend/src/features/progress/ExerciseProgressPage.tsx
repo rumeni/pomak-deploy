@@ -5,6 +5,7 @@ import { Card, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { LineChart } from '../../components/LineChart'
 import { formatDecimal, formatShortDate, toISODate } from '../../lib/format'
 import { describeLogged } from '../workout/model'
+import { formatRpe, parseRpe } from '../workout/rpe'
 import { useExerciseProgress, type RecordKey } from './api'
 import { formatRecordValue } from './format'
 import { ExerciseDemo } from '../training/ExerciseImage'
@@ -69,7 +70,8 @@ export function ExerciseProgressPage() {
                     <dt className="text-xs text-muted">{t(`progress.record_${key}`)}</dt>
                     <dd className="text-xl font-bold tabular-nums">{formatRecordValue(key, r.value, repsUnit)}</dd>
                     <dd className="text-xs text-muted tabular-nums">
-                      {r.weight !== undefined && r.reps !== undefined && key !== 'heaviest' && `${formatDecimal(Number(r.weight))} × ${r.reps} · `}
+                      {r.weight !== undefined && r.reps !== undefined && key !== 'heaviest'
+                        && `${formatDecimal(Number(r.weight))} × ${r.reps}${parseRpe(r.rpe) !== null ? ` @ ${formatRpe(parseRpe(r.rpe)!)}` : ''} · `}
                       {key === 'heaviest' && r.reps !== undefined && `× ${r.reps} · `}
                       {formatShortDate(r.date)}
                     </dd>
@@ -103,7 +105,7 @@ export function ExerciseProgressPage() {
               </p>
               <p className="mt-1 text-sm tabular-nums text-muted">
                 {h.sets
-                  .map((s) => `${s.set_type === 'warmup' ? `${t('progress.warmupShort')} ` : ''}${describeLogged(s, exercise, repsUnit)}`)
+                  .map((s) => `${s.set_type === 'warmup' ? `${t('progress.warmupShort')} ` : ''}${describeLogged(s, exercise, repsUnit, true)}`)
                   .join(' · ')}
               </p>
             </Link>

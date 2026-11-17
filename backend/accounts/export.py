@@ -21,7 +21,9 @@ PROFILE_FIELDS = [
     'display_name', 'language', 'is_coach', 'tracks_training', 'tracks_nutrition', 'training_experience',
     'weekly_workouts_target', 'sex', 'birth_date', 'height_cm', 'meals',
 ]
-SET_FIELDS = ['set_type', 'weight_kg', 'reps', 'duration_seconds', 'distance_m', 'completed_at']
+SET_FIELDS = ['set_type', 'weight_kg', 'reps', 'duration_seconds', 'distance_m', 'rpe', 'completed_at']
+READINESS_EXPORT = ['sleep_hours', 'hydration', 'stress', 'motivation', 'soreness_upper', 'soreness_lower']
+READINESS_CSV = ['sleep_hours', 'motivation', 'stress', 'soreness_upper', 'soreness_lower', 'hydration']
 VALUE_FIELDS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g']
 
 
@@ -64,7 +66,7 @@ def collect(user) -> dict:
                 'exercises': [
                     {
                         'exercise': e.exercise.name, 'rest_seconds': e.rest_seconds, 'notes': e.notes,
-                        'sets': _sets(e.sets.all(), ['set_type', 'reps_min', 'reps_max', 'weight_kg', 'duration_seconds', 'distance_m']),
+                        'sets': _sets(e.sets.all(), ['set_type', 'reps_min', 'reps_max', 'weight_kg', 'duration_seconds', 'distance_m', 'rpe']),
                     }
                     for e in r.exercises.all()
                 ],
@@ -74,6 +76,7 @@ def collect(user) -> dict:
         'workouts': [
             {
                 'name': s.name, 'started_at': s.started_at, 'finished_at': s.finished_at, 'feeling': s.feeling, 'notes': s.notes,
+                'readiness': {f: getattr(s, f) for f in READINESS_EXPORT},
                 'exercises': [
                     {'exercise': e.exercise.name, 'notes': e.notes, 'sets': _sets(e.sets.all(), SET_FIELDS)} for e in s.exercises.all()
                 ],
@@ -122,11 +125,19 @@ def build_zip(user) -> bytes:
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('pomak.json', json.dumps(data, cls=DjangoJSONEncoder, ensure_ascii=False, indent=2))
         z.writestr('treninzi.csv', _csv(
-            ['datum', 'trening', 'vezba', 'serija', 'vrsta', 'tezina_kg', 'ponavljanja', 'trajanje_s', 'distanca_m'],
+            ['datum', 'trening', 'vezba', 'serija', 'vrsta', 'tezina_kg', 'ponavljanja', 'trajanje_s', 'distanca_m', 'rpe'],
             [
                 [timezone.localtime(w['started_at']).date(), w['name'], e['exercise'], i + 1, s['set_type'],
-                 s['weight_kg'], s['reps'], s['duration_seconds'], s['distance_m']]
+                 s['weight_kg'], s['reps'], s['duration_seconds'], s['distance_m'], s['rpe']]
                 for w in data['workouts'] for e in w['exercises'] for i, s in enumerate(e['sets'])
+            ],
+        ))
+        # Pre-workout check-in: one row per workout that has one (1-5 scales, sleep in hours).
+        z.writestr('spremnost.csv', _csv(
+            ['datum', 'trening', 'san_h', 'motivacija', 'stres', 'upala_gornji_deo', 'upala_donji_deo', 'hidratacija'],
+            [
+                [timezone.localtime(w['started_at']).date(), w['name'], *[w['readiness'][f] for f in READINESS_CSV]]
+                for w in data['workouts'] if any(v is not None for v in w['readiness'].values())
             ],
         ))
         z.writestr('ishrana.csv', _csv(

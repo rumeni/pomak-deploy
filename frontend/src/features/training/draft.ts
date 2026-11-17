@@ -2,6 +2,7 @@ import { formatDecimal, parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import type { Exercise, Routine, RoutinePayload, RoutineSet, SetType } from './api'
 import { formatDuration } from './labels'
+import { parseRpe } from '../workout/rpe'
 
 /** Serija dok se uređuje: polja su tekst kako ih je korisnik ukucao ("8-10", "62,5", "1:30"). */
 export interface DraftSet {
@@ -11,6 +12,8 @@ export interface DraftSet {
   weight: string
   duration: string
   distance: string
+  /** Target RPE as offered in the picker ("8", "7.5"), '' for none. */
+  rpe: string
 }
 
 export interface DraftExercise {
@@ -75,7 +78,7 @@ function parseOptionalDecimal(text: string, exercise: string): number | null {
 }
 
 export function emptySet(set_type: SetType = 'working'): DraftSet {
-  return { key: uuid(), set_type, reps: '', weight: '', duration: '', distance: '' }
+  return { key: uuid(), set_type, reps: '', weight: '', duration: '', distance: '', rpe: '' }
 }
 
 export function newDraftExercise(exercise: Exercise): DraftExercise {
@@ -102,6 +105,7 @@ function setToDraft(s: RoutineSet): DraftSet {
     weight: s.weight_kg === null ? '' : formatDecimal(Number(s.weight_kg)),
     duration: s.duration_seconds === null ? '' : formatDuration(s.duration_seconds),
     distance: s.distance_m === null ? '' : formatDecimal(s.distance_m / 1000),
+    rpe: String(parseRpe(s.rpe) ?? ''),
   }
 }
 
@@ -156,6 +160,8 @@ export function draftToPayload(draft: RoutineDraft): RoutinePayload {
             weight_kg: weight === null ? null : String(weight),
             duration_seconds: usesReps ? null : parseDuration(s.duration),
             distance_m: km === null ? null : Math.round(km * 1000),
+            // Intensity only makes sense for working sets with reps.
+            rpe: usesReps && s.set_type === 'working' && parseRpe(s.rpe) !== null ? String(parseRpe(s.rpe)) : null,
           }
         }),
       }

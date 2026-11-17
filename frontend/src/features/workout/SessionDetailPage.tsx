@@ -13,6 +13,7 @@ import { useDeleteSession, useSession } from './api'
 import { durationSeconds, formatWorkoutDuration, fromOutbox, fromServer, sessionExerciseKey, type SessionView } from './history'
 import { StatusBadge } from './HistoryList'
 import { describeLogged } from './model'
+import { ReadinessSummary } from './ReadinessSummary'
 import { discardOutboxItem, restoreRejectedWorkout } from './outbox'
 import { requestSync } from './sync'
 import { ExerciseHeading } from '../training/ExerciseHeading'
@@ -112,6 +113,8 @@ export function SessionDetailPage() {
           <p className="rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">{t('history.rejectedHint', { error: session.error })}</p>
         )}
 
+        {session.readiness && <ReadinessSummary readiness={session.readiness} />}
+
         {session.exercises.map(({ exercise, sets }, position) => {
           // Radne serije 1, 2, 3…; zagrevanje ne ulazi u brojanje.
           const labels = sets.reduce<string[]>((acc, set) => {
@@ -127,7 +130,7 @@ export function SessionDetailPage() {
                 {sets.map((set, i) => (
                   <li key={i} className="flex gap-3 tabular-nums">
                     <span className="w-6 text-center font-semibold text-muted">{labels[i]}</span>
-                    <span>{describeLogged(set, exercise, t('routine.phReps'))}</span>
+                    <span>{describeLogged(set, exercise, t('routine.phReps'), true)}</span>
                   </li>
                 ))}
               </ol>

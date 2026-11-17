@@ -1,5 +1,6 @@
 import json
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -9,7 +10,7 @@ from rest_framework import serializers
 from core.i18n import localized_name
 from core.text import EXERCISE_PREMIGRATION_KEY_LIMIT, search_key_fits
 
-from .models import Exercise, Routine, RoutineExercise, RoutineSet, SessionExercise, SetLog, WorkoutSession
+from .models import READINESS_FIELDS, Exercise, Routine, RoutineExercise, RoutineSet, SessionExercise, SetLog, WorkoutSession
 
 MAX_EXERCISES_PER_ROUTINE = 40
 MAX_SETS_PER_EXERCISE = 20
@@ -17,6 +18,16 @@ MAX_SETS_PER_EXERCISE = 20
 MAX_SESSION_EXERCISES = 40
 MAX_SESSION_SETS_PER_EXERCISE = 20
 MAX_WORKOUT_SNAPSHOT_BYTES = 256 * 1024
+
+
+def validate_rpe(value):
+    """RPE goes in half steps (7, 7.5, 8 ...), the same scale the app offers."""
+    if value is not None and (value * 2) % 1:
+        raise serializers.ValidationError(_('RPE goes in steps of 0.5.'))
+    return value
+
+
+RPE_KWARGS = {'min_value': Decimal('1'), 'max_value': Decimal('10'), 'validators': [validate_rpe]}
 
 
 class ExerciseSerializer(serializers.ModelSerializer):
@@ -63,8 +74,9 @@ class ExerciseSerializer(serializers.ModelSerializer):
 class RoutineSetSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoutineSet
-        fields = ['set_type', 'reps_min', 'reps_max', 'weight_kg', 'duration_seconds', 'distance_m']
+        fields = ['set_type', 'reps_min', 'reps_max', 'weight_kg', 'duration_seconds', 'distance_m', 'rpe']
         extra_kwargs = {
+            'rpe': RPE_KWARGS,
             'reps_min': {'min_value': 1, 'max_value': 1000},
             'reps_max': {'min_value': 1, 'max_value': 1000},
             'weight_kg': {'min_value': 0, 'max_value': 1000},
@@ -165,8 +177,9 @@ MAX_WORKOUT_HOURS = 24
 class SetLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = SetLog
-        fields = ['set_type', 'weight_kg', 'reps', 'duration_seconds', 'distance_m', 'completed_at']
+        fields = ['set_type', 'weight_kg', 'reps', 'duration_seconds', 'distance_m', 'completed_at', 'rpe']
         extra_kwargs = {
+            'rpe': RPE_KWARGS,
             'reps': {'min_value': 0, 'max_value': 1000},
             'weight_kg': {'min_value': 0, 'max_value': 1000},
             'duration_seconds': {'min_value': 1, 'max_value': 24 * 3600},
@@ -201,8 +214,22 @@ class SessionExerciseSerializer(serializers.ModelSerializer):
         return exercise
 
 
+class ReadinessSerializer(serializers.ModelSerializer):
+    """Pre-workout check-in, stored on the session itself and nested in the API."""
+
+    class Meta:
+        model = WorkoutSession
+        fields = list(READINESS_FIELDS)
+        extra_kwargs = {
+            'sleep_hours': {'min_value': 0, 'max_value': 14},
+            **{f: {'min_value': 1, 'max_value': 5} for f in READINESS_FIELDS if f != 'sleep_hours'},
+        }
+
+
 class WorkoutSessionSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(required=False)
+    # Optional: older app versions do not send it.
+    readiness = ReadinessSerializer(source='*', required=False)
     routine_id = serializers.PrimaryKeyRelatedField(
         queryset=Routine.objects.all(), source='routine', required=False, allow_null=True,
     )
@@ -212,7 +239,7 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
         model = WorkoutSession
         fields = [
             'id', 'routine_id', 'name', 'started_at', 'finished_at', 'plan_snapshot',
-            'feeling', 'notes', 'exercises', 'created_at',
+            'feeling', 'notes', 'readiness', 'exercises', 'created_at',
         ]
         read_only_fields = ['created_at']
 

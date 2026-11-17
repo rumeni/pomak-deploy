@@ -23,6 +23,8 @@ export interface PersonalRecord {
   session_id: string
   weight?: string
   reps?: number
+  /** RPE of the set behind an estimated-1RM record, when it was logged. */
+  rpe?: string | null
 }
 
 export interface ExerciseProgress {

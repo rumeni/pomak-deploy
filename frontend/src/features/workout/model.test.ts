@@ -7,6 +7,8 @@ import {
   describeLogged,
   previousSet,
   prepareSessionPayload,
+  rpeTargetWeight,
+  targetRpe,
   MAX_WORKOUT_SNAPSHOT_BYTES,
   SetInputError,
   startFromRoutine,
@@ -298,5 +300,117 @@ describe('oversized plan snapshot regression (Codex PR #38)', () => {
     expect(fixed.id).toBe(old.id)
     expect(fixed.exercises).toBe(old.exercises)
     expect(legacy.plan_snapshot).toBe(huge)
+  })
+})
+
+describe('RPE and readiness', () => {
+  const rpeRoutine: Routine = {
+    ...routine,
+    exercises: [{
+      exercise: bench, rest_seconds: 180, notes: '',
+      sets: [
+        { set_type: 'working', reps_min: 3, reps_max: 3, weight_kg: null, duration_seconds: null, distance_m: null, rpe: '8.0' },
+        // A fixed weight in the plan is the coach's call; RPE does not override it.
+        { set_type: 'working', reps_min: 3, reps_max: 3, weight_kg: '90.00', duration_seconds: null, distance_m: null, rpe: '8.0' },
+      ],
+    }],
+  }
+  const lastTime: Record<string, PreviousPerformance> = {
+    bench: {
+      session_id: 's0', started_at: '2026-09-20T10:00:00Z',
+      sets: [
+        { set_type: 'working', weight_kg: '100.00', reps: 5, duration_seconds: null, distance_m: null, rpe: '8.0' },
+        { set_type: 'working', weight_kg: '95.00', reps: 5, duration_seconds: null, distance_m: null, rpe: null },
+      ],
+    },
+  }
+
+  it('suggests the weight for a set prescribed by RPE from last time\'s estimated 1RM', () => {
+    const w = startFromRoutine(rpeRoutine, lastTime, t0)
+    expect(w.exercises[0].sets[0].target?.rpe).toBe(8)
+    // 100 x 5 @ 8 -> e1RM 123.5; 3 @ 8 = 86% -> 106.2 -> 105 kg; reps follow the plan
+    expect(suggestion(w, w.exercises[0], 0)).toMatchObject({ weight: '105', reps: '3' })
+    expect(suggestion(w, w.exercises[0], 1)).toMatchObject({ weight: '95' })
+  })
+
+  it('recalculates the RPE load for the reps the athlete actually types', () => {
+    let w = startFromRoutine(rpeRoutine, lastTime, t0)
+    const ex = w.exercises[0]
+    // 8 @ 8 = 74% of 123.5 -> 91.4 -> 92.5 kg, not the 105 kg planned for 3 reps
+    w = updateSet(w, ex.key, ex.sets[0].key, { reps: '8' })
+    expect(suggestion(w, w.exercises[0], 0)).toMatchObject({ weight: '92,5', reps: '8' })
+    w = confirmSet(w, ex.key, ex.sets[0].key, t0)
+    expect(toSessionPayload(w, t0, null, '').exercises[0].sets[0]).toMatchObject({ weight_kg: '92.5', reps: 8 })
+  })
+
+  it('asks for the weight when the chart has no value for the typed reps', () => {
+    let w = startFromRoutine(rpeRoutine, lastTime, t0)
+    const ex = w.exercises[0]
+    w = updateSet(w, ex.key, ex.sets[0].key, { reps: '12' })
+    // Never falls back to last time's 100 kg for a 12-rep set at RPE 8.
+    expect(suggestion(w, w.exercises[0], 0).weight).toBe('')
+    expect(() => confirmSet(w, ex.key, ex.sets[0].key, t0)).toThrow(SetInputError)
+  })
+
+  it('drops the RPE target and its load when a working set becomes a warm-up', () => {
+    let w = startFromRoutine(rpeRoutine, lastTime, t0)
+    const ex = w.exercises[0]
+    expect(targetRpe(w.exercises[0].sets[0])).toBe(8)
+    w = updateSet(w, ex.key, ex.sets[0].key, { set_type: 'warmup' })
+    expect(targetRpe(w.exercises[0].sets[0])).toBeNull()
+    expect(rpeTargetWeight(w, w.exercises[0], 0)).toBeNull()
+    // No 105 kg "@8" load on a warm-up; there is no earlier warm-up either, so the field stays empty.
+    expect(suggestion(w, w.exercises[0], 0).weight).toBe('')
+    // Switching back restores the plan.
+    w = updateSet(w, ex.key, ex.sets[0].key, { set_type: 'working' })
+    expect(suggestion(w, w.exercises[0], 0)).toMatchObject({ weight: '105', reps: '3' })
+  })
+
+  it('never falls back to the previous load when the RPE load cannot be estimated', () => {
+    // Only 12-rep sets last time: outside the 1-10 rep estimate range.
+    const highReps: Record<string, PreviousPerformance> = {
+      bench: { session_id: 's0', started_at: '2026-09-20T10:00:00Z', sets: [
+        { set_type: 'working', weight_kg: '100.00', reps: 12, duration_seconds: null, distance_m: null, rpe: '8.0' },
+      ] },
+    }
+    for (const history of [highReps, {}]) {
+      const w = startFromRoutine(rpeRoutine, history, t0)
+      const ex = w.exercises[0]
+      expect(rpeTargetWeight(w, ex, 0)).toEqual({ weight: null, reps: 3 })
+      // The prescription (3 reps) is offered, the old 100 x 12 is not.
+      expect(suggestion(w, ex, 0)).toMatchObject({ weight: '', reps: '3' })
+      expect(() => confirmSet(w, ex.key, ex.sets[0].key, t0)).toThrow(SetInputError)
+      // Typing the weight is enough.
+      const typed = updateSet(w, ex.key, ex.sets[0].key, { weight: '90' })
+      const done = confirmSet(typed, ex.key, ex.sets[0].key, t0)
+      expect(toSessionPayload(done, t0, null, '').exercises[0].sets[0]).toMatchObject({ weight_kg: '90', reps: 3 })
+    }
+  })
+
+  it('keeps an API-set RPE outside the picker range', () => {
+    const low: Routine = { ...rpeRoutine, exercises: [{ ...rpeRoutine.exercises[0], sets: [{ ...rpeRoutine.exercises[0].sets[0], rpe: '3.5' }] }] }
+    const w = startFromRoutine(low, {}, t0)
+    expect(w.exercises[0].sets[0].target?.rpe).toBe(3.5)
+  })
+
+  it('sends RPE with the set and the check-in only when answered', () => {
+    let w = startFromRoutine(rpeRoutine, lastTime, t0)
+    const ex = w.exercises[0]
+    w = updateSet(w, ex.key, ex.sets[0].key, { weight: '105', reps: '3', rpe: 8.5 })
+    w = confirmSet(w, ex.key, ex.sets[0].key, t0)
+    w = confirmSet(w, ex.key, ex.sets[1].key, t0)
+    let payload = toSessionPayload(w, t0, null, '')
+    expect(payload.exercises[0].sets.map((s) => s.rpe ?? null)).toEqual(['8.5', null])
+    expect(payload).not.toHaveProperty('readiness')
+
+    w = { ...w, readiness: { sleep_hours: 7, hydration: null, stress: 2, motivation: 4, soreness_upper: null, soreness_lower: null } }
+    payload = toSessionPayload(w, t0, null, '')
+    expect(payload.readiness).toMatchObject({ sleep_hours: 7, stress: 2 })
+  })
+
+  it('shows RPE in history but not in the "last time" column', () => {
+    const set = { set_type: 'working' as const, weight_kg: '100.00', reps: 5, duration_seconds: null, distance_m: null, rpe: '7.5' }
+    expect(describeLogged(set, bench, 'pon.')).toBe('100 × 5')
+    expect(describeLogged(set, bench, 'pon.', true)).toBe('100 × 5 @ 7,5')
   })
 })

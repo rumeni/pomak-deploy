@@ -210,3 +210,70 @@ class WorkoutSessionTests(APITestCase):
         self.client.force_authenticate(self.user)
         res = self.client.get('/api/training/sessions/previous/', {'exercise_ids': str(self.bench.id)})
         self.assertEqual(res.data, {})
+
+
+class ReadinessAndRpeTests(APITestCase):
+    """Pre-workout check-in and per-set RPE are optional extras on a finished workout."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('rpe@b.rs', 'jaka-lozinka-123')
+        self.client.force_authenticate(self.user)
+        self.bench = Exercise.objects.get(slug='bench-press')
+
+    def payload(self, sets, **extra):
+        start = timezone.now() - timedelta(hours=1)
+        return {
+            'id': str(uuid.uuid4()), 'name': 'Trening', 'started_at': start.isoformat(),
+            'finished_at': (start + timedelta(minutes=50)).isoformat(),
+            'exercises': [{'exercise_id': str(self.bench.id), 'notes': '', 'sets': [
+                {'set_type': 'working', 'completed_at': start.isoformat(), **s} for s in sets
+            ]}],
+            **extra,
+        }
+
+    def post(self, body):
+        return self.client.post('/api/training/sessions/', body, format='json')
+
+    def test_readiness_and_rpe_round_trip(self):
+        readiness = {'sleep_hours': 7, 'hydration': 3, 'stress': 4, 'motivation': 5, 'soreness_upper': 1, 'soreness_lower': 2}
+        res = self.post(self.payload([{'weight_kg': '100', 'reps': 3, 'rpe': 8.5}, {'weight_kg': '100', 'reps': 3}], readiness=readiness))
+        self.assertEqual(res.status_code, 201, res.data)
+        session = WorkoutSession.objects.get()
+        self.assertEqual((session.sleep_hours, session.stress, session.soreness_lower), (7, 4, 2))
+        data = self.client.get(f'/api/training/sessions/{session.id}/').json()
+        self.assertEqual(data['readiness'], readiness)
+        self.assertEqual([s['rpe'] for s in data['exercises'][0]['sets']], ['8.5', None])
+
+    def test_both_are_optional(self):
+        res = self.post(self.payload([{'weight_kg': '100', 'reps': 3}]))
+        self.assertEqual(res.status_code, 201, res.data)
+        data = self.client.get(f"/api/training/sessions/{res.data['id']}/").json()
+        self.assertEqual(set(data['readiness'].values()), {None})
+        # A partial check-in is fine as well.
+        res = self.post(self.payload([{'weight_kg': '100', 'reps': 3}], readiness={'motivation': 2}))
+        self.assertEqual(res.status_code, 201, res.data)
+
+    def test_invalid_values_are_rejected_without_writing(self):
+        for sets, readiness in (
+            ([{'weight_kg': '100', 'reps': 3, 'rpe': 8.3}], {}),
+            ([{'weight_kg': '100', 'reps': 3, 'rpe': 10.5}], {}),
+            ([{'weight_kg': '100', 'reps': 3, 'rpe': 0.5}], {}),
+            ([{'weight_kg': '100', 'reps': 3}], {'stress': 6}),
+            ([{'weight_kg': '100', 'reps': 3}], {'motivation': 0}),
+            ([{'weight_kg': '100', 'reps': 3}], {'sleep_hours': 15}),
+        ):
+            res = self.post(self.payload(sets, readiness=readiness))
+            self.assertEqual(res.status_code, 400, (sets, readiness))
+        self.assertEqual(WorkoutSession.objects.count(), 0)
+
+    def test_routine_set_keeps_target_rpe(self):
+        body = {'name': 'Snaga', 'notes': '', 'exercises': [{
+            'exercise_id': str(self.bench.id), 'rest_seconds': 180, 'notes': '',
+            'sets': [{'set_type': 'working', 'reps_min': 5, 'reps_max': 5, 'weight_kg': None,
+                      'duration_seconds': None, 'distance_m': None, 'rpe': 8}],
+        }]}
+        res = self.client.post('/api/training/routines/', body, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.json()['exercises'][0]['sets'][0]['rpe'], '8.0')
+        body['exercises'][0]['sets'][0]['rpe'] = 7.25
+        self.assertEqual(self.client.post('/api/training/routines/', body, format='json').status_code, 400)

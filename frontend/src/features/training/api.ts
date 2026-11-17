@@ -45,6 +45,8 @@ export interface RoutineSet {
   weight_kg: string | null
   duration_seconds: number | null
   distance_m: number | null
+  /** Target intensity; missing in routines saved before RPE existed. */
+  rpe?: string | null
 }
 
 export interface RoutineExercise {

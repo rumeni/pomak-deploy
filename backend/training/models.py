@@ -1,10 +1,16 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from core.models import TimeStampedModel
 from core.text import normalize_search
+
+# RPE (rate of perceived exertion) in half steps, 1-10. 10 = nothing left in the tank.
+RPE_VALIDATORS = [MinValueValidator(1), MaxValueValidator(10)]
+SCALE_VALIDATORS = [MinValueValidator(1), MaxValueValidator(5)]
+READINESS_FIELDS = ('sleep_hours', 'hydration', 'stress', 'motivation', 'soreness_upper', 'soreness_lower')
 
 
 class Exercise(TimeStampedModel):
@@ -120,6 +126,8 @@ class RoutineSet(TimeStampedModel):
     weight_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     duration_seconds = models.PositiveIntegerField(null=True, blank=True)
     distance_m = models.PositiveIntegerField(null=True, blank=True)
+    # Target intensity prescribed for the set (e.g. 3 x 5 @ RPE 8).
+    rpe = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True, validators=RPE_VALIDATORS)
 
     class Meta:
         ordering = ['position']
@@ -144,6 +152,15 @@ class WorkoutSession(TimeStampedModel):
     plan_snapshot = models.JSONField(null=True, blank=True)
     feeling = models.PositiveSmallIntegerField(choices=Feeling.choices, null=True, blank=True)
     notes = models.TextField(blank=True)
+
+    # Pre-workout readiness check-in. Every answer is optional. Scales run 1-5 where a
+    # higher number means "more of it" (more stress, more soreness), not "better".
+    sleep_hours = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MaxValueValidator(14)])
+    hydration = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE_VALIDATORS)
+    stress = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE_VALIDATORS)
+    motivation = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE_VALIDATORS)
+    soreness_upper = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE_VALIDATORS)
+    soreness_lower = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE_VALIDATORS)
 
     class Meta:
         ordering = ['-started_at']
@@ -174,6 +191,8 @@ class SetLog(TimeStampedModel):
     duration_seconds = models.PositiveIntegerField(null=True, blank=True)
     distance_m = models.PositiveIntegerField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    # How hard the set felt (RPE); optional.
+    rpe = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True, validators=RPE_VALIDATORS)
     # Ko je upisao rezultat; u fazi 2 to može biti i trener tokom treninga uživo.
     logged_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
 
