@@ -19,7 +19,7 @@ describe('goal conflict recovery', () => {
   })
 
   it('refreshes goals, measurements and weekly views after an ambiguous create', () => {
-    const invalidateQueries = vi.fn(async () => undefined)
+    const invalidateQueries = vi.fn(async (_filters: { queryKey: readonly string[] }) => undefined)
     invalidateGoalRelatedQueries({ invalidateQueries } as unknown as Pick<QueryClient, 'invalidateQueries'>)
     expect(invalidateQueries.mock.calls.map(([filters]) => filters.queryKey)).toEqual([
       ['measurements'], ['goals'], ['week'],
