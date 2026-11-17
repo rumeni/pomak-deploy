@@ -77,7 +77,11 @@ export function editDraftToPayload(draft: SessionEditDraft): SessionEditPayload 
         return {
           exercise_id: item.exercise.id,
           notes: item.notes.slice(0, MAX_EXERCISE_NOTES),
-          sets: item.sets.map((set) => ({ ...setResult({ ...set, done: true }, item.exercise), completed_at: set.completedAt })),
+          // RPE is always sent (null when cleared): the PUT replaces every set completely.
+          sets: item.sets.map((set) => {
+            const result = setResult({ ...set, done: true }, item.exercise)
+            return { ...result, rpe: result.rpe ?? null, completed_at: set.completedAt }
+          }),
         }
       } catch (error) {
         if (error instanceof SetInputError) throw new SessionEditError(error.message, item.exercise.name)
@@ -100,3 +104,41 @@ export function editChanged(initial: SessionEditDraft, draft: SessionEditDraft):
   const after = body(draft)
   return after === null || before !== after
 }
+
+/*
+ * Unsaved corrections are kept on the device while the form is open, so Android Back, a
+ * reload or the app being closed does not lose them: opening the same workout's edit again
+ * brings them back. Stored per user and workout, for the revision they were made against.
+ */
+const draftKey = (ownerId: string, sessionId: string) => `pomak.sessionEdit.${ownerId}.${sessionId}`
+
+export function storeEditDraft(ownerId: string, draft: SessionEditDraft): void {
+  try {
+    localStorage.setItem(draftKey(ownerId, draft.id), JSON.stringify(draft))
+  } catch {
+    // Storage full or blocked: the form still works, only recovery is unavailable.
+  }
+}
+
+/** The kept draft, if it was made against this revision; a draft for an older one is dropped. */
+export function loadEditDraft(ownerId: string, sessionId: string, revision: string): SessionEditDraft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(ownerId, sessionId))
+    if (!raw) return null
+    const draft = JSON.parse(raw) as SessionEditDraft
+    if (draft.id === sessionId && draft.revision === revision && Array.isArray(draft.exercises)) return draft
+    localStorage.removeItem(draftKey(ownerId, sessionId))
+  } catch {
+    // Unreadable entry: start from the server's version.
+  }
+  return null
+}
+
+export function clearEditDraft(ownerId: string, sessionId: string): void {
+  try {
+    localStorage.removeItem(draftKey(ownerId, sessionId))
+  } catch {
+    // Nothing to clean up.
+  }
+}
+

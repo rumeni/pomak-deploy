@@ -341,6 +341,30 @@ class WorkoutSessionEditSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(_('The exercises of a finished workout cannot be changed.'))
         return value
 
+    SET_FIELDS = ('set_type', 'weight_kg', 'reps', 'duration_seconds', 'distance_m', 'rpe', 'completed_at')
+
+    def matches_saved(self, session) -> bool:
+        """Would this edit leave the workout exactly as it is now (e.g. a retried request)?
+
+        Compares the complete state the PUT would write - an omitted optional set field means
+        "empty", an omitted session field means "unchanged" - with what is saved, so a stale
+        edit that clears a value the other device has set is a conflict, not a match.
+        """
+        data = self.validated_data
+        defaults = {'set_type': SetLog._meta.get_field('set_type').default}
+        for field in ('name', 'feeling', 'notes', *READINESS_FIELDS):
+            if field in data and data[field] != getattr(session, field):
+                return False
+        saved = list(session.exercises.order_by('position').prefetch_related('sets'))
+        for session_exercise, item in zip(saved, data['exercises'], strict=True):
+            if item.get('notes', '') != session_exercise.notes:
+                return False
+            current = [{f: getattr(s, f) for f in self.SET_FIELDS} for s in session_exercise.sets.order_by('position')]
+            wanted = [{f: values.get(f, defaults.get(f)) for f in self.SET_FIELDS} for values in item['sets']]
+            if current != wanted:
+                return False
+        return True
+
     @transaction.atomic
     def update(self, session, validated_data):
         validated_data.pop('revision', None)

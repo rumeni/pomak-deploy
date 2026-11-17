@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.search import search_and_order
-from core.views import IdempotentCreateMixin, SharedLibraryMixin, _matches_saved_payload, require_object_body
+from core.views import IdempotentCreateMixin, SharedLibraryMixin, require_object_body
 
 from . import progress
 from .models import Exercise, Routine, RoutineExercise, SessionExercise, WorkoutSession
@@ -113,8 +113,7 @@ class WorkoutSessionViewSet(
             serializer.is_valid(raise_exception=True)
             if serializer.validated_data['revision'] != session.updated_at:
                 current = self.get_serializer(session).data
-                edit = {key: value for key, value in body.items() if key != 'revision'}
-                if _matches_saved_payload(edit, current):
+                if serializer.matches_saved(session):
                     return Response(current)
                 return Response(
                     {'detail': _('This workout was changed elsewhere. Reload it and edit again.'), 'current': current},

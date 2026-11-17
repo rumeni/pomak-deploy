@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 import uuid
 from datetime import timedelta
 
@@ -379,6 +380,35 @@ class WorkoutSessionEditTests(APITestCase):
         self.assertEqual(res.status_code, 200, res.data)
         self.assertEqual(WorkoutSession.objects.get().edited_at, edited_at)
         self.assertEqual(SetLog.objects.count(), 4)
+
+    def test_stale_edit_that_clears_or_omits_a_value_set_elsewhere_is_a_conflict(self):
+        # Device A adds RPE 7.5 to the squat set (and the other corrections).
+        self.assertEqual(self.put(self.edit_body()).status_code, 200)
+        # Device B, still on the old revision, sends the same edit but without that RPE:
+        # once with the field left out, once as an explicit null. Both mean "no RPE".
+        for value in ('omit', None):
+            body = self.edit_body()
+            squat_set = body['exercises'][1]['sets'][0]
+            if value == 'omit':
+                del squat_set['rpe']
+            else:
+                squat_set['rpe'] = None
+            res = self.put(body)
+            self.assertEqual(res.status_code, 409, value)
+        self.assertEqual(SetLog.objects.get(session_exercise__exercise=self.squat).rpe, Decimal('7.5'))
+
+    def test_identical_retry_with_explicit_nulls_and_other_number_forms_writes_nothing(self):
+        body = self.edit_body()
+        body['exercises'][0]['sets'][2]['rpe'] = None
+        self.assertEqual(self.put(body).status_code, 200)
+        saved = WorkoutSession.objects.get()
+        retry = self.edit_body()
+        retry['exercises'][0]['sets'][2]['rpe'] = None
+        retry['exercises'][0]['sets'][0]['weight_kg'] = '102.50'  # same weight, other form
+        retry['exercises'][1]['sets'][0]['rpe'] = '7.5'
+        res = self.put(retry)
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(WorkoutSession.objects.get().updated_at, saved.updated_at)
 
     def test_exercises_and_set_rules_are_enforced(self):
         swapped = self.edit_body()

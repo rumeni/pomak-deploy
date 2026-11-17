@@ -1,8 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Exercise } from '../training/api'
 import type { WorkoutSession } from './api'
-import { editChanged, editDraftToPayload, SessionEditError, sessionToEditDraft } from './edit'
+import {
+  clearEditDraft,
+  editChanged,
+  editDraftToPayload,
+  loadEditDraft,
+  SessionEditError,
+  sessionToEditDraft,
+  storeEditDraft,
+} from './edit'
 import { emptyActiveSet } from './model'
 
 const bench: Exercise = {
@@ -61,7 +69,9 @@ describe('correcting a finished workout', () => {
     const body = editDraftToPayload(draft)
     expect(body.revision).toBe(session.updated_at)
     expect(body.exercises[0]).toMatchObject({ exercise_id: 'bench', notes: 'uži hvat' })
-    expect(body.exercises[0].sets.map((s) => [s.weight_kg, s.reps, s.rpe ?? null, s.completed_at])).toEqual([
+    // RPE is explicit, null included: the PUT replaces each set completely.
+    expect(body.exercises[0].sets.every((s) => 'rpe' in s)).toBe(true)
+    expect(body.exercises[0].sets.map((s) => [s.weight_kg, s.reps, s.rpe, s.completed_at])).toEqual([
       ['60', 8, null, '2026-11-17T10:05:00Z'],
       ['102.5', 5, '9', '2026-11-17T10:14:00Z'],
       ['90', 8, null, null],
@@ -87,3 +97,44 @@ describe('correcting a finished workout', () => {
     expect(() => editDraftToPayload({ ...sessionToEditDraft(session), name: '  ' })).toThrow('history.edit.errors.name')
   })
 })
+
+describe('unsaved corrections kept on the device', () => {
+  const store = new Map<string, string>()
+  const fakeStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  }
+  afterEach(() => {
+    store.clear()
+    vi.unstubAllGlobals()
+  })
+
+  it('brings back a draft made against the same revision, per user and workout', () => {
+    vi.stubGlobal('localStorage', fakeStorage)
+    const draft = { ...sessionToEditDraft(session), notes: 'nije sačuvano' }
+    storeEditDraft('u1', draft)
+    expect(loadEditDraft('u1', 's1', session.updated_at!)).toMatchObject({ notes: 'nije sačuvano' })
+    expect(loadEditDraft('u2', 's1', session.updated_at!)).toBeNull()
+    clearEditDraft('u1', 's1')
+    expect(loadEditDraft('u1', 's1', session.updated_at!)).toBeNull()
+  })
+
+  it('drops a draft made against an older revision instead of restoring stale values', () => {
+    vi.stubGlobal('localStorage', fakeStorage)
+    storeEditDraft('u1', { ...sessionToEditDraft(session), notes: 'stara verzija' })
+    expect(loadEditDraft('u1', 's1', '2026-11-17T12:00:00Z')).toBeNull()
+    expect(store.size).toBe(0)
+  })
+
+  it('works without storage (blocked or full) and ignores unreadable entries', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('full') }, removeItem: () => { throw new Error('blocked') } })
+    expect(() => storeEditDraft('u1', sessionToEditDraft(session))).not.toThrow()
+    expect(loadEditDraft('u1', 's1', session.updated_at!)).toBeNull()
+    expect(() => clearEditDraft('u1', 's1')).not.toThrow()
+    vi.stubGlobal('localStorage', fakeStorage)
+    store.set('pomak.sessionEdit.u1.s1', '{not json')
+    expect(loadEditDraft('u1', 's1', session.updated_at!)).toBeNull()
+  })
+})
+

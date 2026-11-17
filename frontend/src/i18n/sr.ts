@@ -860,6 +860,8 @@ export const sr = {
       removeSet: 'Ukloni seriju {{n}}',
       conflict: 'Trening je u međuvremenu izmenjen na drugom uređaju. Učitaj najnoviju verziju i izmeni ponovo; tvoje izmene ovde nisu sačuvane.',
       reload: 'Učitaj najnoviju verziju',
+      reloadConfirm: 'Učitati najnoviju verziju? Izmene na ovom ekranu biće odbačene.',
+      restored: 'Vraćene su tvoje nesačuvane izmene ovog treninga.',
       offline: 'Izmena završenog treninga traži internet. Izmene su i dalje ovde, pokušaj ponovo kad budeš na mreži.',
       onlineOnly: 'Izmena treninga traži internet.',
       pendingHint: 'Trening još čeka slanje. Moći ćeš da ga izmeniš kad bude poslat.',

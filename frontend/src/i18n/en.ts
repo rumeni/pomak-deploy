@@ -842,6 +842,8 @@ export const en = {
       removeSet: 'Remove set {{n}}',
       conflict: 'This workout was changed on another device meanwhile. Load the latest version and edit again; your changes here were not saved.',
       reload: 'Load the latest version',
+      reloadConfirm: 'Load the latest version? The changes on this screen will be discarded.',
+      restored: 'Your unsaved changes to this workout were restored.',
       offline: 'Editing a finished workout needs the internet. Your changes are still here; try again when you are online.',
       onlineOnly: 'Editing a workout needs the internet.',
       pendingHint: 'This workout is still waiting to be sent. You can edit it once it is sent.',

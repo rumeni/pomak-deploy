@@ -1,13 +1,23 @@
 import axios from 'axios'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button, FormError, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
+import { useAuth } from '../../lib/auth'
 import { ExerciseHeading } from '../training/ExerciseHeading'
-import { SessionEditConflict, useEditSession, useSession } from './api'
-import { editChanged, editDraftToPayload, SessionEditError, sessionToEditDraft, type SessionEditDraft } from './edit'
+import { SessionEditConflict, useEditSession, useSession, type WorkoutSession } from './api'
+import {
+  clearEditDraft,
+  editChanged,
+  editDraftToPayload,
+  loadEditDraft,
+  SessionEditError,
+  sessionToEditDraft,
+  storeEditDraft,
+  type SessionEditDraft,
+} from './edit'
 import { inputFields, type Field } from './fields'
 import { emptyActiveSet, MAX_EXERCISE_NOTES, type ActiveExercise, type ActiveSet } from './model'
 import { ReadinessRow, ReadinessStep } from './ReadinessCard'
@@ -22,13 +32,15 @@ export function SessionEditPage() {
   const { t } = useTranslation()
   const { id } = useParams()
   const navigate = useNavigate()
+  const { me } = useAuth()
   const remote = useSession(id, true)
-  // The form starts from the server's version once, and again only after a conflict reload.
-  // (Keying it by `updated_at` would remount it on a successful save and drop the navigation.)
-  const [version, setVersion] = useState(0)
+  // After a conflict the form restarts from the version the server returned with it; it never
+  // follows background refetches, so the edit baseline stays the revision it was made from.
+  const [base, setBase] = useState<{ session: WorkoutSession; version: number } | null>(null)
 
-  if (remote.isLoading) return <LoadingScreen />
-  if (!remote.data) {
+  if (remote.isLoading || !me) return <LoadingScreen />
+  const session = base?.session ?? remote.data
+  if (!session) {
     return (
       <>
         <ScreenHeader title={t('history.edit.title')} onBack={() => navigate(-1)} />
@@ -40,28 +52,48 @@ export function SessionEditPage() {
   }
   return (
     <Editor
-      key={version}
-      initial={sessionToEditDraft(remote.data)}
-      onReload={() => void remote.refetch().then(() => setVersion((v) => v + 1))}
+      key={base?.version ?? 0}
+      session={session}
+      ownerId={me.id}
+      onReload={(current) => setBase((b) => ({ session: current, version: (b?.version ?? 0) + 1 }))}
     />
   )
 }
 
-function Editor({ initial, onReload }: { initial: SessionEditDraft; onReload: () => void }) {
+function Editor({ session, ownerId, onReload }: { session: WorkoutSession; ownerId: string; onReload: (current: WorkoutSession) => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const save = useEditSession()
-  const [draft, setDraft] = useState(initial)
+  // Frozen for this editor instance: what "changed" is measured against.
+  const [initial] = useState(() => sessionToEditDraft(session))
+  const [restored] = useState(() => loadEditDraft(ownerId, initial.id, initial.revision))
+  const [draft, setDraft] = useState<SessionEditDraft>(restored ?? initial)
   const [error, setError] = useState<string | null>(null)
-  const [conflict, setConflict] = useState(false)
+  const [conflict, setConflict] = useState<WorkoutSession | null>(null)
   const [readinessOpen, setReadinessOpen] = useState(false)
   const changed = editChanged(initial, draft)
+  const saving = save.isPending
   const back = () => navigate(`/trening/istorija/${initial.id}`, { replace: true })
+
+  // Keep unsaved corrections on the device until they are saved or discarded.
+  useEffect(() => {
+    if (changed) storeEditDraft(ownerId, draft)
+    else clearEditDraft(ownerId, initial.id)
+  }, [changed, draft, ownerId, initial.id])
+
+  // Closing or reloading the web page asks first; Android Back relies on the kept draft.
+  useEffect(() => {
+    if (!changed || saving) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [changed, saving])
 
   const updateExercise = (key: string, change: (e: ActiveExercise) => ActiveExercise) =>
     setDraft((d) => ({ ...d, exercises: d.exercises.map((e) => (e.key === key ? change(e) : e)) }))
 
   const onSave = () => {
+    if (saving) return
     setError(null)
     let body
     try {
@@ -71,17 +103,28 @@ function Editor({ initial, onReload }: { initial: SessionEditDraft; onReload: ()
       return setError(e.exercise ? `${e.exercise}: ${t(e.key)}` : t(e.key))
     }
     save.mutate({ id: initial.id, body }, {
-      onSuccess: back,
+      onSuccess: () => {
+        clearEditDraft(ownerId, initial.id)
+        back()
+      },
       onError: (e) => {
-        if (e instanceof SessionEditConflict) return setConflict(true)
+        if (e instanceof SessionEditConflict) return setConflict(e.current)
         setError(axios.isAxiosError(e) && !e.response ? t('history.edit.offline') : errorMessage(e))
       },
     })
   }
 
   const onBack = () => {
+    if (saving) return
     if (changed && !window.confirm(t('history.edit.discardConfirm'))) return
+    clearEditDraft(ownerId, initial.id)
     back()
+  }
+
+  const onReloadLatest = () => {
+    if (!conflict || !window.confirm(t('history.edit.reloadConfirm'))) return
+    clearEditDraft(ownerId, initial.id)
+    onReload(conflict)
   }
 
   if (readinessOpen) {
@@ -105,70 +148,74 @@ function Editor({ initial, onReload }: { initial: SessionEditDraft; onReload: ()
         title={t('history.edit.title')}
         onBack={onBack}
         action={
-          <Button className="min-h-10 px-4 text-sm" onClick={onSave} disabled={!changed || save.isPending || conflict}>
-            {save.isPending ? t('common.saving') : t('common.save')}
+          <Button className="min-h-10 px-4 text-sm" onClick={onSave} disabled={!changed || saving || !!conflict}>
+            {saving ? t('common.saving') : t('common.save')}
           </Button>
         }
       />
       <div className="mx-auto flex max-w-xl flex-col gap-3 p-4">
         <p className="text-sm text-muted">{t('history.edit.intro')}</p>
+        {restored && changed && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.edit.restored')}</p>}
 
         {conflict && (
           <div role="alert" className="rounded-xl bg-danger/10 p-3 text-danger">
             <p>{t('history.edit.conflict')}</p>
-            <Button variant="secondary" className="mt-2" onClick={onReload}>{t('history.edit.reload')}</Button>
+            <Button variant="secondary" className="mt-2" onClick={onReloadLatest}>{t('history.edit.reload')}</Button>
           </div>
         )}
 
-        <input
-          value={draft.name}
-          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-          aria-label={t('history.edit.name')}
-          maxLength={100}
-          className="min-h-12 w-full rounded-xl border border-line bg-card px-4 text-lg font-semibold outline-none focus:border-brand"
-        />
+        {/* While saving, nothing can change: a later edit would be lost when the save returns. */}
+        <fieldset disabled={saving} className="flex min-w-0 flex-col gap-3 disabled:opacity-70">
+          <input
+            value={draft.name}
+            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+            aria-label={t('history.edit.name')}
+            maxLength={100}
+            className="min-h-12 w-full rounded-xl border border-line bg-card px-4 text-lg font-semibold outline-none focus:border-brand"
+          />
 
-        <ReadinessRow readiness={draft.readiness} onOpen={() => setReadinessOpen(true)} />
+          <ReadinessRow readiness={draft.readiness} onOpen={() => setReadinessOpen(true)} />
 
-        {draft.exercises.map((item) => (
-          <ExerciseEditor key={item.key} item={item} onChange={(change) => updateExercise(item.key, change)} />
-        ))}
+          {draft.exercises.map((item) => (
+            <ExerciseEditor key={item.key} item={item} onChange={(change) => updateExercise(item.key, change)} />
+          ))}
 
-        <fieldset>
-          <legend className="mb-2 text-sm font-medium">{t('workout.feeling')}</legend>
-          <div className="grid grid-cols-5 gap-1.5">
-            {FEELINGS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                aria-pressed={draft.feeling === f}
-                onClick={() => setDraft((d) => ({ ...d, feeling: d.feeling === f ? null : f }))}
-                className={`min-h-14 rounded-xl border-2 px-1 text-xs font-medium leading-tight ${
-                  draft.feeling === f ? 'border-brand bg-brand-soft text-brand-dark' : 'border-line bg-card'
-                }`}
-              >
-                {t(`workout.feeling${f}`)}
-              </button>
-            ))}
-          </div>
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">{t('workout.feeling')}</legend>
+            <div className="grid grid-cols-5 gap-1.5">
+              {FEELINGS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  aria-pressed={draft.feeling === f}
+                  onClick={() => setDraft((d) => ({ ...d, feeling: d.feeling === f ? null : f }))}
+                  className={`min-h-14 rounded-xl border-2 px-1 text-xs font-medium leading-tight ${
+                    draft.feeling === f ? 'border-brand bg-brand-soft text-brand-dark' : 'border-line bg-card'
+                  }`}
+                >
+                  {t(`workout.feeling${f}`)}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">{t('workout.notes')}</span>
+            <textarea
+              value={draft.notes}
+              onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+              rows={3}
+              maxLength={2000}
+              className="rounded-xl border border-line bg-card px-4 py-3 text-base outline-none focus:border-brand"
+            />
+          </label>
         </fieldset>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">{t('workout.notes')}</span>
-          <textarea
-            value={draft.notes}
-            onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-            rows={3}
-            maxLength={2000}
-            className="rounded-xl border border-line bg-card px-4 py-3 text-base outline-none focus:border-brand"
-          />
-        </label>
-
         <FormError message={error} />
-        <Button onClick={onSave} disabled={!changed || save.isPending || conflict}>
-          {save.isPending ? t('common.saving') : t('history.edit.save')}
+        <Button onClick={onSave} disabled={!changed || saving || !!conflict}>
+          {saving ? t('common.saving') : t('history.edit.save')}
         </Button>
-        <Button variant="secondary" onClick={onBack} disabled={save.isPending}>
+        <Button variant="secondary" onClick={onBack} disabled={saving}>
           {t('history.edit.cancel')}
         </Button>
       </div>
