@@ -1,5 +1,6 @@
 import { db } from '../../lib/db'
 import { clearUserEditDrafts, countEditDrafts } from './edit'
+import { clearUserPendingPrograms } from '../training/programs'
 import { cancelRestEnd } from './restNotification'
 
 /** Koliko lokalnih podataka naloga još nije na serveru: treninzi, izmene dnevnika i nesačuvane ispravke treninga (za upozorenje pri odjavi). */
@@ -26,7 +27,8 @@ export async function clearLocalData(ownerId: string, accountDeleted = false): P
     await db.diaryDays.where('ownerId').equals(ownerId).delete()
     await db.foodCache.where('ownerId').equals(ownerId).delete()
   })
-  // Unsaved workout corrections are personal data too.
+  // Unsaved workout corrections and unfinished program imports are this account's data too.
   clearUserEditDrafts(ownerId)
+  clearUserPendingPrograms(ownerId)
   await cancelRestEnd()
 }

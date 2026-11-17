@@ -4,11 +4,14 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '../../components/ui'
 import i18n from '../../i18n'
-import { api, errorMessage } from '../../lib/api'
+import axios from 'axios'
+
+import { api, errorMessage, scopeIsCurrent, type AuthScope, type ScopedRequestConfig } from '../../lib/api'
+import { tokens } from '../../lib/tokens'
 import { uuid } from '../../lib/uuid'
 import { useAuth } from '../../lib/auth'
 import type { Routine, RoutinePayload } from './api'
-import { clearPendingProgram, createRoutines, describePrescription, loadPendingProgram, programToRoutines, savePendingProgram, type Program } from './programs'
+import { describePrescription, importProgram, loadPendingProgram, programToRoutines, type PendingProgram, type Program } from './programs'
 
 function usePrograms() {
   return useQuery({
@@ -18,11 +21,30 @@ function usePrograms() {
   })
 }
 
-/** Creates a prepared batch of routines; retried with the same batch, it never duplicates. */
+/**
+ * Imports a program for the account and login session that started it (AuthScope): every
+ * request carries the scope, so a logout or account switch stops the import. Runs to the end
+ * (and clears its record) even if the screen is left meanwhile.
+ */
 function useAddProgram() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (batch: RoutinePayload[]) => createRoutines(batch, (body) => api.post('/training/routines/', body)),
+    mutationFn: ({ scope, programKey, record }: { scope: AuthScope; programKey: string; record: PendingProgram }) => {
+      const config: ScopedRequestConfig = { __pomakScope: scope }
+      return importProgram(scope.ownerId, programKey, record, {
+        isCurrent: () => scopeIsCurrent(scope),
+        exists: async (id) => {
+          try {
+            await api.get(`/training/routines/${id}/`, config)
+            return true
+          } catch (error) {
+            if (axios.isAxiosError(error) && error.response?.status === 404) return false
+            throw error
+          }
+        },
+        create: (body: RoutinePayload) => api.post('/training/routines/', body, config),
+      })
+    },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['routines'] }),
   })
 }
@@ -68,26 +90,25 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
   const [open, setOpen] = useState(false)
   const [added, setAdded] = useState(false)
   // The batch (with its routine IDs) of an add that has not finished: a retry resumes it.
-  const pending = useRef<{ ownerId: string; batch: RoutinePayload[] } | null>(null)
+  const pending = useRef<{ ownerId: string; record: PendingProgram } | null>(null)
   const names = new Set(program.routines.map((r) => r.name))
   const alreadyThere = !!routines?.some((r) => names.has(r.name) && r.notes === program.name)
 
   const onAdd = () => {
     if (!me) return
     // A persisted batch takes precedence even when this component was unmounted or reloaded.
-    const previous = pending.current?.ownerId === me.id
-      ? pending.current.batch : loadPendingProgram(me.id, program)
+    // The stored record wins over this screen's memory: it has the latest progress.
+    const previous = loadPendingProgram(me.id, program)
+      ?? (pending.current?.ownerId === me.id ? pending.current.record : null)
     if (previous) {
-      pending.current = { ownerId: me.id, batch: previous }
+      pending.current = { ownerId: me.id, record: previous }
     } else {
       if (alreadyThere && !window.confirm(t('programs.addAgainConfirm'))) return
-      const batch = programToRoutines(program, uuid)
-      pending.current = { ownerId: me.id, batch }
-      savePendingProgram(me.id, program.key, batch)
+      pending.current = { ownerId: me.id, record: { batch: programToRoutines(program, uuid), done: [] } }
     }
-    add.mutate(pending.current.batch, {
+    const scope: AuthScope = { ownerId: me.id, session: tokens.session() }
+    add.mutate({ scope, programKey: program.key, record: pending.current.record }, {
       onSuccess: () => {
-        clearPendingProgram(me.id, program.key)
         pending.current = null
         setAdded(true)
       },
