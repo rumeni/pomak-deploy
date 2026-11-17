@@ -82,6 +82,7 @@ export function ProfilePage() {
               CC BY-SA 4.0
             </a>
           </p>
+          <p className="text-muted">{t('profile.sourcePhotos')}</p>
         </Card>
 
         <Button variant="secondary" className="mt-2" onClick={() => void onLogout()}>

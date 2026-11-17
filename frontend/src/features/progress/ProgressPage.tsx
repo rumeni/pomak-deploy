@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
+import progressPhoto from '../../assets/photos/progress.webp'
 import { Card, EmptyState, PageHeader } from '../../components/ui'
 import { LineChart } from '../../components/LineChart'
 import { formatDecimal, formatShortDate, toISODate } from '../../lib/format'
@@ -28,8 +29,8 @@ export function ProgressPage() {
 
   return (
     <>
-      <PageHeader title={t('progress.title')} action={<LanguageMenu />} />
-      <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pb-8">
+      <PageHeader title={t('progress.title')} photo={progressPhoto} action={<LanguageMenu />} />
+      <div className="flex flex-col gap-4 px-4 pb-8">
         {goalConflictNotice && (
           <p role="alert" className="rounded-2xl bg-card p-3 text-sm text-ink ring-1 ring-line">
             {t('progress.goalConflictNotice')}

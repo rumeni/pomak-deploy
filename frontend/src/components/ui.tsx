@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
 
+import { photoStyle } from '../lib/photoStyle'
+
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 const variants: Record<Variant, string> = {
@@ -57,9 +59,12 @@ export function Card({ title, children, className = '' }: { title?: string; chil
 }
 
 /** Zaglavlje glavnog ekrana (taba): naslov i, desno, izbor jezika ili druga akcija. */
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
+export function PageHeader({ title, subtitle, action, photo }: { title: string; subtitle?: string; action?: ReactNode; photo?: string }) {
   return (
-    <header className="page-header flex items-start justify-between gap-3">
+    <header
+      className={`page-header flex items-start justify-between gap-3 ${photo ? 'page-header--photo' : ''}`}
+      style={photo ? photoStyle(photo) : undefined}
+    >
       <div className="min-w-0">
         <h1 className="text-3xl font-extrabold tracking-tight">{title}</h1>
         {subtitle && <p className="page-header-subtitle">{subtitle}</p>}

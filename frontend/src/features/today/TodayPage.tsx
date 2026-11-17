@@ -2,7 +2,12 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
+import todayPhoto from '../../assets/photos/today.webp'
+import trainingPhoto from '../../assets/photos/card-training.webp'
+import nutritionPhoto from '../../assets/photos/card-nutrition.webp'
+import weightPhoto from '../../assets/photos/card-weight.webp'
 import { Button, Card, PageHeader } from '../../components/ui'
+import { photoStyle } from '../../lib/photoStyle'
 import { useAuth } from '../../lib/auth'
 import { errorMessage } from '../../lib/api'
 import { formatDecimal, formatLongDate, formatShortDate, fromISODate, getFormatLocale, parseDecimal, toISODate } from '../../lib/format'
@@ -85,6 +90,7 @@ function TodayHero({ ownerId, tracksTraining, tracksNutrition }: { ownerId: stri
 
   return (
     <section className="today-hero" aria-label={t('today.thisWeek')}>
+      <div className="hero-photo" style={photoStyle(todayPhoto)} aria-hidden />
       <div className="topo-layer" aria-hidden />
       <p className="today-hero-kicker">{t('today.thisWeek')}</p>
       <div className="today-stats">
@@ -154,6 +160,7 @@ function TrainingCard() {
 
   return (
     <Card className="dashboard-card dashboard-card--training">
+      <div className="card-photo" style={photoStyle(trainingPhoto)} aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('today.training')}</h2>
         {weekCount !== null && (
@@ -230,6 +237,7 @@ function NutritionCard({ ownerId }: { ownerId: string }) {
 
   return (
     <Card className="dashboard-card dashboard-card--nutrition">
+      <div className="card-photo" style={photoStyle(nutritionPhoto)} aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('today.nutrition')}</h2>
         <Link to="/ishrana" className={`-my-2 ${linkClass}`}>
@@ -303,6 +311,7 @@ function WeightCard() {
 
   return (
     <Card className="dashboard-card dashboard-card--weight">
+      <div className="card-photo card-photo--object" style={photoStyle(weightPhoto)} aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold">{t('progress.bodyWeight')}</h2>
         <Link to="/napredak/merenja" className={`-my-2 ${linkClass}`}>

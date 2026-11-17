@@ -610,6 +610,7 @@ export const sr = {
     sources: 'Izvori podataka',
     sourceFoods: 'Namirnice: USDA FoodData Central (javno dobro, CC0).',
     sourceExercises: 'Crteži vežbi: Everkinetic (everkinetic.com), bez izmena,',
+    sourcePhotos: 'Fotografije: Unsplash (Jason Grant, Brett Jordan, Marta Filipczyk, Paweł Bulwan, Salman Sidheek, Andrii Solok, Andrew Valdivia, Katie Smith), Unsplash licenca.',
     logout: 'Odjavi se',
   },
   deleteAccount: {
