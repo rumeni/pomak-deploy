@@ -651,6 +651,9 @@ msgstr "Trening ne može da počne u budućnosti."
 msgid "The workout has no confirmed sets."
 msgstr "Trening nema nijednu potvrđenu seriju."
 
+msgid "RPE goes in steps of 0.5."
+msgstr "RPE se upisuje u koracima od 0,5."
+
 #: .\training\views.py:28
 msgid "Exercises from the shared library cannot be changed."
 msgstr "Vežbe iz zajedničke biblioteke ne mogu da se menjaju."

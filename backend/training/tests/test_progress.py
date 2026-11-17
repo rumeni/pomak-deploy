@@ -35,6 +35,14 @@ class ExerciseProgressTests(APITestCase):
     def progress(self, exercise):
         return self.client.get(f'/api/training/progress/exercises/{exercise.id}/').json()
 
+    def test_e1rm_uses_rpe_chart_when_rpe_is_known(self):
+        # 100 x 5 @ RPE 8: 81% of 1RM -> 123.5; Epley alone (assumes failure) would say 116.7.
+        self.workout(1, self.bench, [{'weight_kg': '100', 'reps': 5, 'rpe': 8}])
+        # RPE below 6 is too far from failure to estimate; Epley stays: 90 x (1 + 3/30) = 99.
+        self.workout(2, self.bench, [{'weight_kg': '90', 'reps': 3, 'rpe': 5}])
+        e1rm = self.progress(self.bench)['records']['e1rm']
+        self.assertEqual((e1rm['value'], e1rm['date'], e1rm['rpe']), ('123.5', '2026-09-01', '8.0'))
+
     def test_weight_records_chart_and_history(self):
         self.workout(1, self.bench, [{'weight_kg': '60', 'reps': 10}, {'weight_kg': '70', 'reps': 5}])
         self.workout(8, self.bench, [{'weight_kg': '80', 'reps': 1}, {'weight_kg': '50', 'reps': 20}])

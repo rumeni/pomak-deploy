@@ -256,7 +256,8 @@ class CoachClientView(APIView):
                  'exercises': [
                      {'name': item.exercise.name, 'sets': [
                          {'set_type': setlog.set_type, 'reps': setlog.reps, 'weight_kg': str(setlog.weight_kg) if setlog.weight_kg is not None else None,
-                          'duration_seconds': setlog.duration_seconds, 'distance_m': setlog.distance_m}
+                          'duration_seconds': setlog.duration_seconds, 'distance_m': setlog.distance_m,
+                          'rpe': str(setlog.rpe) if setlog.rpe is not None else None}
                          for setlog in item.sets.all()
                      ]}
                      for item in x.exercises.all()
@@ -334,7 +335,7 @@ class AssignRoutineView(APIView):
                 RoutineSet(
                     routine_exercise=exercise, position=s.position, set_type=s.set_type,
                     reps_min=s.reps_min, reps_max=s.reps_max, weight_kg=s.weight_kg,
-                    duration_seconds=s.duration_seconds, distance_m=s.distance_m,
+                    duration_seconds=s.duration_seconds, distance_m=s.distance_m, rpe=s.rpe,
                 ) for s in item.sets.all()
             ])
         assignment = CoachAssignment.objects.create(connection=connection, routine=clone)

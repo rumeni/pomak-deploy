@@ -7,6 +7,9 @@ Računaju se samo radne serije (zagrevanje ne). Šta je rekord zavisi od načina
 
 Procenjeni 1RM = težina × (1 + ponavljanja / 30) (Epley 1985), samo za 1–10 ponavljanja,
 jer je procena za više ponavljanja nepouzdana. Prikazuje se kao procena.
+
+When a set has an RPE of 6 or more, the RPE percentage chart is used instead: Epley assumes
+the set went to failure, so it underestimates a set of 5 @ RPE 7.
 """
 
 from decimal import Decimal
@@ -22,6 +25,29 @@ MAX_E1RM_REPS = 10
 
 def epley(weight: Decimal, reps: int) -> Decimal:
     return weight if reps == 1 else weight * (1 + Decimal(reps) / 30)
+
+
+# Share of 1RM for reps 1-10 at a given RPE (the common RPE chart used in strength coaching).
+# Keep in sync with frontend/src/features/workout/rpe.ts.
+RPE_CHART = {
+    Decimal('10'): (100, 96, 92, 89, 86, 84, 81, 79, 76, 74),
+    Decimal('9.5'): (98, 94, 91, 88, 85, 82, 80, 77, 75, 73),
+    Decimal('9'): (96, 92, 89, 86, 84, 81, 79, 77, 74, 72),
+    Decimal('8.5'): (94, 91, 88, 85, 82, 80, 77, 75, 73, 71),
+    Decimal('8'): (92, 89, 86, 84, 81, 79, 76, 74, 72, 70),  # 7 reps: the source sheet says 78, a typo (8 @ 7 = 10 @ 9 = 76)
+    Decimal('7.5'): (91, 88, 85, 82, 80, 77, 75, 73, 71, 69),
+    Decimal('7'): (89, 86, 84, 81, 79, 76, 74, 72, 70, 68),
+    Decimal('6.5'): (88, 85, 82, 80, 77, 75, 74, 72, 69, 67),
+    Decimal('6'): (86, 84, 81, 79, 76, 74, 73, 71, 68, 66),
+}
+
+
+def estimated_1rm(weight: Decimal, reps: int, rpe: Decimal | None = None) -> Decimal:
+    """Estimated 1RM for 1-10 reps: the RPE chart when RPE is known, otherwise Epley."""
+    row = RPE_CHART.get(rpe) if rpe is not None else None
+    if row is None:
+        return epley(weight, reps)
+    return weight * 100 / row[reps - 1]
 
 
 def _json(value):
@@ -58,7 +84,8 @@ def analyze(measurement: str, session_exercises, *, load_mode: str = Exercise.Lo
                 better('heaviest', s.weight_kg, session, reps=s.reps)
                 better('best_set_volume', s.weight_kg * s.reps * volume_factor, session, weight=s.weight_kg, reps=s.reps)
                 if s.reps <= MAX_E1RM_REPS and s.weight_kg > 0:
-                    better('e1rm', epley(s.weight_kg, s.reps).quantize(Decimal('0.1')), session, weight=s.weight_kg, reps=s.reps)
+                    e1rm = estimated_1rm(s.weight_kg, s.reps, s.rpe).quantize(Decimal('0.1'))
+                    better('e1rm', e1rm, session, weight=s.weight_kg, reps=s.reps, rpe=s.rpe)
             if loaded:
                 better('session_volume', sum(s.weight_kg * s.reps * volume_factor for s in loaded), session)
                 point = max(s.weight_kg for s in loaded)
