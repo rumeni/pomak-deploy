@@ -311,6 +311,83 @@ export function unconfirmSet(workout: ActiveWorkout, exerciseKey: string, setKey
   return updateSet(workout, exerciseKey, setKey, { done: false, completedAt: null })
 }
 
+/* ---------- Changing the exercise list during a workout ---------- */
+
+/** Most per-exercise notes the API accepts. */
+export const MAX_EXERCISE_NOTES = 300
+
+const isCardio = (e: Exercise) => e.measurement === 'duration' || e.measurement === 'distance_duration'
+
+/** Moves an exercise one place up (-1) or down (+1); out-of-range moves do nothing. */
+export function moveExercise(workout: ActiveWorkout, exerciseKey: string, delta: -1 | 1): ActiveWorkout {
+  const from = workout.exercises.findIndex((e) => e.key === exerciseKey)
+  const to = from + delta
+  if (from < 0 || to < 0 || to >= workout.exercises.length) return workout
+  const exercises = [...workout.exercises]
+  ;[exercises[from], exercises[to]] = [exercises[to], exercises[from]]
+  return { ...workout, exercises }
+}
+
+export function removeExercise(workout: ActiveWorkout, exerciseKey: string): ActiveWorkout {
+  return { ...workout, exercises: workout.exercises.filter((e) => e.key !== exerciseKey) }
+}
+
+export function setExerciseNotes(workout: ActiveWorkout, exerciseKey: string, notes: string): ActiveWorkout {
+  return {
+    ...workout,
+    exercises: workout.exercises.map((e) => (e.key === exerciseKey ? { ...e, notes: notes.slice(0, MAX_EXERCISE_NOTES) } : e)),
+  }
+}
+
+/**
+ * Swaps the exercise of a card (busy machine, pain, coach's call). Only before any set is
+ * confirmed: confirmed sets were done with the old exercise and must stay attributed to it.
+ *
+ * The plan's reps and RPE carry over when both exercises are counted in reps; a planned
+ * weight does not (it belonged to the old exercise). Switching between rep-based and timed
+ * work starts from the new exercise's default sets. Rest time and notes stay.
+ */
+export function replaceExercise(workout: ActiveWorkout, exerciseKey: string, exercise: Exercise): ActiveWorkout {
+  const item = workout.exercises.find((e) => e.key === exerciseKey)
+  if (!item || item.exercise.id === exercise.id) return workout
+  if (item.sets.some((s) => s.done)) throw new SetInputError('workout.errors.replaceDone')
+  const sameKind = isCardio(item.exercise) === isCardio(exercise)
+  const sets = sameKind
+    ? item.sets.map((s) => ({
+        ...emptyActiveSet(s.set_type),
+        target: s.target && !isCardio(exercise) ? { ...s.target, weight_kg: null } : null,
+      }))
+    : newActiveExercise(exercise).sets
+  const replaced: ActiveExercise = { ...item, exercise, sets }
+  return { ...workout, exercises: workout.exercises.map((e) => (e.key === exerciseKey ? replaced : e)) }
+}
+
+/** Plan of an exercise for the card header, e.g. working sets "3 × 8–10 @ 8", plus warm-ups. */
+export interface PlanSummary {
+  warmups: number
+  /** Working sets grouped while consecutive sets share the same prescription. */
+  groups: { count: number; reps: string | null; weight: string | null; rpe: number | null }[]
+}
+
+export function planSummary(item: ActiveExercise): PlanSummary | null {
+  const planned = item.sets.filter((s) => s.target)
+  if (!planned.length) return null
+  const groups: PlanSummary['groups'] = []
+  for (const s of planned) {
+    if (s.set_type !== 'working') continue
+    const t = s.target!
+    const reps = t.reps_min === null ? null : t.reps_max !== null && t.reps_max !== t.reps_min ? `${t.reps_min}–${t.reps_max}` : String(t.reps_min)
+    const weight = t.weight_kg === null ? null : formatDecimal(Number(t.weight_kg))
+    const rpe = targetRpe(s)
+    const last = groups[groups.length - 1]
+    if (last && last.reps === reps && last.weight === weight && last.rpe === rpe) last.count += 1
+    else groups.push({ count: 1, reps, weight, rpe })
+  }
+  const warmups = planned.filter((s) => s.set_type === 'warmup').length
+  const useful = groups.some((g) => g.reps !== null || g.weight !== null || g.rpe !== null)
+  return useful || warmups ? { warmups, groups } : null
+}
+
 export function updateSet(workout: ActiveWorkout, exerciseKey: string, setKey: string, patch: Partial<ActiveSet>): ActiveWorkout {
   return {
     ...workout,

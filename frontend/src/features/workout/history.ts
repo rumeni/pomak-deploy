@@ -17,7 +17,7 @@ export interface SessionView {
   readiness: Readiness | null
   status: SessionStatus
   error: string | null
-  exercises: { exercise: Exercise; sets: LoggedSet[] }[]
+  exercises: { exercise: Exercise; notes: string; sets: LoggedSet[] }[]
 }
 
 export function fromServer(s: WorkoutSession): SessionView {
@@ -31,7 +31,7 @@ export function fromServer(s: WorkoutSession): SessionView {
     readiness: hasReadiness(s.readiness) ? s.readiness : null,
     status: 'sent',
     error: null,
-    exercises: s.exercises.map((e) => ({ exercise: e.exercise, sets: e.sets })),
+    exercises: s.exercises.map((e) => ({ exercise: e.exercise, notes: e.notes, sets: e.sets })),
   }
 }
 
@@ -50,7 +50,7 @@ export function fromOutbox(row: OutboxRow): SessionView {
     // Kao na serveru: vežba bez potvrđenih serija nije deo odrađenog treninga.
     exercises: row.payload.exercises
       .filter((e) => e.sets.length && byId.has(e.exercise_id))
-      .map((e) => ({ exercise: byId.get(e.exercise_id)!, sets: e.sets })),
+      .map((e) => ({ exercise: byId.get(e.exercise_id)!, notes: e.notes, sets: e.sets })),
   }
 }
 
