@@ -414,6 +414,88 @@ INSTRUCTIONS = {
             'Tip: beginners should raise bent knees; no swinging.',
         ],
     },
+    'glute-bridge': {
+        'sr': [
+            'Lezi na leđa, kolena savijena, stopala na podu u širini kukova, blizu zadnjice.',
+            'Ruke su pored tela; ako koristiš teg, drži ga na kukovima.',
+            'Stisni gluteus i podigni karlicu dok telo od kolena do ramena ne bude prava linija.',
+            'Zadrži sekundu gore, pa polako spusti karlicu skoro do poda.',
+            'Savet: ne izvijaj donji deo leđa; pokret ide iz kukova.',
+        ],
+        'en': [
+            'Lie on your back, knees bent, feet flat and hip-width apart, close to your glutes.',
+            'Arms by your sides; with a weight, hold it on your hips.',
+            'Squeeze your glutes and lift your hips until knees, hips and shoulders are in line.',
+            'Hold for a second at the top, then lower slowly almost to the floor.',
+            'Tip: do not arch your lower back; the movement comes from the hips.',
+        ],
+    },
+    'hip-abduction': {
+        'sr': [
+            'Sedi na spravu, leđa uz naslon, spoljna strana kolena uz jastučiće.',
+            'Uhvati ručke i zategni stomak.',
+            'Gurni kolena u stranu koliko možeš bez pomeranja karlice.',
+            'Zadrži kratko, pa polako vrati noge, bez udaranja tegova.',
+            'Savet: blagi nagib trupa napred više uključuje gluteus.',
+        ],
+        'en': [
+            'Sit on the machine, back against the pad, the outside of your knees against the pads.',
+            'Hold the handles and brace your core.',
+            'Push your knees out as far as you can without moving your pelvis.',
+            'Hold briefly, then bring your legs back slowly without letting the stack slam.',
+            'Tip: leaning slightly forward works the glutes more.',
+        ],
+    },
+    'cable-kickback': {
+        'sr': [
+            'Stavi manžetnu na zglob noge i stani licem prema sajli, sajla na najnižem položaju.',
+            'Uhvati se za spravu, blago se nagni napred, stomak zategnut.',
+            'Opruženom nogom povuci unazad i blago nagore, stežući gluteus.',
+            'Zastani gore, pa polako vrati nogu; uradi sva ponavljanja pa promeni nogu.',
+            'Savet: ne izvijaj leđa; pokret je iz kuka, ne iz krsta.',
+        ],
+        'en': [
+            'Strap the cuff to your ankle and face the cable set to its lowest position.',
+            'Hold the frame, lean forward slightly and brace your core.',
+            'Kick the leg back and slightly up, squeezing your glutes.',
+            'Pause at the top, then return slowly; do all reps, then switch legs.',
+            'Tip: do not arch your back; the movement comes from the hip, not the lower back.',
+        ],
+    },
+    'step-up': {
+        'sr': [
+            'Stani ispred stabilne klupe sa bučicom u svakoj ruci.',
+            'Postavi celo stopalo jedne noge na klupu.',
+            'Guraj se kroz petu te noge i popni se dok ne opružiš nogu.',
+            'Polako se spusti istom nogom; uradi sva ponavljanja pa promeni nogu.',
+            'Savet: ne odguruj se zadnjom nogom; radi noga koja je na klupi.',
+        ],
+        'en': [
+            'Stand in front of a stable bench with a dumbbell in each hand.',
+            'Place the whole foot of one leg on the bench.',
+            'Drive through that heel and step up until the leg is straight.',
+            'Lower slowly with the same leg; do all reps, then switch legs.',
+            'Tip: do not push off with the back leg; the leg on the bench does the work.',
+        ],
+    },
+    'sumo-deadlift': {
+        'sr': [
+            'Stani široko, prsti napolje, šipka iznad sredine stopala.',
+            'Spusti se i uhvati šipku između nogu, ruke u širini ramena.',
+            'Grudi gore, leđa ravna, kolena guraj napolje u pravcu prstiju.',
+            'Guraj pod nogama i podigni šipku uz telo do uspravnog položaja.',
+            'Spusti je istim putem, kontrolisano.',
+            'Savet: šipka je sve vreme blizu tela; ne zaokružuj leđa.',
+        ],
+        'en': [
+            'Take a wide stance, toes out, the bar over the middle of your feet.',
+            'Squat down and grip the bar between your legs, hands shoulder-width apart.',
+            'Chest up, back flat, push your knees out over your toes.',
+            'Push the floor away and lift the bar close to your body until you stand tall.',
+            'Lower it the same way, under control.',
+            'Tip: keep the bar close the whole time; do not round your back.',
+        ],
+    },
     'hip-thrust': {
         'sr': [
             'Sedi na pod i osloni lopatice na ivicu klupe; šipka je preko kukova (sa jastukom).',
