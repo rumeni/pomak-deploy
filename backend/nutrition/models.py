@@ -18,6 +18,9 @@ class Food(TimeStampedModel):
         CUSTOM = 'custom', _('Custom')
         # Recept: vrednosti na 100 g se računaju iz sastojaka i mase gotovog jela (nutrition.recipes).
         RECIPE = 'recipe', _('Recipe')
+        # Added by a user for everyone (usually a packaged product); "unverified" until an
+        # admin checks it (verified_at).
+        COMMUNITY = 'community', _('Community')
 
     class State(models.TextChoices):
         RAW = 'raw', _('Raw')
@@ -51,8 +54,24 @@ class Food(TimeStampedModel):
     # Namirnica se ne briše: dnevnik čuva svoj snimak vrednosti, ali veza ostaje čitljiva.
     archived_at = models.DateTimeField(null=True, blank=True)
 
+    # EAN/UPC from the package, so a product is entered once and found by scanning.
+    barcode = models.CharField(max_length=32, blank=True, db_index=True)
+    # Who added a community food (never shown to other users; nulled if the account goes).
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['search_name']
+        constraints = [
+            # One active shared entry per product barcode; an archived one keeps its history but
+            # no longer reserves the barcode, so the product can be added again.
+            models.UniqueConstraint(
+                fields=['barcode'], condition=Q(owner__isnull=True) & Q(archived_at__isnull=True) & ~Q(barcode=''),
+                name='unique_active_shared_food_barcode',
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -226,3 +245,16 @@ class NutritionTarget(TimeStampedModel):
     @classmethod
     def for_date(cls, user, day):
         return cls.objects.filter(owner=user, valid_from__lte=day).order_by('-valid_from').first()
+
+
+class FoodReport(TimeStampedModel):
+    """A user's note that a shared food has wrong values; reviewed in the admin."""
+
+    food = models.ForeignKey(Food, on_delete=models.CASCADE, related_name='reports')
+    reporter = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    reason = models.CharField(max_length=300)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+

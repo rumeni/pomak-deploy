@@ -44,6 +44,14 @@ export function plot(points: ChartPoint[], width: number, height: number): { poi
   }
 }
 
+/** Index of the point closest to `x` (pixels in the chart's own coordinates). */
+export function nearestIndex(points: { x: number }[], x: number): number | null {
+  if (!points.length) return null
+  let nearest = 0
+  for (let i = 1; i < points.length; i++) if (Math.abs(points[i].x - x) < Math.abs(points[nearest].x - x)) nearest = i
+  return nearest
+}
+
 /**
  * The bar to describe: the selected one while it still exists, otherwise the last (current)
  * one. Selection is kept by key, so switching to a shorter series never points past its end.

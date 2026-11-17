@@ -1,6 +1,8 @@
+import re
 from decimal import Decimal
 
-from django.db import transaction
+from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -29,6 +31,46 @@ class FoodPortionSerializer(serializers.ModelSerializer):
         return data
 
 
+BARCODE_RE = re.compile(r'\d{8,14}')
+
+
+def kcal_from_macros(protein, carbs, fat):
+    """Energy from the macros (4 / 4 / 9 kcal per gram), or None if any is unknown."""
+    if protein is None or carbs is None or fat is None:
+        return None
+    return Decimal(4) * protein + Decimal(4) * carbs + Decimal(9) * fat
+
+
+def kcal_matches(kcal, expected) -> bool:
+    """Labels round and count fibre and polyols differently, so allow 20 % or 25 kcal."""
+    return abs(Decimal(kcal) - expected) <= max(Decimal(25), expected * Decimal('0.2'))
+
+
+OFF_SOURCE_RE = re.compile(r'openfoodfacts:\d{8,14}')
+
+
+def shared_barcode_clash(barcode, exclude_pk=None):
+    """The active shared food that already has this barcode, if any."""
+    return Food.objects.filter(owner__isnull=True, archived_at__isnull=True, barcode=barcode).exclude(pk=exclude_pk).first()
+
+
+def barcode_clash_error(clash):
+    # Lists, the same shape as errors raised during validation (also when raised from create()).
+    return serializers.ValidationError({'barcode': [_(
+        'A product with this barcode is already in the database: %(name)s.'
+    ) % {'name': localized_name(clash)}], 'existing_id': [str(clash.id)]})
+
+
+def can_edit_food(food, request) -> bool:
+    """Own foods; a community food only by its author and only until an admin verified it."""
+    user = getattr(request, 'user', None)
+    if user is None or not user.is_authenticated:
+        return False
+    if food.owner_id is not None:
+        return food.owner_id == user.pk
+    return food.source == Food.Source.COMMUNITY and food.created_by_id == user.pk and food.verified_at is None
+
+
 class FoodSerializer(serializers.ModelSerializer):
     """Namirnica sa vrednostima na 100 g. Nepoznat makro je null, nikad 0."""
 
@@ -37,14 +79,20 @@ class FoodSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(required=False)
     portions = FoodPortionSerializer(many=True, required=False)
     is_custom = serializers.SerializerMethodField()
+    # On create: add it to the shared database (visible to everyone, unverified) instead of
+    # keeping it private.
+    shared = serializers.BooleanField(write_only=True, required=False, default=False)
+    verified = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = Food
         fields = [
             'id', 'name', 'aliases', 'source', 'source_ref', 'state', 'kcal',
             'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'portions', 'is_custom',
+            'barcode', 'shared', 'verified', 'can_edit',
         ]
-        read_only_fields = ['source', 'source_ref']
+        read_only_fields = ['source']
         extra_kwargs = {
             'kcal': {'min_value': 0, 'max_value': 900},
             **{f: {'min_value': 0, 'max_value': 100} for f in (*MACRO_FIELDS, 'fiber_g')},
@@ -52,6 +100,19 @@ class FoodSerializer(serializers.ModelSerializer):
 
     def get_is_custom(self, obj) -> bool:
         return obj.owner_id is not None
+
+    def get_verified(self, obj) -> bool:
+        # The original library is curated; community foods once an admin checked them.
+        return obj.source != Food.Source.COMMUNITY or obj.verified_at is not None
+
+    def get_can_edit(self, obj) -> bool:
+        return can_edit_food(obj, self.context.get('request'))
+
+    def validate_barcode(self, value):
+        value = value.strip()
+        if value and not BARCODE_RE.fullmatch(value):
+            raise serializers.ValidationError(_('A barcode has 8 to 14 digits.'))
+        return value
 
     def to_representation(self, obj):
         data = super().to_representation(obj)
@@ -81,18 +142,61 @@ class FoodSerializer(serializers.ModelSerializer):
         macros = [attrs.get(f, getattr(self.instance, f, None)) for f in MACRO_FIELDS]
         if sum(m for m in macros if m is not None) > 100:
             raise serializers.ValidationError(_('Protein, carbohydrates and fat together cannot exceed 100 g per 100 g.'))
+        shared = attrs.get('shared') or (self.instance is not None and self.instance.source == Food.Source.COMMUNITY)
+        if shared:
+            # Everyone will use these numbers: calories must fit the macros (4/4/9 kcal per g).
+            kcal = attrs.get('kcal', getattr(self.instance, 'kcal', None))
+            expected = kcal_from_macros(*macros)
+            if kcal is not None and expected is not None and not kcal_matches(kcal, expected):
+                raise serializers.ValidationError({'kcal': _(
+                    'Calories do not match the macros (about %(expected)s kcal expected). Check the values.'
+                ) % {'expected': int(expected)}})
+            barcode = attrs.get('barcode', getattr(self.instance, 'barcode', ''))
+            if barcode:
+                clash = shared_barcode_clash(barcode, getattr(self.instance, 'pk', None))
+                if clash is not None:
+                    raise barcode_clash_error(clash)
+            # Open Food Facts data is ODbL; it stays out of the shared library until the team has
+            # settled how to meet attribution and share-alike (settings.SHARE_OPEN_FOOD_FACTS_DATA).
+            source_ref = attrs.get('source_ref', getattr(self.instance, 'source_ref', ''))
+            if source_ref.startswith('openfoodfacts:') and not settings.SHARE_OPEN_FOOD_FACTS_DATA:
+                raise serializers.ValidationError({'shared': _(
+                    'Values taken from Open Food Facts can be saved as your own food, not shared.'
+                )})
         return attrs
+
+    def validate_source_ref(self, value):
+        # Only the provenance of Open Food Facts suggestions can be set by the client.
+        value = value.strip()
+        if value and not OFF_SOURCE_RE.fullmatch(value):
+            raise serializers.ValidationError(_('Invalid source.'))
+        return value
 
     @transaction.atomic
     def create(self, validated_data):
         portions = validated_data.pop('portions', [])
-        food = Food.objects.create(source=Food.Source.CUSTOM, **validated_data)
+        if validated_data.pop('shared', False):
+            # Shared: no owner (everyone sees it), the author is kept only to allow corrections.
+            validated_data['created_by'] = validated_data.pop('owner')
+            try:
+                with transaction.atomic():
+                    food = Food.objects.create(source=Food.Source.COMMUNITY, **validated_data)
+            except IntegrityError:
+                # Someone added the same product between the check and this insert.
+                clash = shared_barcode_clash(validated_data.get('barcode', ''))
+                if clash is None:
+                    raise
+                raise barcode_clash_error(clash) from None
+        else:
+            food = Food.objects.create(source=Food.Source.CUSTOM, **validated_data)
         self._write_portions(food, portions)
         return food
 
     @transaction.atomic
     def update(self, food, validated_data):
         validated_data.pop('id', None)  # PATCH and repeated POST cannot change a primary key.
+        validated_data.pop('shared', None)  # Sharing is chosen when the food is created.
+        validated_data.pop('source_ref', None)  # Provenance is set once, on create.
         portions = validated_data.pop('portions', None)
         food = super().update(food, validated_data)
         if portions is not None:

@@ -15,7 +15,7 @@ export interface Food {
   id: string
   name: string
   aliases: string
-  source: 'usda' | 'custom' | 'recipe'
+  source: 'usda' | 'custom' | 'recipe' | 'community'
   source_ref: string
   state: FoodState
   kcal: string
@@ -25,9 +25,48 @@ export interface Food {
   fiber_g: string | null
   portions: FoodPortion[]
   is_custom: boolean
+  /** EAN/UPC from the package ('' if none); absent from older servers. */
+  barcode?: string
+  /** False for a community food an admin has not checked yet. */
+  verified?: boolean
+  /** The current user may change it (own food, or own unverified community food). */
+  can_edit?: boolean
 }
 
-export type NewFood = Pick<Food, 'name' | 'state' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'portions'> & { id?: string }
+export type NewFood = Pick<Food, 'name' | 'state' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'portions'> & {
+  id?: string
+  barcode?: string
+  /** Add to the shared database for everyone instead of keeping it private. */
+  shared?: boolean
+  /** "openfoodfacts:<code>" when the values came from Open Food Facts. */
+  source_ref?: string
+}
+
+/** Values Open Food Facts has for a scanned barcode; shown in the form to confirm. */
+export interface BarcodeSuggestion {
+  name: string
+  barcode: string
+  kcal: string
+  protein_g: string | null
+  carbs_g: string | null
+  fat_g: string | null
+  fiber_g: string | null
+  source: 'open_food_facts'
+  /** Provenance kept with the saved food ("openfoodfacts:<code>") and the product page. */
+  source_ref: string
+  source_url: string
+}
+
+/** A scanned barcode: the food we already have, or a suggestion to confirm, or neither. */
+export async function lookupBarcode(code: string): Promise<{ food: Food | null; suggestion: BarcodeSuggestion | null }> {
+  return (await api.get(`/nutrition/foods/barcode/${code}/`, { timeout: 12000 })).data
+}
+
+export function useReportFood() {
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => api.post(`/nutrition/foods/${id}/report/`, { reason }),
+  })
+}
 
 export function useFoods(q: string) {
   return useQuery({

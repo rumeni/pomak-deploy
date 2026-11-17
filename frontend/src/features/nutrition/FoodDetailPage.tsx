@@ -8,7 +8,7 @@ import { useAuth } from '../../lib/auth'
 import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
 import { mealForTime, mealSettings } from '../diary/meals'
 import { AmountPicker } from './AmountPicker'
-import { useDeleteFood, useFood } from './api'
+import { useDeleteFood, useReportFood, useFood } from './api'
 import { fmtValue } from './macroFormat'
 import { nutritionFor } from './nutrition'
 
@@ -17,6 +17,7 @@ export function FoodDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data: food, isLoading, isError } = useFood(id)
+  const report = useReportFood()
   const remove = useDeleteFood()
   const { me } = useAuth()
   const [amount, setAmount] = useState('100')
@@ -43,8 +44,19 @@ export function FoodDetailPage() {
   ]
 
   const isRecipe = food.source === 'recipe'
+  const isCommunity = food.source === 'community'
   const sourceText =
-    food.source === 'usda' ? t('nutrition.sourceUsda', { id: food.source_ref }) : isRecipe ? t('nutrition.sourceRecipe') : t('nutrition.sourceCustom')
+    food.source === 'usda' ? t('nutrition.sourceUsda', { id: food.source_ref })
+      : isRecipe ? t('nutrition.sourceRecipe')
+        : isCommunity ? t(food.verified ? 'nutrition.sourceCommunityVerified' : 'nutrition.sourceCommunity')
+          : t('nutrition.sourceCustom')
+  const canEdit = food.can_edit ?? (food.is_custom && food.source === 'custom')
+
+  const onReport = () => {
+    const reason = window.prompt(t('nutrition.reportPrompt'))?.trim()
+    if (!reason) return
+    report.mutate({ id: food.id, reason }, { onSuccess: () => window.alert(t('nutrition.reportThanks')) })
+  }
 
   const onDelete = () => {
     if (!window.confirm(t(isRecipe ? 'recipe.deleteConfirm' : 'nutrition.deleteConfirm', { name: food.name }))) return
@@ -55,7 +67,15 @@ export function FoodDetailPage() {
     <div className="min-h-full pb-10">
       <ScreenHeader title={food.name} onBack={back} />
       <div className="mx-auto flex max-w-xl flex-col gap-4 p-4">
-        {!isRecipe && <p className="text-sm text-muted">{t(`nutrition.state_${food.state}`)}</p>}
+        {!isRecipe && (
+          <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            {t(`nutrition.state_${food.state}`)}
+            {isCommunity && !food.verified && (
+              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-ink">{t('nutrition.unverified')}</span>
+            )}
+            {food.barcode && <span className="tabular-nums">· {food.barcode}</span>}
+          </p>
+        )}
 
         <AmountPicker value={amount} portions={food.portions} onChange={(grams) => setAmount(grams)} />
 
@@ -87,6 +107,34 @@ export function FoodDetailPage() {
         <p className="text-xs text-muted">
           {t('nutrition.source')}: {sourceText}
         </p>
+        {food.source_ref.startsWith('openfoodfacts:') && (
+          // ODbL attribution for values taken from Open Food Facts.
+          <p className="text-xs text-muted">
+            {t('nutrition.offAttribution')}{' '}
+            <a
+              href={`https://world.openfoodfacts.org/product/${food.source_ref.slice('openfoodfacts:'.length)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-brand-dark underline"
+            >
+              Open Food Facts
+            </a>{' '}
+            (ODbL)
+          </p>
+        )}
+        {isCommunity && !canEdit && (
+          <Button variant="ghost" className="text-sm" onClick={onReport} disabled={report.isPending}>
+            {t('nutrition.report')}
+          </Button>
+        )}
+        {isCommunity && canEdit && (
+          <Link
+            to={`/ishrana/namirnice/${food.id}/izmena`}
+            className="flex min-h-12 items-center justify-center rounded-xl bg-card font-semibold text-brand-dark ring-1 ring-line active:bg-brand-soft"
+          >
+            {t('nutrition.editFood')}
+          </Link>
+        )}
 
         {isRecipe && (
           <Link

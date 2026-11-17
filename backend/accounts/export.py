@@ -103,6 +103,11 @@ def collect(user) -> dict:
                 }
                 for f in foods
             ],
+            # Foods this user added to the shared database (they stay shared after account deletion).
+            'shared_foods_added': [
+                {'name': f.name, 'barcode': f.barcode, 'verified': f.verified_at is not None, 'per_100g': {v: getattr(f, v) for v in VALUE_FIELDS}}
+                for f in Food.objects.filter(created_by=user, owner__isnull=True)
+            ],
             'saved_meals': [
                 {'name': m.name, 'items': list(m.items.values('food__name', 'grams', 'portion_name', 'name', *VALUE_FIELDS))}
                 for m in SavedMeal.objects.filter(owner=user)

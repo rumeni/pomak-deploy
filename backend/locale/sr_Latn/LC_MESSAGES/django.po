@@ -654,6 +654,32 @@ msgstr "Trening nema nijednu potvrđenu seriju."
 msgid "RPE goes in steps of 0.5."
 msgstr "RPE se upisuje u koracima od 0,5."
 
+msgid "Values taken from Open Food Facts can be saved as your own food, not shared."
+msgstr "Vrednosti preuzete iz Open Food Facts mogu da se sačuvaju kao tvoja namirnica, ali ne i da se dele."
+
+msgid "Invalid source."
+msgstr "Neispravan izvor."
+
+msgid "Community"
+msgstr "Zajednica"
+
+msgid "A barcode has 8 to 14 digits."
+msgstr "Bar-kod ima od 8 do 14 cifara."
+
+#, python-format
+msgid "Calories do not match the macros (about %(expected)s kcal expected). Check the values."
+msgstr "Kalorije se ne slažu sa makroima (očekuje se oko %(expected)s kcal). Proveri vrednosti."
+
+#, python-format
+msgid "A product with this barcode is already in the database: %(name)s."
+msgstr "Proizvod sa ovim bar-kodom već postoji u bazi: %(name)s."
+
+msgid "Only shared foods can be reported."
+msgstr "Greška se prijavljuje samo za namirnice iz zajedničke baze."
+
+msgid "Say what is wrong."
+msgstr "Napiši šta nije u redu."
+
 msgid "Choose 7, 30 or 90 days, or all."
 msgstr "Izaberi 7, 30 ili 90 dana, ili sve."
 

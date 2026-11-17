@@ -33,7 +33,15 @@ export interface ActiveSet {
   distance: string
   /** Logged RPE; can be added or changed after the set is confirmed. */
   rpe?: number | null
-  target: { reps_min: number | null; reps_max: number | null; weight_kg: string | null; rpe?: number | null } | null
+  target: {
+    reps_min: number | null
+    reps_max: number | null
+    weight_kg: string | null
+    rpe?: number | null
+    /** Planned time / distance for timed and cardio sets (absent in workouts started before). */
+    duration_seconds?: number | null
+    distance_m?: number | null
+  } | null
   done: boolean
   completedAt: string | null
 }
@@ -84,7 +92,10 @@ export function startFromRoutine(routine: Routine, previous: Record<string, Prev
       notes: e.notes,
       sets: e.sets.map((s) => ({
         ...emptyActiveSet(s.set_type),
-        target: { reps_min: s.reps_min, reps_max: s.reps_max, weight_kg: s.weight_kg, rpe: parseRpe(s.rpe) },
+        target: {
+          reps_min: s.reps_min, reps_max: s.reps_max, weight_kg: s.weight_kg, rpe: parseRpe(s.rpe),
+          duration_seconds: s.duration_seconds, distance_m: s.distance_m,
+        },
       })),
     })),
   }
@@ -195,8 +206,11 @@ export function suggestion(workout: ActiveWorkout, item: ActiveExercise, index: 
   return {
     weight: weight === null ? '' : formatDecimal(Number(weight)),
     reps: reps === null ? '' : String(reps),
-    duration: prev?.duration_seconds ? formatDuration(prev.duration_seconds) : '',
-    distance: prev?.distance_m ? formatDecimal(prev.distance_m / 1000) : '',
+    // Last time first, then the plan (e.g. plank 0:45 from a suggested program).
+    duration: prev?.duration_seconds ? formatDuration(prev.duration_seconds)
+      : target?.duration_seconds ? formatDuration(target.duration_seconds) : '',
+    distance: prev?.distance_m ? formatDecimal(prev.distance_m / 1000)
+      : target?.distance_m ? formatDecimal(target.distance_m / 1000) : '',
   }
 }
 
@@ -416,7 +430,7 @@ export function rpeLoadRows(workout: ActiveWorkout, item: ActiveExercise): { cal
 export interface PlanSummary {
   warmups: number
   /** Working sets grouped while consecutive sets share the same prescription. */
-  groups: { count: number; reps: string | null; weight: string | null; rpe: number | null }[]
+  groups: { count: number; reps: string | null; weight: string | null; rpe: number | null; time?: string | null; km?: string | null }[]
 }
 
 export function planSummary(item: ActiveExercise): PlanSummary | null {
@@ -429,12 +443,14 @@ export function planSummary(item: ActiveExercise): PlanSummary | null {
     const reps = t.reps_min === null ? null : t.reps_max !== null && t.reps_max !== t.reps_min ? `${t.reps_min}–${t.reps_max}` : String(t.reps_min)
     const weight = t.weight_kg === null ? null : formatDecimal(Number(t.weight_kg))
     const rpe = targetRpe(s)
+    const time = t.duration_seconds ? formatDuration(t.duration_seconds) : null
+    const km = t.distance_m ? formatDecimal(t.distance_m / 1000) : null
     const last = groups[groups.length - 1]
-    if (last && last.reps === reps && last.weight === weight && last.rpe === rpe) last.count += 1
-    else groups.push({ count: 1, reps, weight, rpe })
+    if (last && last.reps === reps && last.weight === weight && last.rpe === rpe && (last.time ?? null) === time && (last.km ?? null) === km) last.count += 1
+    else groups.push({ count: 1, reps, weight, rpe, ...(time || km ? { time, km } : {}) })
   }
   const warmups = planned.filter((s) => s.set_type === 'warmup').length
-  const useful = groups.some((g) => g.reps !== null || g.weight !== null || g.rpe !== null)
+  const useful = groups.some((g) => g.reps !== null || g.weight !== null || g.rpe !== null || !!g.time || !!g.km)
   return useful || warmups ? { warmups, groups } : null
 }
 

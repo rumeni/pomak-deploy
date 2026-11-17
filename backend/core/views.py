@@ -84,6 +84,10 @@ class IdempotentCreateMixin:
     retry_action = 'return'
     retry_compare_fields = None
 
+    def created_by_user(self, record, user) -> bool:
+        """Whether this user created the record (so a repeated create is a retry, not a clash)."""
+        return getattr(record, f'{self.owner_field}_id') == user.pk
+
     def _matches_retry(self, body, saved):
         if self.retry_compare_fields is not None:
             # Goals have server-managed start values/dates, so only compare
@@ -102,7 +106,7 @@ class IdempotentCreateMixin:
             except (ValueError, TypeError, DjangoValidationError):
                 raise ValidationError({'id': _('Invalid ID.')}) from None
             if existing is not None:
-                if getattr(existing, f'{self.owner_field}_id') != request.user.pk:
+                if not self.created_by_user(existing, request.user):
                     raise ValidationError({'id': _('This ID is already taken.')})
 
                 action = self.retry_action

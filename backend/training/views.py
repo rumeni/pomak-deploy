@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -15,7 +16,7 @@ from rest_framework.views import APIView
 from core.search import search_and_order
 from core.views import IdempotentCreateMixin, SharedLibraryMixin, require_object_body
 
-from . import progress, stats
+from . import programs, progress, stats
 from .models import Exercise, Routine, RoutineExercise, SessionExercise, WorkoutSession
 from .serializers import (
     ExerciseSerializer, RoutineSerializer, SetLogSerializer, WorkoutSessionEditSerializer, WorkoutSessionSerializer,
@@ -174,6 +175,51 @@ class WorkoutSessionViewSet(
                     'started_at': last.session.started_at,
                     'sets': SetLogSerializer(last.sets.all(), many=True).data,
                 }
+        return Response(result)
+
+
+class ProgramsView(APIView):
+    """Suggested programs (see programs.py); the ones matching the profile come first."""
+
+    def get(self, request):
+        lang = 'en' if get_language() == 'en' else 'sr'
+        profile = getattr(request.user, 'profile', None)
+        sex = getattr(profile, 'sex', None) or 'male'  # no answer: the general programs
+        level = getattr(profile, 'training_experience', None) or programs.B
+        exercises = {e.slug: e for e in Exercise.objects.filter(owner__isnull=True, slug__in={
+            item['slug'] for p in programs.PROGRAMS for r in p['routines'] for item in r['exercises']
+        })}
+        result = []
+        for p in programs.PROGRAMS:
+            routines = []
+            for routine in p['routines']:
+                items = []
+                for item in routine['exercises']:
+                    exercise = exercises.get(item['slug'])
+                    if exercise is None:
+                        continue  # library not migrated yet; skip rather than fail
+                    timed = exercise.measurement == Exercise.Measurement.DURATION
+                    items.append({
+                        'exercise': ExerciseSerializer(exercise).data,
+                        'rest_seconds': item['rest_seconds'],
+                        'notes': '',
+                        'sets': [{
+                            'set_type': 'working',
+                            'reps_min': None if timed else item['reps_min'],
+                            'reps_max': None if timed else item['reps_max'],
+                            'weight_kg': None,
+                            'duration_seconds': item['reps_max'] if timed else None,
+                            'distance_m': None,
+                            'rpe': None if item['rpe'] is None else str(item['rpe']),
+                        }] * item['sets'],
+                    })
+                routines.append({'name': routine['name'][lang], 'exercises': items})
+            result.append({
+                'key': p['key'], 'sex': p['sex'], 'level': p['level'], 'days': p['days'],
+                'name': p['name'][lang], 'description': p['description'][lang], 'routines': routines,
+                'recommended': p['sex'] == sex and p['level'] == level,
+            })
+        result.sort(key=lambda p: (not p['recommended'], p['sex'] != sex, programs.LEVEL_ORDER[p['level']]))
         return Response(result)
 
 
