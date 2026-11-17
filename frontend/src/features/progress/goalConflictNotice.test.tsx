@@ -29,6 +29,16 @@ describe('goal conflict notice on the progress list', () => {
     expect(html).toContain('goals-list')
   })
 
+  it('does not replay a consumed conflict notice after location state has been cleared', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={[{ pathname: '/napredak', state: null }]}>
+        <ProgressPage />
+      </MemoryRouter>,
+    )
+    expect(html).not.toContain('role="alert"')
+    expect(html).not.toContain('progress.goalConflictNotice')
+  })
+
   it('does not show the conflict alert on a normal visit', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter initialEntries={['/napredak']}>

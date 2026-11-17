@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { Card, EmptyState, PageHeader } from '../../components/ui'
 import { LineChart } from '../../components/LineChart'
@@ -15,7 +16,16 @@ import { LanguageMenu } from '../../components/LanguageMenu'
 export function ProgressPage() {
   const { t } = useTranslation()
   const location = useLocation()
-  const goalConflictNotice = (location.state as { goalConflictNotice?: boolean } | null)?.goalConflictNotice === true
+  const navigate = useNavigate()
+  const pendingNotice = (location.state as { goalConflictNotice?: boolean } | null)?.goalConflictNotice === true
+  // Preserve the notice on screen while consuming it from browser history.
+  // A refresh or back/forward visit must not replay a stale conflict warning.
+  const [goalConflictNotice] = useState(() => pendingNotice)
+
+  useEffect(() => {
+    if (pendingNotice) navigate('.', { replace: true, state: null })
+  }, [pendingNotice, navigate])
+
   return (
     <>
       <PageHeader title={t('progress.title')} action={<LanguageMenu />} />
