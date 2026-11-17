@@ -8,7 +8,7 @@ import { parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { lookupBarcode, useCreateFood, useFood, useUpdateFood, type Food, type FoodState, type NewFood } from './api'
 import { FoodScanner, type ScanResult } from './FoodScanner'
-import { mergeScan } from './scanMerge'
+import { barcodeEdit, forNewProduct, mergeScan } from './scanMerge'
 import { kcalCheck } from './labelCheck'
 import { foodFormValue } from './foodFormValues'
 import { useAuth } from '../../lib/auth'
@@ -71,6 +71,8 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
   )
   const [error, setError] = useState<string | null>(null)
   const [barcode, setBarcode] = useState(initialFood?.barcode ?? '')
+  // The barcode the form's content belongs to (from a scan or a confirmed edit).
+  const [productBarcode, setProductBarcode] = useState(initialFood?.barcode ?? '')
   // Private unless the athlete deliberately shares it: name, values and portions become public.
   const [shared, setShared] = useState(false)
   // Where the values came from ("openfoodfacts:<code>"), kept with the food.
@@ -104,11 +106,31 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
     }
     setName(next.name)
     setBarcode(next.barcode)
+    setProductBarcode(next.barcode)
     setValues(next.values)
     setSourceRef(next.sourceRef)
     setScanned(new Set(filled))
     if (next.sourceRef.startsWith('openfoodfacts:')) setShared(false)
     setScanNote(result.note)
+  }
+
+  // A hand-typed barcode gets the same protection as a scanned one (never mix two products).
+  const onBarcodeCommitted = () => {
+    if (editing) return setProductBarcode(barcode)
+    const change = barcodeEdit({ name, barcode, values, sourceRef }, productBarcode, barcode)
+    if (change === 'same') return
+    if (change === 'other' && window.confirm(t('newFood.otherProductConfirm'))) {
+      const fresh = forNewProduct(barcode.trim())
+      setName(fresh.name)
+      setValues(fresh.values)
+      setSourceRef(fresh.sourceRef)
+      setPortions([])
+      setShared(false)
+      setScanned(new Set())
+      setScanNote(null)
+    }
+    // Either the first barcode of this draft or the athlete's own correction of a typo.
+    setProductBarcode(barcode.trim())
   }
 
   const openExistingFood = (food: Food) => {
@@ -281,6 +303,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
           placeholder={t('newFood.barcodePlaceholder')}
           value={barcode}
           onChange={(e) => { markEdited(); setBarcode(e.target.value.replace(/\s/g, '')); setExistingFood(null) }}
+          onBlur={onBarcodeCommitted}
         />
         {!editing && (
           <label className={`flex items-start gap-3 rounded-xl bg-card p-3 ring-1 ring-line/60 ${fromOpenFoodFacts ? 'opacity-70' : ''}`}>
