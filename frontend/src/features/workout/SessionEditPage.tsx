@@ -33,13 +33,17 @@ export function SessionEditPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { me } = useAuth()
-  const remote = useSession(id, true)
+  const remote = useSession(id, true, true)
   // After a conflict the form restarts from the version the server returned with it; it never
   // follows background refetches, so the edit baseline stays the revision it was made from.
   const [base, setBase] = useState<{ session: WorkoutSession; version: number } | null>(null)
+  // Start only from a version fetched after opening: a cached copy may be older than a
+  // correction made on another device, and the kept draft must be compared with the newest.
+  const [openedAt] = useState(() => Date.now())
+  const fresh = !!base || (remote.isSuccess && remote.dataUpdatedAt >= openedAt)
 
-  if (remote.isLoading || !me) return <LoadingScreen />
-  const session = base?.session ?? remote.data
+  if (!me || (!fresh && !remote.isError)) return <LoadingScreen />
+  const session = base?.session ?? (fresh ? remote.data : undefined)
   if (!session) {
     return (
       <>
@@ -66,7 +70,10 @@ function Editor({ session, ownerId, onReload }: { session: WorkoutSession; owner
   const save = useEditSession()
   // Frozen for this editor instance: what "changed" is measured against.
   const [initial] = useState(() => sessionToEditDraft(session))
-  const [restored] = useState(() => loadEditDraft(ownerId, initial.id, initial.revision))
+  const [kept] = useState(() => loadEditDraft(ownerId, initial.id, initial.revision))
+  const restored = kept && !kept.stale ? kept.draft : null
+  // A kept draft made against an older revision waits for the athlete's choice.
+  const [staleDraft, setStaleDraft] = useState(kept?.stale ? kept.draft : null)
   const [draft, setDraft] = useState<SessionEditDraft>(restored ?? initial)
   const [error, setError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<WorkoutSession | null>(null)
@@ -75,11 +82,24 @@ function Editor({ session, ownerId, onReload }: { session: WorkoutSession; owner
   const saving = save.isPending
   const back = () => navigate(`/trening/istorija/${initial.id}`, { replace: true })
 
-  // Keep unsaved corrections on the device until they are saved or discarded.
+  // Keep unsaved corrections on the device until they are saved or discarded. While an older
+  // kept draft awaits a decision, leave it stored.
   useEffect(() => {
+    if (staleDraft) return
     if (changed) storeEditDraft(ownerId, draft)
     else clearEditDraft(ownerId, initial.id)
-  }, [changed, draft, ownerId, initial.id])
+  }, [changed, draft, ownerId, initial.id, staleDraft])
+
+  const keepStaleDraft = () => {
+    // The athlete chose their changes over the newer version: apply them to it.
+    setDraft({ ...staleDraft!, revision: initial.revision })
+    setStaleDraft(null)
+  }
+  const discardStaleDraft = () => {
+    if (!window.confirm(t('history.edit.staleDiscardConfirm'))) return
+    clearEditDraft(ownerId, initial.id)
+    setStaleDraft(null)
+  }
 
   // Closing or reloading the web page asks first; Android Back relies on the kept draft.
   useEffect(() => {
@@ -148,7 +168,7 @@ function Editor({ session, ownerId, onReload }: { session: WorkoutSession; owner
         title={t('history.edit.title')}
         onBack={onBack}
         action={
-          <Button className="min-h-10 px-4 text-sm" onClick={onSave} disabled={!changed || saving || !!conflict}>
+          <Button className="min-h-10 px-4 text-sm" onClick={onSave} disabled={!changed || saving || !!conflict || !!staleDraft}>
             {saving ? t('common.saving') : t('common.save')}
           </Button>
         }
@@ -156,6 +176,15 @@ function Editor({ session, ownerId, onReload }: { session: WorkoutSession; owner
       <div className="mx-auto flex max-w-xl flex-col gap-3 p-4">
         <p className="text-sm text-muted">{t('history.edit.intro')}</p>
         {restored && changed && <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('history.edit.restored')}</p>}
+        {staleDraft && (
+          <div role="alert" className="rounded-xl bg-accent/15 p-3 text-sm">
+            <p>{t('history.edit.staleDraft')}</p>
+            <div className="mt-2 flex flex-col gap-2">
+              <Button onClick={keepStaleDraft}>{t('history.edit.staleKeep')}</Button>
+              <Button variant="secondary" onClick={discardStaleDraft}>{t('history.edit.staleDiscard')}</Button>
+            </div>
+          </div>
+        )}
 
         {conflict && (
           <div role="alert" className="rounded-xl bg-danger/10 p-3 text-danger">
@@ -165,7 +194,7 @@ function Editor({ session, ownerId, onReload }: { session: WorkoutSession; owner
         )}
 
         {/* While saving, nothing can change: a later edit would be lost when the save returns. */}
-        <fieldset disabled={saving} className="flex min-w-0 flex-col gap-3 disabled:opacity-70">
+        <fieldset disabled={saving || !!staleDraft} className="flex min-w-0 flex-col gap-3 disabled:opacity-70">
           <input
             value={draft.name}
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
@@ -212,7 +241,7 @@ function Editor({ session, ownerId, onReload }: { session: WorkoutSession; owner
         </fieldset>
 
         <FormError message={error} />
-        <Button onClick={onSave} disabled={!changed || saving || !!conflict}>
+        <Button onClick={onSave} disabled={!changed || saving || !!conflict || !!staleDraft}>
           {saving ? t('common.saving') : t('history.edit.save')}
         </Button>
         <Button variant="secondary" onClick={onBack} disabled={saving}>

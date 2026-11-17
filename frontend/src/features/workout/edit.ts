@@ -108,9 +108,11 @@ export function editChanged(initial: SessionEditDraft, draft: SessionEditDraft):
 /*
  * Unsaved corrections are kept on the device while the form is open, so Android Back, a
  * reload or the app being closed does not lose them: opening the same workout's edit again
- * brings them back. Stored per user and workout, for the revision they were made against.
+ * brings them back. Stored per user and workout, with the revision they were made against.
+ * They are personal data: logout and account deletion remove them (clearUserEditDrafts).
  */
-const draftKey = (ownerId: string, sessionId: string) => `pomak.sessionEdit.${ownerId}.${sessionId}`
+const DRAFT_PREFIX = 'pomak.sessionEdit.'
+const draftKey = (ownerId: string, sessionId: string) => `${DRAFT_PREFIX}${ownerId}.${sessionId}`
 
 export function storeEditDraft(ownerId: string, draft: SessionEditDraft): void {
   try {
@@ -120,18 +122,53 @@ export function storeEditDraft(ownerId: string, draft: SessionEditDraft): void {
   }
 }
 
-/** The kept draft, if it was made against this revision; a draft for an older one is dropped. */
-export function loadEditDraft(ownerId: string, sessionId: string, revision: string): SessionEditDraft | null {
+/**
+ * The kept draft for this workout. `stale` means it was made against an older revision (the
+ * workout was corrected elsewhere since): it is never dropped silently - the athlete chooses
+ * to keep it (over the newer version) or discard it.
+ */
+export function loadEditDraft(ownerId: string, sessionId: string, revision: string): { draft: SessionEditDraft; stale: boolean } | null {
   try {
     const raw = localStorage.getItem(draftKey(ownerId, sessionId))
     if (!raw) return null
     const draft = JSON.parse(raw) as SessionEditDraft
-    if (draft.id === sessionId && draft.revision === revision && Array.isArray(draft.exercises)) return draft
+    if (draft.id === sessionId && Array.isArray(draft.exercises)) return { draft, stale: draft.revision !== revision }
     localStorage.removeItem(draftKey(ownerId, sessionId))
   } catch {
     // Unreadable entry: start from the server's version.
   }
   return null
+}
+
+/** Keys of all kept drafts of one user. */
+function userDraftKeys(ownerId: string): string[] {
+  const prefix = `${DRAFT_PREFIX}${ownerId}.`
+  const keys: string[] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(prefix)) keys.push(key)
+    }
+  } catch {
+    // No storage: no drafts.
+  }
+  return keys
+}
+
+/** How many workouts have unsaved corrections on this device (counted in the logout warning). */
+export function countEditDrafts(ownerId: string): number {
+  return userDraftKeys(ownerId).length
+}
+
+/** Removes every kept draft of a user (logout, account deletion). */
+export function clearUserEditDrafts(ownerId: string): void {
+  for (const key of userDraftKeys(ownerId)) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // Already gone or storage blocked.
+    }
+  }
 }
 
 export function clearEditDraft(ownerId: string, sessionId: string): void {

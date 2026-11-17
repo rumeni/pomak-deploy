@@ -4,6 +4,8 @@ import type { Exercise } from '../training/api'
 import type { WorkoutSession } from './api'
 import {
   clearEditDraft,
+  clearUserEditDrafts,
+  countEditDrafts,
   editChanged,
   editDraftToPayload,
   loadEditDraft,
@@ -104,6 +106,8 @@ describe('unsaved corrections kept on the device', () => {
     getItem: (k: string) => store.get(k) ?? null,
     setItem: (k: string, v: string) => void store.set(k, v),
     removeItem: (k: string) => void store.delete(k),
+    key: (i: number) => [...store.keys()][i] ?? null,
+    get length() { return store.size },
   }
   afterEach(() => {
     store.clear()
@@ -114,17 +118,31 @@ describe('unsaved corrections kept on the device', () => {
     vi.stubGlobal('localStorage', fakeStorage)
     const draft = { ...sessionToEditDraft(session), notes: 'nije sačuvano' }
     storeEditDraft('u1', draft)
-    expect(loadEditDraft('u1', 's1', session.updated_at!)).toMatchObject({ notes: 'nije sačuvano' })
+    expect(loadEditDraft('u1', 's1', session.updated_at!)).toMatchObject({ stale: false, draft: { notes: 'nije sačuvano' } })
     expect(loadEditDraft('u2', 's1', session.updated_at!)).toBeNull()
     clearEditDraft('u1', 's1')
     expect(loadEditDraft('u1', 's1', session.updated_at!)).toBeNull()
   })
 
-  it('drops a draft made against an older revision instead of restoring stale values', () => {
+  it('keeps a draft made against an older revision and marks it stale for the athlete to decide', () => {
     vi.stubGlobal('localStorage', fakeStorage)
     storeEditDraft('u1', { ...sessionToEditDraft(session), notes: 'stara verzija' })
-    expect(loadEditDraft('u1', 's1', '2026-11-17T12:00:00Z')).toBeNull()
-    expect(store.size).toBe(0)
+    // The workout was corrected on another device: the local changes are not dropped.
+    expect(loadEditDraft('u1', 's1', '2026-11-17T12:00:00Z')).toMatchObject({ stale: true, draft: { notes: 'stara verzija' } })
+    expect(store.size).toBe(1)
+  })
+
+  it('counts and removes only one user\'s drafts (logout, account deletion)', () => {
+    vi.stubGlobal('localStorage', fakeStorage)
+    storeEditDraft('u1', sessionToEditDraft(session))
+    storeEditDraft('u1', { ...sessionToEditDraft(session), id: 's2' })
+    storeEditDraft('u2', sessionToEditDraft(session))
+    store.set('pomak.language.u1', 'sr')
+    expect(countEditDrafts('u1')).toBe(2)
+    clearUserEditDrafts('u1')
+    expect(countEditDrafts('u1')).toBe(0)
+    expect(countEditDrafts('u2')).toBe(1)
+    expect(store.get('pomak.language.u1')).toBe('sr')
   })
 
   it('works without storage (blocked or full) and ignores unreadable entries', () => {

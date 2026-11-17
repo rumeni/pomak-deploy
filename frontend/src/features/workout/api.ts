@@ -69,12 +69,14 @@ export function useSaveSession() {
   })
 }
 
-export function useSession(id: string | undefined, enabled: boolean) {
+/** `latest`: always fetch on open, even with a recent cached copy (the edit form needs the newest). */
+export function useSession(id: string | undefined, enabled: boolean, latest = false) {
   return useQuery({
     queryKey: ['sessions', id],
     queryFn: async () => (await api.get<WorkoutSession>(`/training/sessions/${id}/`)).data,
     enabled: !!id && enabled,
     retry: false,
+    ...(latest ? { refetchOnMount: 'always' as const } : {}),
   })
 }
 
