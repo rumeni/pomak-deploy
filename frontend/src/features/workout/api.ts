@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '../../lib/api'
 import type { Exercise } from '../training/api'
 import type { LoggedSet, PreviousPerformance, SessionPayload } from './model'
+import type { Readiness } from './rpe'
 import { workoutQueriesAfterSync } from './syncQueries'
 
 export interface WorkoutSession {
@@ -13,6 +14,8 @@ export interface WorkoutSession {
   finished_at: string
   feeling: number | null
   notes: string
+  /** All nulls when the check-in was skipped; missing from servers older than this field. */
+  readiness?: Readiness
   exercises: { exercise: Exercise; notes: string; sets: LoggedSet[] }[]
 }
 

@@ -300,3 +300,55 @@ describe('oversized plan snapshot regression (Codex PR #38)', () => {
     expect(legacy.plan_snapshot).toBe(huge)
   })
 })
+
+describe('RPE and readiness', () => {
+  const rpeRoutine: Routine = {
+    ...routine,
+    exercises: [{
+      exercise: bench, rest_seconds: 180, notes: '',
+      sets: [
+        { set_type: 'working', reps_min: 3, reps_max: 3, weight_kg: null, duration_seconds: null, distance_m: null, rpe: '8.0' },
+        // A fixed weight in the plan is the coach's call; RPE does not override it.
+        { set_type: 'working', reps_min: 3, reps_max: 3, weight_kg: '90.00', duration_seconds: null, distance_m: null, rpe: '8.0' },
+      ],
+    }],
+  }
+  const lastTime: Record<string, PreviousPerformance> = {
+    bench: {
+      session_id: 's0', started_at: '2026-09-20T10:00:00Z',
+      sets: [
+        { set_type: 'working', weight_kg: '100.00', reps: 5, duration_seconds: null, distance_m: null, rpe: '8.0' },
+        { set_type: 'working', weight_kg: '95.00', reps: 5, duration_seconds: null, distance_m: null, rpe: null },
+      ],
+    },
+  }
+
+  it('suggests the weight for a set prescribed by RPE from last time\'s estimated 1RM', () => {
+    const w = startFromRoutine(rpeRoutine, lastTime, t0)
+    expect(w.exercises[0].sets[0].target?.rpe).toBe(8)
+    // 100 x 5 @ 8 -> e1RM 123.5; 3 @ 8 = 86% -> 106.2 -> 105 kg; reps follow the plan
+    expect(suggestion(w, w.exercises[0], 0)).toMatchObject({ weight: '105', reps: '3' })
+    expect(suggestion(w, w.exercises[0], 1)).toMatchObject({ weight: '95' })
+  })
+
+  it('sends RPE with the set and the check-in only when answered', () => {
+    let w = startFromRoutine(rpeRoutine, lastTime, t0)
+    const ex = w.exercises[0]
+    w = updateSet(w, ex.key, ex.sets[0].key, { weight: '105', reps: '3', rpe: 8.5 })
+    w = confirmSet(w, ex.key, ex.sets[0].key, t0)
+    w = confirmSet(w, ex.key, ex.sets[1].key, t0)
+    let payload = toSessionPayload(w, t0, null, '')
+    expect(payload.exercises[0].sets.map((s) => s.rpe ?? null)).toEqual(['8.5', null])
+    expect(payload).not.toHaveProperty('readiness')
+
+    w = { ...w, readiness: { sleep_hours: 7, hydration: null, stress: 2, motivation: 4, soreness_upper: null, soreness_lower: null } }
+    payload = toSessionPayload(w, t0, null, '')
+    expect(payload.readiness).toMatchObject({ sleep_hours: 7, stress: 2 })
+  })
+
+  it('shows RPE in history but not in the "last time" column', () => {
+    const set = { set_type: 'working' as const, weight_kg: '100.00', reps: 5, duration_seconds: null, distance_m: null, rpe: '7.5' }
+    expect(describeLogged(set, bench, 'pon.')).toBe('100 × 5')
+    expect(describeLogged(set, bench, 'pon.', true)).toBe('100 × 5 @ 7,5')
+  })
+})

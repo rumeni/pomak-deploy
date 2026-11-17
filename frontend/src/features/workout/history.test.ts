@@ -21,7 +21,7 @@ const row: OutboxRow = {
 }
 
 const view = (id: string, startedAt: string, status: SessionView['status'] = 'sent'): SessionView => ({
-  id, name: id, startedAt, finishedAt: startedAt, feeling: null, notes: '', status, error: null, exercises: [],
+  id, name: id, startedAt, finishedAt: startedAt, feeling: null, notes: '', readiness: null, status, error: null, exercises: [],
 })
 
 describe('istorija', () => {

@@ -15,6 +15,7 @@ import {
   emptyActiveSet,
   newActiveExercise,
   previousSet,
+  rpeTargetWeight,
   SetInputError,
   suggestion,
   unconfirmSet,
@@ -27,6 +28,9 @@ import { loadPrevious } from './previous'
 import { cancelRestEnd, restEndedFeedback, restNotificationAction, scheduleRestEnd } from './restNotification'
 import { usePersistentWorkout } from './store'
 import { ExerciseHeading } from '../training/ExerciseHeading'
+import { ReadinessRow, ReadinessStep } from './ReadinessCard'
+import { formatRpe } from './rpe'
+import { RpeSheet } from './RpeSheet'
 
 // Match backend WorkoutSessionSerializer boundaries so a finished offline
 // workout is never rejected merely for having too many items.
@@ -43,6 +47,7 @@ export function ActiveWorkoutPage() {
   // Never let a live cross-tab update swap the workout underneath an open
   // finish form (its local feeling/notes belong to the original workout).
   const [finishId, setFinishId] = useState<string | null>(null)
+  const [editingCheckIn, setEditingCheckIn] = useState(false)
   const now = useNow()
   const workout = row?.workout
 
@@ -71,6 +76,30 @@ export function ActiveWorkoutPage() {
     )
     return (
       <FinishWorkout key={finishId} workout={workout} ownerId={row.ownerId} flush={flush} onBack={() => setFinishId(null)} onDone={() => navigate('/trening', { replace: true })} />
+    )
+  }
+
+  // Check-in comes first, on its own screen, until it is skipped or confirmed. A workout
+  // already under way (e.g. restored from history) goes straight to the sets.
+  const needsCheckIn = !workout.checkInDone && !workout.exercises.some((e) => e.sets.some((s) => s.done))
+  if (needsCheckIn || editingCheckIn) {
+    const close = () => {
+      update((w) => ({ ...w, checkInDone: true }))
+      setEditingCheckIn(false)
+    }
+    return (
+      <ReadinessStep
+        title={workout.name}
+        readiness={workout.readiness}
+        editing={editingCheckIn}
+        onChange={(readiness) => update((w) => ({ ...w, readiness }))}
+        onBack={() => (editingCheckIn ? setEditingCheckIn(false) : navigate('/trening'))}
+        onSkip={() => {
+          update((w) => ({ ...w, readiness: undefined, checkInDone: true }))
+          setEditingCheckIn(false)
+        }}
+        onDone={close}
+      />
     )
   }
 
@@ -109,6 +138,7 @@ export function ActiveWorkoutPage() {
       </p>
 
       <div className="mx-auto flex max-w-xl flex-col gap-3 p-4">
+        <ReadinessRow readiness={workout.readiness} onOpen={() => setEditingCheckIn(true)} />
         {workout.exercises.length === 0 && <p className="py-6 text-center text-muted">{t('workout.noExercises')}</p>}
         {workout.exercises.map((item) => (
           <WorkoutExerciseCard key={item.key} workout={workout} item={item} update={update} />
@@ -127,8 +157,13 @@ export function ActiveWorkoutPage() {
 function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout; item: ActiveExercise; update: Update }) {
   const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
+  const [rpeFor, setRpeFor] = useState<string | null>(null)
   const { exercise } = item
   const m = exercise.measurement
+  // RPE fits anything done for reps; for timed or distance work it says little.
+  const showRpe = m !== 'duration' && m !== 'distance_duration'
+  const rpeSetIndex = rpeFor ? item.sets.findIndex((s) => s.key === rpeFor) : -1
+  const rpeSet = rpeSetIndex >= 0 ? item.sets[rpeSetIndex] : null
   const previous = workout.previous[exercise.id]
   const warmup = t('routine.warmupShort')
 
@@ -183,7 +218,7 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
 
       <div
         className="mt-3 grid items-center gap-x-1.5 gap-y-2"
-        style={{ gridTemplateColumns: `2.25rem minmax(0, 1.2fr) repeat(${fields.length}, minmax(0, 1fr)) 2.75rem` }}
+        style={{ gridTemplateColumns: `2.25rem minmax(0, 1.2fr) repeat(${fields.length}, minmax(0, 1fr))${showRpe ? ' 2.6rem' : ''} 2.75rem` }}
       >
         <span className="text-center text-[11px] font-medium text-muted">{t('routine.set')}</span>
         <span className="text-center text-[11px] font-medium text-muted">{t('workout.colPrevious')}</span>
@@ -192,6 +227,7 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
             {f.label}
           </span>
         ))}
+        {showRpe && <span className="text-center text-[11px] font-medium text-muted">{t('rpe.col')}</span>}
         <span />
 
         {item.sets.map((set, index) => {
@@ -204,6 +240,9 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
               previous={describeLogged(previousSet(workout, item, index), exercise, t('routine.phReps'))}
               fields={fields}
               hint={hint}
+              hintFromRpe={rpeTargetWeight(workout, item, index) !== null}
+              showRpe={showRpe}
+              onOpenRpe={() => setRpeFor(set.key)}
               onToggleType={() => update((w) => updateSet(w, item.key, set.key, { set_type: set.set_type === 'warmup' ? 'working' : 'warmup' }))}
               onChange={(patch) => update((w) => updateSet(w, item.key, set.key, patch))}
               onToggleDone={() => toggleDone(set)}
@@ -222,6 +261,18 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
         {t('routine.addSet')}
       </button>
       <p className="px-1 text-xs text-muted">{t('workout.setHint')}</p>
+      {rpeSet && (
+        <RpeSheet
+          title={`${exercise.name} · ${t('routine.set')} ${labels[rpeSetIndex]}`}
+          value={rpeSet.rpe ?? null}
+          target={rpeSet.target?.rpe ?? null}
+          onPick={(rpe) => {
+            update((w) => updateSet(w, item.key, rpeSet.key, { rpe }))
+            setRpeFor(null)
+          }}
+          onClose={() => setRpeFor(null)}
+        />
+      )}
     </section>
   )
 }
@@ -254,6 +305,9 @@ function SetRow({
   previous,
   fields,
   hint,
+  hintFromRpe,
+  showRpe,
+  onOpenRpe,
   onToggleType,
   onChange,
   onToggleDone,
@@ -264,6 +318,9 @@ function SetRow({
   previous: string
   fields: Field[]
   hint: Record<Field['field'], string>
+  hintFromRpe: boolean
+  showRpe: boolean
+  onOpenRpe: () => void
   onToggleType: () => void
   onChange: (patch: Partial<ActiveSet>) => void
   onToggleDone: () => void
@@ -297,10 +354,26 @@ function SetRow({
           placeholder={hint[f.field]}
           inputMode={f.inputMode}
           aria-label={f.label}
+          title={hintFromRpe && f.field === 'weight' ? t('rpe.fromRpe') : undefined}
           disabled={set.done}
           className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-surface px-1 text-center text-base tabular-nums outline-none placeholder:text-muted/60 focus:border-brand focus:bg-card disabled:border-transparent disabled:bg-brand-soft disabled:font-semibold disabled:text-ink"
         />
       ))}
+      {showRpe && (
+        // Stays tappable after ✓: RPE is usually known only once the set is done.
+        <button
+          type="button"
+          onClick={onOpenRpe}
+          aria-label={t('rpe.setAria', { n: label })}
+          className={`min-h-11 rounded-lg text-sm tabular-nums ${
+            typeof set.rpe === 'number'
+              ? 'bg-accent/15 font-bold text-ink ring-1 ring-accent/40'
+              : 'bg-surface text-muted ring-1 ring-line'
+          }`}
+        >
+          {typeof set.rpe === 'number' ? formatRpe(set.rpe) : set.target?.rpe ? `@${formatRpe(set.target.rpe)}` : '–'}
+        </button>
+      )}
       <button
         type="button"
         onClick={onToggleDone}

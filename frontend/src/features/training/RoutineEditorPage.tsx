@@ -21,6 +21,7 @@ import {
 import { ExercisePicker } from './ExercisePicker'
 import { REST_OPTIONS, formatDuration } from './labels'
 import { ExerciseHeading } from './ExerciseHeading'
+import { RPE_OPTIONS, formatRpe } from '../workout/rpe'
 
 type T = ReturnType<typeof useTranslation>['t']
 
@@ -169,6 +170,8 @@ function ExerciseCard({
   const { exercise } = item
   const m = exercise.measurement
   const columns = setColumns(exercise, t)
+  // Target intensity (e.g. 3 × 5 @ RPE 8) for anything counted in reps.
+  const showRpe = m !== 'duration' && m !== 'distance_duration'
   const warmup = t('routine.warmupShort')
 
   const updateSet = (key: string, patch: Partial<DraftSet>) =>
@@ -219,13 +222,17 @@ function ExerciseCard({
         </select>
       </label>
 
-      <div className="mt-3 grid gap-x-2 gap-y-2" style={{ gridTemplateColumns: `2.75rem repeat(${columns.length}, minmax(0, 1fr)) 2.5rem` }}>
+      <div
+        className="mt-3 grid gap-x-2 gap-y-2"
+        style={{ gridTemplateColumns: `2.75rem repeat(${columns.length}, minmax(0, 1fr))${showRpe ? ' 3.75rem' : ''} 2.5rem` }}
+      >
         <span className="text-center text-xs font-medium text-muted">{t('routine.set')}</span>
         {columns.map((c) => (
           <span key={c.field} className="text-center text-xs font-medium text-muted">
             {c.label}
           </span>
         ))}
+        {showRpe && <span className="text-center text-xs font-medium text-muted">{t('rpe.targetCol')}</span>}
         <span />
 
         {item.sets.map((s, i) => {
@@ -237,6 +244,7 @@ function ExerciseCard({
               isWarmup={isWarmup}
               set={s}
               columns={columns}
+              showRpe={showRpe}
               onToggleType={() => updateSet(s.key, { set_type: isWarmup ? 'working' : 'warmup' })}
               onChange={(patch) => updateSet(s.key, patch)}
               onRemove={() => onChange((e) => ({ ...e, sets: e.sets.filter((x) => x.key !== s.key) }))}
@@ -249,8 +257,8 @@ function ExerciseCard({
         {t('routine.addSet')}
       </button>
       {limitError && <p role="alert" className="px-2 text-sm text-danger">{limitError}</p>}
-      {m !== 'duration' && m !== 'distance_duration' && (
-        <p className="px-1 text-xs text-muted">{t('routine.hint')}</p>
+      {showRpe && (
+        <p className="px-1 text-xs text-muted">{t('routine.hint')} {t('rpe.routineHint')}</p>
       )}
     </section>
   )
@@ -287,6 +295,7 @@ function SetRow({
   isWarmup,
   set,
   columns,
+  showRpe,
   onToggleType,
   onChange,
   onRemove,
@@ -295,6 +304,7 @@ function SetRow({
   isWarmup: boolean
   set: DraftSet
   columns: Column[]
+  showRpe: boolean
   onToggleType: () => void
   onChange: (patch: Partial<DraftSet>) => void
   onRemove: () => void
@@ -321,6 +331,23 @@ function SetRow({
           className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-surface px-2 text-center text-base outline-none focus:border-brand focus:bg-card"
         />
       ))}
+      {showRpe && (
+        // Warm-ups are not prescribed by intensity.
+        <select
+          value={isWarmup ? '' : set.rpe}
+          disabled={isWarmup}
+          onChange={(e) => onChange({ rpe: e.target.value })}
+          aria-label={t('rpe.targetAria', { n: label })}
+          className="min-h-11 w-full min-w-0 appearance-none rounded-lg border border-line bg-surface px-1 text-center text-base [text-align-last:center] outline-none focus:border-brand focus:bg-card disabled:opacity-40"
+        >
+          <option value="">–</option>
+          {RPE_OPTIONS.map((r) => (
+            <option key={r} value={String(r)}>
+              @{formatRpe(r)}
+            </option>
+          ))}
+        </select>
+      )}
       <IconButton label={t('routine.removeSet')} onClick={onRemove} path="M6 12h12" small />
     </>
   )

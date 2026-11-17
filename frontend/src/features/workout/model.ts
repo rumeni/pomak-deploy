@@ -2,6 +2,7 @@ import { formatDecimal, parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import type { Exercise, Routine, SetType } from '../training/api'
 import { formatDuration } from '../training/labels'
+import { estimated1rm, formatRpe, hasReadiness, parseRpe, weightForTarget, type Readiness } from './rpe'
 
 /** Rezultat jedne serije sa servera (prošli put). */
 export interface LoggedSet {
@@ -10,6 +11,8 @@ export interface LoggedSet {
   reps: number | null
   duration_seconds: number | null
   distance_m: number | null
+  /** How hard the set felt; absent in sets logged before RPE existed. */
+  rpe?: string | null
 }
 
 export interface PreviousPerformance {
@@ -26,7 +29,9 @@ export interface ActiveSet {
   reps: string
   duration: string
   distance: string
-  target: { reps_min: number | null; reps_max: number | null; weight_kg: string | null } | null
+  /** Logged RPE; can be added or changed after the set is confirmed. */
+  rpe?: number | null
+  target: { reps_min: number | null; reps_max: number | null; weight_kg: string | null; rpe?: number | null } | null
   done: boolean
   completedAt: string | null
 }
@@ -49,6 +54,10 @@ export interface ActiveWorkout {
   draftFeeling?: number | null
   draftNotes?: string
   recoveredFinishedAt?: string
+  /** Pre-workout check-in (sleep, stress, soreness ...); every answer optional. */
+  readiness?: Readiness
+  /** The check-in step was answered or skipped; the workout itself shows from then on. */
+  checkInDone?: boolean
   exercises: ActiveExercise[]
   previous: Record<string, PreviousPerformance>
   rest: { endsAt: string; totalSeconds: number } | null
@@ -73,7 +82,7 @@ export function startFromRoutine(routine: Routine, previous: Record<string, Prev
       notes: e.notes,
       sets: e.sets.map((s) => ({
         ...emptyActiveSet(s.set_type),
-        target: { reps_min: s.reps_min, reps_max: s.reps_max, weight_kg: s.weight_kg },
+        target: { reps_min: s.reps_min, reps_max: s.reps_max, weight_kg: s.weight_kg, rpe: parseRpe(s.rpe) },
       })),
     })),
   }
@@ -84,7 +93,7 @@ export function startEmpty(name: string, now: Date): ActiveWorkout {
 }
 
 export function emptyActiveSet(set_type: SetType = 'working'): ActiveSet {
-  return { key: uuid(), set_type, weight: '', reps: '', duration: '', distance: '', target: null, done: false, completedAt: null }
+  return { key: uuid(), set_type, weight: '', reps: '', duration: '', distance: '', rpe: null, target: null, done: false, completedAt: null }
 }
 
 export function newActiveExercise(exercise: Exercise): ActiveExercise {
@@ -110,15 +119,42 @@ export function previousSet(workout: ActiveWorkout, item: ActiveExercise, index:
   return previous.filter((s) => s.set_type === set.set_type)[nth] ?? null
 }
 
+/** Best estimated 1RM from last time's working sets (RPE-aware), or null. */
+export function previousEstimated1rm(workout: ActiveWorkout, item: ActiveExercise): number | null {
+  const sets = workout.previous[item.exercise.id]?.sets ?? []
+  let best: number | null = null
+  for (const s of sets) {
+    if (s.set_type !== 'working' || s.weight_kg === null || s.reps === null) continue
+    const e1rm = estimated1rm(Number(s.weight_kg), s.reps, parseRpe(s.rpe))
+    if (e1rm !== null && (best === null || e1rm > best)) best = e1rm
+  }
+  return best
+}
+
+/**
+ * Weight for a set the routine prescribes by intensity (e.g. 5 @ RPE 8), worked out from
+ * last time's estimated 1RM - what a coach does with an RPE chart. Null when either is missing.
+ */
+export function rpeTargetWeight(workout: ActiveWorkout, item: ActiveExercise, index: number): number | null {
+  const target = item.sets[index]?.target
+  const reps = target?.reps_max ?? target?.reps_min ?? null
+  if (item.exercise.measurement !== 'weight_reps' || !target?.rpe || reps === null || target.weight_kg !== null) return null
+  const e1rm = previousEstimated1rm(workout, item)
+  return e1rm === null ? null : weightForTarget(e1rm, reps, target.rpe, item.exercise.load_mode === 'per_side' ? 1 : 2.5)
+}
+
 /**
  * Ponuđena vrednost za prazno polje: prošli rezultat, pa plan iz rutine.
  * Prikazuje se sivo i postaje rezultat tek kad korisnik potvrdi seriju.
+ * When the plan sets an RPE target (and no fixed weight), the weight comes from the RPE chart.
  */
-export function suggestion(workout: ActiveWorkout, item: ActiveExercise, index: number): Omit<ActiveSet, 'key' | 'set_type' | 'target' | 'done' | 'completedAt'> {
+export function suggestion(workout: ActiveWorkout, item: ActiveExercise, index: number): Pick<ActiveSet, 'weight' | 'reps' | 'duration' | 'distance'> {
   const prev = previousSet(workout, item, index)
   const target = item.sets[index]?.target
-  const weight = prev?.weight_kg ?? target?.weight_kg ?? null
-  const reps = prev?.reps ?? target?.reps_max ?? target?.reps_min ?? null
+  const fromRpe = rpeTargetWeight(workout, item, index)
+  const weight = fromRpe ?? prev?.weight_kg ?? target?.weight_kg ?? null
+  // A prescription wins over last time's reps when the weight is derived from it.
+  const reps = fromRpe !== null ? target?.reps_max ?? target?.reps_min ?? null : prev?.reps ?? target?.reps_max ?? target?.reps_min ?? null
   return {
     weight: weight === null ? '' : formatDecimal(Number(weight)),
     reps: reps === null ? '' : String(reps),
@@ -127,9 +163,15 @@ export function suggestion(workout: ActiveWorkout, item: ActiveExercise, index: 
   }
 }
 
-/** "60 × 10", "12 pon.", "2,5 km · 15:00" — prošli rezultat za kolonu PROŠLI PUT. */
-export function describeLogged(set: LoggedSet | null, exercise: Exercise, repsUnit: string): string {
+/** "60 × 10", "12 pon.", "2,5 km · 15:00" — prošli rezultat za kolonu PROŠLI PUT. With `withRpe`: "60 × 10 @ 8". */
+export function describeLogged(set: LoggedSet | null, exercise: Exercise, repsUnit: string, withRpe = false): string {
   if (!set) return '–'
+  const rpe = withRpe ? parseRpe(set.rpe) : null
+  const text = describeValues(set, exercise, repsUnit)
+  return rpe === null || text === '–' ? text : `${text} @ ${formatRpe(rpe)}`
+}
+
+function describeValues(set: LoggedSet, exercise: Exercise, repsUnit: string): string {
   const w = set.weight_kg === null ? null : formatDecimal(Number(set.weight_kg))
   switch (exercise.measurement) {
     case 'weight_reps':
@@ -197,6 +239,7 @@ function parseSeconds(text: string): number | null {
 export function setResult(set: ActiveSet, exercise: Exercise): LoggedSet {
   const m = exercise.measurement
   const result: LoggedSet = { set_type: set.set_type, weight_kg: null, reps: null, duration_seconds: null, distance_m: null }
+  const rpe = parseRpe(set.rpe ?? null)
   if (m === 'duration' || m === 'distance_duration') {
     result.duration_seconds = parseSeconds(set.duration)
     if (m === 'distance_duration') {
@@ -207,6 +250,7 @@ export function setResult(set: ActiveSet, exercise: Exercise): LoggedSet {
   }
   result.reps = parseReps(set.reps)
   if (result.reps === null) throw new SetInputError('workout.errors.needReps')
+  if (rpe !== null) result.rpe = String(rpe)
   if (m !== 'bodyweight_reps') {
     const weight = parseWeight(set.weight, set.done)
     if (weight === null && m === 'weight_reps') throw new SetInputError('workout.errors.needWeight')
@@ -326,6 +370,8 @@ export interface SessionPayload {
   plan_snapshot: Routine | null
   feeling: number | null
   notes: string
+  /** Omitted when the check-in was skipped (and by older app versions). */
+  readiness?: Readiness
   exercises: { exercise_id: string; notes: string; sets: (LoggedSet & { completed_at: string | null })[] }[]
 }
 
@@ -388,6 +434,7 @@ export function uploadSafePlanSnapshot(snapshot: Routine | null): Routine | null
         weight_kg: set.weight_kg,
         duration_seconds: set.duration_seconds,
         distance_m: set.distance_m,
+        rpe: set.rpe,
       })),
     })),
   }
@@ -415,6 +462,7 @@ export function toSessionPayload(workout: ActiveWorkout, finishedAt: Date, feeli
     plan_snapshot: workout.planSnapshot,
     feeling,
     notes,
+    ...(hasReadiness(workout.readiness) ? { readiness: workout.readiness } : {}),
     exercises: workout.exercises.map((item) => ({
       exercise_id: item.exercise.id,
       notes: item.notes,
