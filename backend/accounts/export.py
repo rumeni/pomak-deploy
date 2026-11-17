@@ -23,6 +23,7 @@ PROFILE_FIELDS = [
 ]
 SET_FIELDS = ['set_type', 'weight_kg', 'reps', 'duration_seconds', 'distance_m', 'rpe', 'completed_at']
 READINESS_EXPORT = ['sleep_hours', 'hydration', 'stress', 'motivation', 'soreness_upper', 'soreness_lower']
+READINESS_CSV = ['sleep_hours', 'motivation', 'stress', 'soreness_upper', 'soreness_lower', 'hydration']
 VALUE_FIELDS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g']
 
 
@@ -129,6 +130,14 @@ def build_zip(user) -> bytes:
                 [timezone.localtime(w['started_at']).date(), w['name'], e['exercise'], i + 1, s['set_type'],
                  s['weight_kg'], s['reps'], s['duration_seconds'], s['distance_m'], s['rpe']]
                 for w in data['workouts'] for e in w['exercises'] for i, s in enumerate(e['sets'])
+            ],
+        ))
+        # Pre-workout check-in: one row per workout that has one (1-5 scales, sleep in hours).
+        z.writestr('spremnost.csv', _csv(
+            ['datum', 'trening', 'san_h', 'motivacija', 'stres', 'upala_gornji_deo', 'upala_donji_deo', 'hidratacija'],
+            [
+                [timezone.localtime(w['started_at']).date(), w['name'], *[w['readiness'][f] for f in READINESS_CSV]]
+                for w in data['workouts'] if any(v is not None for v in w['readiness'].values())
             ],
         ))
         z.writestr('ishrana.csv', _csv(

@@ -6,7 +6,7 @@
  * uses the same values for the estimated 1RM (backend/training/progress.py).
  */
 
-/** Values offered in the app, hardest first. */
+/** Values offered in the pickers, hardest first. */
 export const RPE_OPTIONS = [10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5, 4.5, 4] as const
 
 /** Share of 1RM (in %) for 1-10 reps at a given RPE. */
@@ -30,8 +30,18 @@ const CHART: Record<string, readonly number[]> = {
 const MIN_RPE_FOR_ESTIMATE = 6
 const MAX_REPS_FOR_ESTIMATE = 10
 
+/**
+ * Any value the API stores: 1-10 in half steps. Wider than the pickers on purpose, so a
+ * value set elsewhere (API, coach) survives editing instead of being dropped.
+ */
 export function isRpe(value: unknown): value is number {
-  return typeof value === 'number' && (RPE_OPTIONS as readonly number[]).includes(value)
+  return typeof value === 'number' && value >= 1 && value <= 10 && Number.isInteger(value * 2)
+}
+
+/** Picker options, plus any stored value outside them so it stays visible and selected. */
+export function rpeChoices(...current: (number | null | undefined)[]): number[] {
+  const extra = current.filter((v): v is number => isRpe(v) && !(RPE_OPTIONS as readonly number[]).includes(v))
+  return [...new Set([...RPE_OPTIONS, ...extra])].sort((a, b) => b - a)
 }
 
 /** "8" / "8.0" / 8 -> 8; anything outside the scale -> null. */

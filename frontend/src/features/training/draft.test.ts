@@ -93,6 +93,16 @@ describe('draftToPayload', () => {
     expect(back.exercises[0].sets[0].rpe).toBe('8')
   })
 
+  it('round-trips a target RPE below the picker range (3.5) without dropping it', () => {
+    const routine: Routine = { id: 'r', name: 'Lako', notes: '', created_at: '', updated_at: '', exercises: [{
+      exercise: bench, rest_seconds: 90, notes: '',
+      sets: [{ set_type: 'working', reps_min: 5, reps_max: 5, weight_kg: null, duration_seconds: null, distance_m: null, rpe: '3.5' }],
+    }] }
+    const draft = routineToDraft(routine)
+    expect(draft.exercises[0].sets[0].rpe).toBe('3.5')
+    expect(draftToPayload(draft).exercises[0].sets[0].rpe).toBe('3.5')
+  })
+
   it('traži naziv i bar jednu vežbu', () => {
     const draft = newRoutineDraft()
     expect(() => draftToPayload(draft)).toThrow('nameRequired')

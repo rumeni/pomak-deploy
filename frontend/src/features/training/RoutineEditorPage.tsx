@@ -21,7 +21,7 @@ import {
 import { ExercisePicker } from './ExercisePicker'
 import { REST_OPTIONS, formatDuration } from './labels'
 import { ExerciseHeading } from './ExerciseHeading'
-import { RPE_OPTIONS, formatRpe } from '../workout/rpe'
+import { formatRpe, parseRpe, rpeChoices } from '../workout/rpe'
 
 type T = ReturnType<typeof useTranslation>['t']
 
@@ -341,7 +341,7 @@ function SetRow({
           className="min-h-11 w-full min-w-0 appearance-none rounded-lg border border-line bg-surface px-1 text-center text-base [text-align-last:center] outline-none focus:border-brand focus:bg-card disabled:opacity-40"
         >
           <option value="">–</option>
-          {RPE_OPTIONS.map((r) => (
+          {rpeChoices(parseRpe(set.rpe)).map((r) => (
             <option key={r} value={String(r)}>
               @{formatRpe(r)}
             </option>

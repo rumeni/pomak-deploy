@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { RPE_OPTIONS, formatRpe, repsInReserve } from './rpe'
+import { useFocusTrap } from '../../lib/focusTrap'
+import { formatRpe, repsInReserve, rpeChoices } from './rpe'
 
 /** What an RPE value means, in reps left in reserve. */
 function useRpeDescription() {
@@ -30,6 +31,11 @@ export function RpeSheet({
 }) {
   const { t } = useTranslation()
   const describe = useRpeDescription()
+  const dialog = useRef<HTMLElement>(null)
+  // Keyboard focus starts on the current value (or the planned one) and cannot leave the sheet.
+  useFocusTrap(dialog, () =>
+    dialog.current?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    ?? dialog.current?.querySelector<HTMLElement>('[data-planned]') ?? null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -45,6 +51,8 @@ export function RpeSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose} role="presentation">
       <section
+        ref={dialog}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -63,13 +71,14 @@ export function RpeSheet({
         <p className="mt-1 text-sm text-muted">{t('rpe.sheetIntro')}</p>
 
         <ul className="mt-3 flex flex-col gap-1.5">
-          {RPE_OPTIONS.map((rpe) => {
+          {rpeChoices(value, target).map((rpe) => {
             const selected = value === rpe
             return (
               <li key={rpe}>
                 <button
                   type="button"
                   aria-pressed={selected}
+                  data-planned={target === rpe || undefined}
                   onClick={() => onPick(rpe)}
                   className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left ring-1 ${
                     selected ? 'bg-brand text-white ring-brand' : 'bg-card ring-line/70 active:bg-brand-soft'

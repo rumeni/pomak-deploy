@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  RPE_OPTIONS,
   estimated1rm,
   formatRpe,
   parseRpe,
   percentOf1rm,
+  rpeChoices,
   readinessBand,
   readinessScore,
   repsInReserve,
@@ -16,10 +18,16 @@ describe('RPE', () => {
     expect(parseRpe('8.0')).toBe(8)
     expect(parseRpe('7,5')).toBe(7.5)
     expect(parseRpe(9.5)).toBe(9.5)
+    expect(parseRpe('3.5')).toBe(3.5) // API range is 1-10, wider than the picker
     expect(parseRpe('8.3')).toBeNull()
     expect(parseRpe('11')).toBeNull()
     expect(parseRpe('')).toBeNull()
     expect(parseRpe(null)).toBeNull()
+  })
+
+  it('adds a stored value outside the picker to the choices, in order', () => {
+    expect(rpeChoices(null, 8)).toEqual([...RPE_OPTIONS])
+    expect(rpeChoices(3.5).slice(-2)).toEqual([4, 3.5])
   })
 
   it('reads the percentage chart', () => {

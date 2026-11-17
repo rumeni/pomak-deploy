@@ -240,7 +240,7 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
               previous={describeLogged(previousSet(workout, item, index), exercise, t('routine.phReps'))}
               fields={fields}
               hint={hint}
-              hintFromRpe={rpeTargetWeight(workout, item, index) !== null}
+              hintFromRpe={rpeTargetWeight(workout, item, index)?.weight != null}
               showRpe={showRpe}
               onOpenRpe={() => setRpeFor(set.key)}
               onToggleType={() => update((w) => updateSet(w, item.key, set.key, { set_type: set.set_type === 'warmup' ? 'working' : 'warmup' }))}

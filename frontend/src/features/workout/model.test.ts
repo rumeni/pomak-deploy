@@ -331,6 +331,31 @@ describe('RPE and readiness', () => {
     expect(suggestion(w, w.exercises[0], 1)).toMatchObject({ weight: '95' })
   })
 
+  it('recalculates the RPE load for the reps the athlete actually types', () => {
+    let w = startFromRoutine(rpeRoutine, lastTime, t0)
+    const ex = w.exercises[0]
+    // 8 @ 8 = 74% of 123.5 -> 91.4 -> 92.5 kg, not the 105 kg planned for 3 reps
+    w = updateSet(w, ex.key, ex.sets[0].key, { reps: '8' })
+    expect(suggestion(w, w.exercises[0], 0)).toMatchObject({ weight: '92,5', reps: '8' })
+    w = confirmSet(w, ex.key, ex.sets[0].key, t0)
+    expect(toSessionPayload(w, t0, null, '').exercises[0].sets[0]).toMatchObject({ weight_kg: '92.5', reps: 8 })
+  })
+
+  it('asks for the weight when the chart has no value for the typed reps', () => {
+    let w = startFromRoutine(rpeRoutine, lastTime, t0)
+    const ex = w.exercises[0]
+    w = updateSet(w, ex.key, ex.sets[0].key, { reps: '12' })
+    // Never falls back to last time's 100 kg for a 12-rep set at RPE 8.
+    expect(suggestion(w, w.exercises[0], 0).weight).toBe('')
+    expect(() => confirmSet(w, ex.key, ex.sets[0].key, t0)).toThrow(SetInputError)
+  })
+
+  it('keeps an API-set RPE outside the picker range', () => {
+    const low: Routine = { ...rpeRoutine, exercises: [{ ...rpeRoutine.exercises[0], sets: [{ ...rpeRoutine.exercises[0].sets[0], rpe: '3.5' }] }] }
+    const w = startFromRoutine(low, {}, t0)
+    expect(w.exercises[0].sets[0].target?.rpe).toBe(3.5)
+  })
+
   it('sends RPE with the set and the check-in only when answered', () => {
     let w = startFromRoutine(rpeRoutine, lastTime, t0)
     const ex = w.exercises[0]

@@ -132,15 +132,25 @@ export function previousEstimated1rm(workout: ActiveWorkout, item: ActiveExercis
 }
 
 /**
- * Weight for a set the routine prescribes by intensity (e.g. 5 @ RPE 8), worked out from
- * last time's estimated 1RM - what a coach does with an RPE chart. Null when either is missing.
+ * Load for a set the routine prescribes by intensity (e.g. 5 @ RPE 8), worked out from last
+ * time's estimated 1RM - what a coach does with an RPE chart.
+ *
+ * Returns null when RPE does not drive this set (no target RPE, a fixed weight in the plan,
+ * or no history to estimate from). Otherwise `weight` is the load for the reps the athlete
+ * typed, or the planned reps while the field is empty. When the chart has no value for those
+ * reps (e.g. 12 @ 8), `weight` is null: the athlete must enter the weight, because last
+ * time's load would not match the prescribed effort.
  */
-export function rpeTargetWeight(workout: ActiveWorkout, item: ActiveExercise, index: number): number | null {
-  const target = item.sets[index]?.target
-  const reps = target?.reps_max ?? target?.reps_min ?? null
-  if (item.exercise.measurement !== 'weight_reps' || !target?.rpe || reps === null || target.weight_kg !== null) return null
+export function rpeTargetWeight(workout: ActiveWorkout, item: ActiveExercise, index: number): { weight: number | null; reps: number } | null {
+  const set = item.sets[index]
+  const target = set?.target
+  const planned = target?.reps_max ?? target?.reps_min ?? null
+  if (item.exercise.measurement !== 'weight_reps' || !target?.rpe || planned === null || target.weight_kg !== null) return null
   const e1rm = previousEstimated1rm(workout, item)
-  return e1rm === null ? null : weightForTarget(e1rm, reps, target.rpe, item.exercise.load_mode === 'per_side' ? 1 : 2.5)
+  if (e1rm === null) return null
+  const typed = /^\d{1,4}$/.test(set.reps.trim()) ? Number(set.reps.trim()) : null
+  const reps = typed !== null && typed > 0 ? typed : planned
+  return { weight: weightForTarget(e1rm, reps, target.rpe, item.exercise.load_mode === 'per_side' ? 1 : 2.5), reps }
 }
 
 /**
@@ -152,9 +162,9 @@ export function suggestion(workout: ActiveWorkout, item: ActiveExercise, index: 
   const prev = previousSet(workout, item, index)
   const target = item.sets[index]?.target
   const fromRpe = rpeTargetWeight(workout, item, index)
-  const weight = fromRpe ?? prev?.weight_kg ?? target?.weight_kg ?? null
-  // A prescription wins over last time's reps when the weight is derived from it.
-  const reps = fromRpe !== null ? target?.reps_max ?? target?.reps_min ?? null : prev?.reps ?? target?.reps_max ?? target?.reps_min ?? null
+  // A prescription wins over last time's numbers when the load is derived from it.
+  const weight = fromRpe ? fromRpe.weight : prev?.weight_kg ?? target?.weight_kg ?? null
+  const reps = fromRpe ? fromRpe.reps : prev?.reps ?? target?.reps_max ?? target?.reps_min ?? null
   return {
     weight: weight === null ? '' : formatDecimal(Number(weight)),
     reps: reps === null ? '' : String(reps),
