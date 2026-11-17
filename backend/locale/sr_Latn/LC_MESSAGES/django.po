@@ -654,6 +654,9 @@ msgstr "Trening nema nijednu potvrđenu seriju."
 msgid "RPE goes in steps of 0.5."
 msgstr "RPE se upisuje u koracima od 0,5."
 
+msgid "Choose 7, 30 or 90 days, or all."
+msgstr "Izaberi 7, 30 ili 90 dana, ili sve."
+
 msgid "Enter the workout name."
 msgstr "Unesi naziv treninga."
 

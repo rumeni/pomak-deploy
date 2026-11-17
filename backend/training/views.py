@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from core.search import search_and_order
 from core.views import IdempotentCreateMixin, SharedLibraryMixin, require_object_body
 
-from . import progress
+from . import progress, stats
 from .models import Exercise, Routine, RoutineExercise, SessionExercise, WorkoutSession
 from .serializers import (
     ExerciseSerializer, RoutineSerializer, SetLogSerializer, WorkoutSessionEditSerializer, WorkoutSessionSerializer,
@@ -175,6 +175,16 @@ class WorkoutSessionViewSet(
                     'sets': SetLogSerializer(last.sets.all(), many=True).data,
                 }
         return Response(result)
+
+
+class StatsView(APIView):
+    """Training statistics and readiness history for ?period=7|30|90|all (see stats.py)."""
+
+    def get(self, request):
+        period = request.query_params.get('period', '30')
+        if period not in stats.PERIODS:
+            raise ValidationError({'period': _('Choose 7, 30 or 90 days, or all.')})
+        return Response(stats.training_stats(request.user, period))
 
 
 class PerformedExercisesView(APIView):

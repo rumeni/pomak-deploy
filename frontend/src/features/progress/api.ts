@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import type { Exercise } from '../training/api'
 import type { LoggedSet } from '../workout/model'
 import { goalAlreadySavedConflict, invalidateGoalRelatedQueries } from './goalRetry'
+import type { StatsPeriod, TrainingStats } from './stats'
 
 export type RecordKey =
   | 'heaviest'
@@ -30,6 +31,8 @@ export interface PersonalRecord {
 export interface ExerciseProgress {
   exercise: Exercise
   records: Partial<Record<RecordKey, PersonalRecord>>
+  /** Best estimated 1RM per workout (weighted exercises); absent from older servers. */
+  e1rm_chart?: { date: string; value: string }[]
   chart: { metric: RecordKey; points: { date: string; value: string | number }[] }
   history: { session_id: string; name: string; started_at: string; sets: LoggedSet[] }[]
 }
@@ -178,3 +181,13 @@ export function useWeek(start: string) {
     queryFn: async () => (await api.get<WeekOverview>('/progress/week/', { params: { start } })).data,
   })
 }
+
+/** Training statistics and readiness history; refreshed with the other progress data after a workout syncs. */
+export function useStats(period: StatsPeriod) {
+  return useQuery({
+    // Exercise names are localised by the server, so the language is part of the key.
+    queryKey: ['progress', 'stats', i18n.language, period],
+    queryFn: async () => (await api.get<TrainingStats>('/training/stats/', { params: { period } })).data,
+  })
+}
+
