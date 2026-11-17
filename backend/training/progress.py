@@ -63,6 +63,7 @@ def analyze(measurement: str, session_exercises, *, load_mode: str = Exercise.Lo
     """`session_exercises`: SessionExercise sa učitanim session i sets, od najstarijeg ka najnovijem."""
     records: dict[str, dict] = {}
     points = []
+    e1rm_points = []  # best estimated 1RM per workout, for the 1RM-over-time chart
     # API stores kilograms per dumbbell/side, whereas volume is a total for
     # both sides (matching the finished-workout screen).
     volume_factor = 2 if load_mode == Exercise.LoadMode.PER_SIDE else 1
@@ -86,6 +87,11 @@ def analyze(measurement: str, session_exercises, *, load_mode: str = Exercise.Lo
                 if s.reps <= MAX_E1RM_REPS and s.weight_kg > 0:
                     e1rm = estimated_1rm(s.weight_kg, s.reps, s.rpe).quantize(Decimal('0.1'))
                     better('e1rm', e1rm, session, weight=s.weight_kg, reps=s.reps, rpe=s.rpe)
+            estimates = [
+                estimated_1rm(s.weight_kg, s.reps, s.rpe) for s in loaded if s.reps <= MAX_E1RM_REPS and s.weight_kg > 0
+            ]
+            if estimates:
+                e1rm_points.append({'date': timezone.localdate(session.started_at), 'value': max(estimates).quantize(Decimal('0.1'))})
             if loaded:
                 better('session_volume', sum(s.weight_kg * s.reps * volume_factor for s in loaded), session)
                 point = max(s.weight_kg for s in loaded)
@@ -120,4 +126,5 @@ def analyze(measurement: str, session_exercises, *, load_mode: str = Exercise.Lo
     return {
         'records': {key: {k: _json(v) for k, v in r.items()} for key, r in records.items()},
         'chart': {'metric': metric, 'points': [{**p, 'value': _json(p['value'])} for p in points]},
+        'e1rm_chart': [{**p, 'value': _json(p['value'])} for p in e1rm_points],
     }
