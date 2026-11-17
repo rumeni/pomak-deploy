@@ -37,6 +37,16 @@ export function ProgressPage() {
           </p>
         )}
         <WeekCard />
+        <Link
+          to="/napredak/statistika"
+          className="flex items-center gap-3 rounded-2xl bg-ink px-4 py-4 text-white shadow-sm active:opacity-90"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-xl">{t('stats.open')}</span>
+            <span className="block text-sm text-white/70">{t('stats.openHint')}</span>
+          </span>
+          <span aria-hidden className="text-2xl text-accent">›</span>
+        </Link>
         <GoalsSection />
         <WeightCard />
         <ExercisesCard />

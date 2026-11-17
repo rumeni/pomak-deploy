@@ -17,6 +17,7 @@ import { NewFoodPage } from '../features/nutrition/NewFoodPage'
 import { RecipePage } from '../features/nutrition/RecipePage'
 import { TargetPage } from '../features/target/TargetPage'
 import { ExerciseProgressPage } from '../features/progress/ExerciseProgressPage'
+import { StatsPage } from '../features/progress/StatsPage'
 import { MeasurementsPage } from '../features/progress/MeasurementsPage'
 import { GoalFormPage } from '../features/progress/GoalFormPage'
 import { TargetSetupPage } from '../features/target/TargetSetupPage'
@@ -108,6 +109,7 @@ export function App() {
       <Route path="/ishrana/recepti/novi" element={<RecipePage />} />
       <Route path="/ishrana/cilj" element={<TargetPage />} />
       <Route path="/napredak/vezba/:id" element={<ExerciseProgressPage />} />
+      <Route path="/napredak/statistika" element={<StatsPage />} />
       <Route path="/napredak/merenja" element={<MeasurementsPage />} />
       <Route path="/napredak/ciljevi/novi" element={<GoalFormPage />} />
       <Route path="/ishrana/cilj/novi" element={<TargetSetupPage />} />

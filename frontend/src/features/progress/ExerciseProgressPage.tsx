@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -28,6 +29,7 @@ export function ExerciseProgressPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data, isLoading, isError } = useExerciseProgress(id)
+  const [showE1rm, setShowE1rm] = useState(false)
   const repsUnit = t('routine.phReps')
 
   if (isLoading) return <LoadingScreen />
@@ -43,6 +45,8 @@ export function ExerciseProgressPage() {
   const { exercise, records, chart, history } = data
   const recordKeys = RECORD_ORDER.filter((k) => records[k])
   const points = chart.points.map((p) => ({ date: p.date, value: Number(p.value) }))
+  const e1rmPoints = (data.e1rm_chart ?? []).map((p) => ({ date: p.date, value: Number(p.value) }))
+  const canShowE1rm = e1rmPoints.length > 1
 
   return (
     <div className="min-h-full pb-10">
@@ -83,10 +87,31 @@ export function ExerciseProgressPage() {
           </section>
         )}
 
-        {points.length > 1 && (
+        {(points.length > 1 || canShowE1rm) && (
           <Card>
-            <h2 className="mb-2 font-semibold">{t(`progress.chart_${chart.metric}`)}</h2>
-            <LineChart points={points} format={(v) => formatRecordValue(chart.metric, Math.round(v * 10) / 10, repsUnit)} label={t(`progress.chart_${chart.metric}`)} />
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="font-semibold">{t(showE1rm && canShowE1rm ? 'progress.chart_e1rm' : `progress.chart_${chart.metric}`)}</h2>
+              {canShowE1rm && points.length > 1 && (
+                <div className="flex rounded-lg bg-surface p-0.5 text-xs font-semibold" role="group">
+                  {[false, true].map((e1rm) => (
+                    <button
+                      key={String(e1rm)}
+                      type="button"
+                      aria-pressed={showE1rm === e1rm}
+                      onClick={() => setShowE1rm(e1rm)}
+                      className={`min-h-9 rounded-md px-3 ${showE1rm === e1rm ? 'bg-card shadow-sm' : 'text-muted'}`}
+                    >
+                      {e1rm ? '1RM' : t('progress.chartWeight')}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {showE1rm && canShowE1rm || points.length < 2 ? (
+              <LineChart points={e1rmPoints} format={(v) => `${formatDecimal(Math.round(v * 10) / 10)} kg`} label={t('progress.chart_e1rm')} />
+            ) : (
+              <LineChart points={points} format={(v) => formatRecordValue(chart.metric, Math.round(v * 10) / 10, repsUnit)} label={t(`progress.chart_${chart.metric}`)} />
+            )}
           </Card>
         )}
 
