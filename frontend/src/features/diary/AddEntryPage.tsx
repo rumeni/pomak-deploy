@@ -31,6 +31,9 @@ export function AddEntryPage() {
   const savedMeals = useSavedMeals()
   const deleteSaved = useDeleteSavedMeal()
   const label = mealLabel(meal, mealSettings(me?.profile.meals), t)
+  // A food added from here goes straight into this meal afterwards.
+  const newFoodLink = (name: string) =>
+    `/ishrana/namirnice/nova?${new URLSearchParams({ ...(name.trim() ? { naziv: name.trim() } : {}), datum: date, obrok: meal })}`
 
   const choose = async (food: Food) => {
     if (me) await rememberFood(me.id, food)
@@ -64,13 +67,14 @@ export function AddEntryPage() {
           aria-label={t('nutrition.searchAria')}
           className="min-h-12 w-full rounded-xl border border-line bg-card px-4 text-base outline-none focus:border-brand"
         />
-        <Link
-          to={`/ishrana/rucni?datum=${date}&obrok=${meal}`}
-          replace
-          className="flex min-h-12 items-center justify-center rounded-xl bg-brand-soft font-semibold text-brand-dark"
-        >
-          {t('diary.manual')}
-        </Link>
+        {!search && (
+          <Link
+            to={newFoodLink('')}
+            className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-soft font-semibold text-brand-dark"
+          >
+            {t('diary.newFood')}
+          </Link>
+        )}
 
         {!search && !!savedMeals.data?.length && (
           <>
@@ -103,7 +107,19 @@ export function AddEntryPage() {
         {!search && <h2 className="mt-2 text-lg font-semibold">{t('diary.recent')}</h2>}
         {!search && recent?.length === 0 && <p className="text-muted">{t('diary.noRecent')}</p>}
         {search && results.isError && <p className="text-sm text-muted">{t('diary.offlineSearch')}</p>}
-        {search && results.data?.length === 0 && <p className="text-muted">{t('nutrition.noResults', { q: search })}</p>}
+        {search && results.data?.length === 0 && (
+          // Nothing found: offer to add it to the food database, with the typed name.
+          <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-line/60">
+            <p className="font-semibold">{t('diary.notFoundTitle', { q: search })}</p>
+            <p className="text-sm text-muted">{t('diary.notFoundText')}</p>
+            <Link to={`${newFoodLink(search)}&skeniraj=1`} className="flex min-h-12 items-center justify-center rounded-xl bg-brand px-4 font-semibold text-white">
+              {t('diary.scanPackage')}
+            </Link>
+            <Link to={newFoodLink(search)} className="flex min-h-12 items-center justify-center rounded-xl bg-brand-soft px-4 font-semibold text-brand-dark">
+              {t('diary.addFoodNamed', { name: search })}
+            </Link>
+          </div>
+        )}
 
         {!!list?.length && (
           <ul className="flex flex-col rounded-2xl bg-card shadow-sm ring-1 ring-line/60">
@@ -120,6 +136,21 @@ export function AddEntryPage() {
             ))}
           </ul>
         )}
+        {search && !!results.data?.length && (
+          <Link to={newFoodLink(search)} className="flex min-h-12 items-center justify-center rounded-xl text-sm font-semibold text-brand-dark active:bg-brand-soft">
+            {t('diary.notInList', { name: search })}
+          </Link>
+        )}
+
+        {/* Known calories without a food (e.g. a restaurant meal): kept, but no longer the main path. */}
+        <Link
+          to={`/ishrana/rucni?datum=${date}&obrok=${meal}`}
+          replace
+          className="mt-2 flex min-h-11 flex-col items-center justify-center rounded-xl px-4 py-2 text-center text-sm text-muted ring-1 ring-line active:bg-line"
+        >
+          <span className="font-semibold text-ink">{t('diary.quickCalories')}</span>
+          <span>{t('diary.quickCaloriesHint')}</span>
+        </Link>
       </div>
     </div>
   )
