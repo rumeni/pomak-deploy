@@ -115,7 +115,7 @@ export function SessionDetailPage() {
 
         {session.readiness && <ReadinessSummary readiness={session.readiness} />}
 
-        {session.exercises.map(({ exercise, sets }, position) => {
+        {session.exercises.map(({ exercise, notes, sets }, position) => {
           // Radne serije 1, 2, 3…; zagrevanje ne ulazi u brojanje.
           const labels = sets.reduce<string[]>((acc, set) => {
             const done = acc.filter((l) => l !== warmup).length
@@ -126,6 +126,7 @@ export function SessionDetailPage() {
               <div className="flex">
                 <ExerciseHeading exercise={exercise} />
               </div>
+              {notes && <p className="mt-2 whitespace-pre-line rounded-lg bg-surface px-3 py-2 text-sm">{notes}</p>}
               <ol className="mt-2 flex flex-col gap-1">
                 {sets.map((set, i) => (
                   <li key={i} className="flex gap-3 tabular-nums">

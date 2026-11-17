@@ -9,6 +9,15 @@ import {
   prepareSessionPayload,
   rpeTargetWeight,
   targetRpe,
+  MAX_EXERCISE_NOTES,
+  moveExercise,
+  newActiveExercise,
+  planSummary,
+  removeExercise,
+  replaceExercise,
+  replacementLoss,
+  rpeLoadRows,
+  setExerciseNotes,
   MAX_WORKOUT_SNAPSHOT_BYTES,
   SetInputError,
   startFromRoutine,
@@ -412,5 +421,149 @@ describe('RPE and readiness', () => {
     const set = { set_type: 'working' as const, weight_kg: '100.00', reps: 5, duration_seconds: null, distance_m: null, rpe: '7.5' }
     expect(describeLogged(set, bench, 'pon.')).toBe('100 × 5')
     expect(describeLogged(set, bench, 'pon.', true)).toBe('100 × 5 @ 7,5')
+  })
+})
+
+describe('changing exercises during a workout', () => {
+  const squat: Exercise = { ...bench, id: 'squat', name: 'Squat', muscle: 'legs' }
+  const plank: Exercise = { ...bench, id: 'plank', name: 'Plank', measurement: 'duration', muscle: 'core' }
+  const rpePlan: Routine = {
+    ...routine,
+    exercises: [
+      {
+        exercise: bench, rest_seconds: 120, notes: '',
+        sets: [
+          { set_type: 'warmup', reps_min: 10, reps_max: 10, weight_kg: '40.00', duration_seconds: null, distance_m: null },
+          { set_type: 'working', reps_min: 5, reps_max: 5, weight_kg: '80.00', duration_seconds: null, distance_m: null, rpe: '8.0' },
+          { set_type: 'working', reps_min: 5, reps_max: 5, weight_kg: '80.00', duration_seconds: null, distance_m: null, rpe: '8.0' },
+          { set_type: 'working', reps_min: 8, reps_max: 10, weight_kg: null, duration_seconds: null, distance_m: null, rpe: '7.0' },
+        ],
+      },
+      { exercise: curl, rest_seconds: 60, notes: '', sets: [{ set_type: 'working', reps_min: 12, reps_max: 12, weight_kg: null, duration_seconds: null, distance_m: null }] },
+      { exercise: pullup, rest_seconds: 60, notes: '', sets: [{ set_type: 'working', reps_min: null, reps_max: null, weight_kg: null, duration_seconds: null, distance_m: null }] },
+    ],
+  }
+
+  it('moves exercises up and down and ignores moves past the ends', () => {
+    const w = startFromRoutine(rpePlan, {}, t0)
+    const [a, b, c] = w.exercises.map((e) => e.key)
+    expect(moveExercise(w, b, -1).exercises.map((e) => e.key)).toEqual([b, a, c])
+    expect(moveExercise(w, b, 1).exercises.map((e) => e.key)).toEqual([a, c, b])
+    expect(moveExercise(w, a, -1)).toBe(w)
+    expect(moveExercise(w, c, 1)).toBe(w)
+    expect(moveExercise(w, 'missing', 1)).toBe(w)
+  })
+
+  it('removes an exercise and keeps notes within the API limit', () => {
+    const w = startFromRoutine(rpePlan, {}, t0)
+    expect(removeExercise(w, w.exercises[1].key).exercises.map((e) => e.exercise.id)).toEqual(['bench', 'pullup'])
+    const noted = setExerciseNotes(w, w.exercises[0].key, 'x'.repeat(MAX_EXERCISE_NOTES + 50))
+    expect(noted.exercises[0].notes).toHaveLength(MAX_EXERCISE_NOTES)
+    const payload = toSessionPayload(confirmSet(
+      updateSet(noted, noted.exercises[0].key, noted.exercises[0].sets[1].key, { reps: '5' }),
+      noted.exercises[0].key, noted.exercises[0].sets[1].key, t0,
+    ), t0, null, '')
+    expect(payload.exercises[0].notes).toHaveLength(MAX_EXERCISE_NOTES)
+  })
+
+  it('swaps the exercise but keeps the planned reps and RPE, not the planned weight', () => {
+    let w = startFromRoutine(rpePlan, {}, t0)
+    const key = w.exercises[0].key
+    w = setExerciseNotes(w, key, 'seat 4')
+    const swapped = replaceExercise(w, key, squat)
+    const item = swapped.exercises[0]
+    expect(item.exercise.id).toBe('squat')
+    expect(item.key).toBe(key)
+    expect(item.notes).toBe('seat 4')
+    expect(item.restSeconds).toBe(120)
+    expect(item.sets.map((s) => s.set_type)).toEqual(['warmup', 'working', 'working', 'working'])
+    expect(item.sets.map((s) => s.target?.weight_kg ?? null)).toEqual([null, null, null, null])
+    expect(item.sets.map((s) => targetRpe(s))).toEqual([null, 8, 8, 7])
+    expect(item.sets.every((s) => s.weight === '' && s.reps === '' && !s.done)).toBe(true)
+  })
+
+  it('starts from default sets when swapping between rep-based and timed work', () => {
+    const w = startFromRoutine(rpePlan, {}, t0)
+    const swapped = replaceExercise(w, w.exercises[0].key, plank).exercises[0]
+    expect(swapped.sets).toHaveLength(1)
+    expect(swapped.sets[0].target).toBeNull()
+  })
+
+  it('refuses to swap an exercise with confirmed sets', () => {
+    let w = startFromRoutine(rpePlan, {}, t0)
+    const ex = w.exercises[0]
+    w = confirmSet(w, ex.key, ex.sets[0].key, t0)
+    expect(() => replaceExercise(w, ex.key, squat)).toThrow('workout.errors.replaceDone')
+    // Same exercise: nothing to do.
+    expect(replaceExercise(w, ex.key, bench)).toBe(w)
+  })
+
+  it('summarises the plan, grouping consecutive equal working sets', () => {
+    const w = startFromRoutine(rpePlan, {}, t0)
+    expect(planSummary(w.exercises[0])).toEqual({
+      warmups: 1,
+      groups: [
+        { count: 2, reps: '5', weight: '80', rpe: 8 },
+        { count: 1, reps: '8–10', weight: null, rpe: 7 },
+      ],
+    })
+    expect(planSummary(w.exercises[1])).toEqual({ warmups: 0, groups: [{ count: 1, reps: '12', weight: null, rpe: null }] })
+    // A routine set with nothing prescribed is not a plan worth showing.
+    expect(planSummary(w.exercises[2])).toBeNull()
+    expect(planSummary(newActiveExercise(bench))).toBeNull()
+  })
+})
+
+describe('review follow-ups: swap warnings and RPE load sources', () => {
+  const squat: Exercise = { ...bench, id: 'squat', name: 'Squat', muscle: 'legs' }
+  const plank: Exercise = { ...bench, id: 'plank', name: 'Plank', measurement: 'duration', muscle: 'core' }
+  const mixed: Routine = {
+    ...routine,
+    exercises: [{
+      exercise: bench, rest_seconds: 120, notes: '',
+      sets: [
+        { set_type: 'working', reps_min: 3, reps_max: 3, weight_kg: null, duration_seconds: null, distance_m: null, rpe: '8.0' },
+        { set_type: 'working', reps_min: 5, reps_max: 5, weight_kg: '90.00', duration_seconds: null, distance_m: null, rpe: '8.0' },
+        { set_type: 'working', reps_min: 12, reps_max: 12, weight_kg: null, duration_seconds: null, distance_m: null, rpe: '8.0' },
+        { set_type: 'working', reps_min: 10, reps_max: 10, weight_kg: null, duration_seconds: null, distance_m: null },
+      ],
+    }],
+  }
+  const lastTime: Record<string, PreviousPerformance> = {
+    bench: { session_id: 's0', started_at: '2026-09-20T10:00:00Z', sets: [
+      { set_type: 'working', weight_kg: '100.00', reps: 5, duration_seconds: null, distance_m: null, rpe: '8.0' },
+    ] },
+  }
+
+  it('reports typed but unconfirmed values and a set reset before a swap', () => {
+    let w = startFromRoutine(mixed, lastTime, t0)
+    const ex = w.exercises[0]
+    expect(replacementLoss(ex, squat)).toEqual({ enteredSets: 0, resetsSets: false })
+    w = updateSet(w, ex.key, ex.sets[0].key, { weight: '100' })
+    w = updateSet(w, ex.key, ex.sets[1].key, { rpe: 7 })
+    expect(replacementLoss(w.exercises[0], squat)).toEqual({ enteredSets: 2, resetsSets: false })
+    expect(replacementLoss(w.exercises[0], plank)).toEqual({ enteredSets: 2, resetsSets: true })
+    // Grey suggestions are not typed values.
+    expect(replacementLoss(startFromRoutine(mixed, lastTime, t0).exercises[0], plank).enteredSets).toBe(0)
+  })
+
+  it('names, per row, which loads come from the RPE chart and which must be typed', () => {
+    const w = startFromRoutine(mixed, lastTime, t0)
+    const rows = rpeLoadRows(w, w.exercises[0])
+    // Row 0: 3 @ 8 calculated; row 1: fixed 90 kg; row 2: 12 reps off the chart; row 3: no RPE.
+    expect(rows.calculated).toEqual([0])
+    expect(rows.missing).toEqual([2])
+    expect(rows.e1rm).toBeCloseTo(123.46, 1)
+    const noHistory = rpeLoadRows(startFromRoutine(mixed, {}, t0), w.exercises[0])
+    expect(noHistory).toEqual({ calculated: [], missing: [0, 2], e1rm: null })
+    // Rows with a typed or confirmed weight drop out of both lists.
+    let filled = updateSet(w, w.exercises[0].key, w.exercises[0].sets[2].key, { weight: '70', reps: '12' })
+    filled = confirmSet(filled, filled.exercises[0].key, filled.exercises[0].sets[2].key, t0)
+    filled = updateSet(filled, filled.exercises[0].key, filled.exercises[0].sets[0].key, { weight: '102,5' })
+    expect(rpeLoadRows(filled, filled.exercises[0])).toMatchObject({ calculated: [], missing: [] })
+    // An RPE below the chart (3.5) also has no load.
+    const low: Routine = { ...mixed, exercises: [{ ...mixed.exercises[0], sets: [{ ...mixed.exercises[0].sets[0], rpe: '3.5' }] }] }
+    const lw = startFromRoutine(low, lastTime, t0)
+    expect(rpeLoadRows(lw, lw.exercises[0])).toMatchObject({ calculated: [], missing: [0] })
   })
 })

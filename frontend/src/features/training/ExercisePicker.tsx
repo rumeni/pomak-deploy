@@ -11,7 +11,20 @@ import { ExerciseThumbButton } from './ExerciseHeading'
 import { ExerciseInfoSheet } from './ExerciseInfoSheet'
 
 /** Izbor vežbi preko celog ekrana. Može da se izabere više vežbi odjednom. */
-export function ExercisePicker({ onClose, onAdd }: { onClose: () => void; onAdd: (exercises: Exercise[]) => void }) {
+/**
+ * Exercise library picker. `mode="replace"` picks exactly one exercise (to swap a card's
+ * exercise during a workout); the default adds any number of them.
+ */
+export function ExercisePicker({
+  onClose,
+  onAdd,
+  mode = 'add',
+}: {
+  onClose: () => void
+  onAdd: (exercises: Exercise[]) => void
+  mode?: 'add' | 'replace'
+}) {
+  const single = mode === 'replace'
   const { t } = useTranslation()
   const [q, setQ] = useState('')
   const [muscle, setMuscle] = useState<Muscle | ''>('')
@@ -36,7 +49,10 @@ export function ExercisePicker({ onClose, onAdd }: { onClose: () => void; onAdd:
   const close = () => window.history.back()
 
   const toggle = (exercise: Exercise) =>
-    setSelected((list) => (list.some((e) => e.id === exercise.id) ? list.filter((e) => e.id !== exercise.id) : [...list, exercise]))
+    setSelected((list) =>
+      list.some((e) => e.id === exercise.id)
+        ? list.filter((e) => e.id !== exercise.id)
+        : single ? [exercise] : [...list, exercise])
 
   if (creating) {
     return (
@@ -46,7 +62,7 @@ export function ExercisePicker({ onClose, onAdd }: { onClose: () => void; onAdd:
           onCancel={() => setCreating(false)}
           onCreated={(exercise) => {
             setCreating(false)
-            setSelected((list) => [...list, exercise])
+            setSelected((list) => (single ? [exercise] : [...list, exercise]))
           }}
         />
       </Overlay>
@@ -60,7 +76,7 @@ export function ExercisePicker({ onClose, onAdd }: { onClose: () => void; onAdd:
 
   return (
     <Overlay>
-      <ScreenHeader title={t('picker.title')} onBack={close} />
+      <ScreenHeader title={single ? t('picker.replaceTitle') : t('picker.title')} onBack={close} />
       <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 bg-surface px-4 pb-2 pt-3">
         <input
           type="search"
@@ -96,7 +112,15 @@ export function ExercisePicker({ onClose, onAdd }: { onClose: () => void; onAdd:
           return (
             <li key={exercise.id} className="border-b border-line last:border-0">
               <label className="flex min-h-16 cursor-pointer items-center gap-3 py-2">
-                <input type="checkbox" checked={isSelected} onChange={() => toggle(exercise)} className="size-5 shrink-0 accent-brand" />
+                <input
+                  type={single ? 'radio' : 'checkbox'}
+                  name={single ? 'replace-exercise' : undefined}
+                  checked={isSelected}
+                  onChange={() => toggle(exercise)}
+                  // A radio cannot be unchecked by itself; a second tap clears the choice.
+                  onClick={() => single && isSelected && toggle(exercise)}
+                  className="size-5 shrink-0 accent-brand"
+                />
                 <ExerciseThumbButton exercise={exercise} onClick={() => setInfo(exercise)} label={t('exerciseInfo.open', { name: exercise.name })} />
                 <span className="flex-1">
                   <span className="block font-medium">{exercise.name}</span>
@@ -122,7 +146,9 @@ export function ExercisePicker({ onClose, onAdd }: { onClose: () => void; onAdd:
             }}
             disabled={!selected.length}
           >
-            {selected.length ? t('picker.add', { count: selected.length }) : t('picker.choose')}
+            {single
+              ? selected.length ? t('picker.replaceWith', { name: selected[0].name }) : t('picker.chooseOne')
+              : selected.length ? t('picker.add', { count: selected.length }) : t('picker.choose')}
           </Button>
           <Button variant="ghost" onClick={() => setCreating(true)}>
             {t('picker.createOwn')}

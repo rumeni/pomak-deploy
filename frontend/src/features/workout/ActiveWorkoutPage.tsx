@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useNavigate } from 'react-router-dom'
 
+import { BottomSheet } from '../../components/BottomSheet'
 import { Button, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { getFormatLocale } from '../../lib/format'
 import { useNow } from '../../lib/useNow'
@@ -13,9 +14,17 @@ import {
   confirmSet,
   describeLogged,
   emptyActiveSet,
+  MAX_EXERCISE_NOTES,
+  moveExercise,
   newActiveExercise,
+  planSummary,
   previousSet,
+  removeExercise,
+  replaceExercise,
+  replacementLoss,
+  rpeLoadRows,
   rpeTargetWeight,
+  setExerciseNotes,
   SetInputError,
   targetRpe,
   suggestion,
@@ -30,7 +39,8 @@ import { cancelRestEnd, restEndedFeedback, restNotificationAction, scheduleRestE
 import { usePersistentWorkout } from './store'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 import { ReadinessRow, ReadinessStep } from './ReadinessCard'
-import { formatRpe } from './rpe'
+import { formatRpe, parseRpe } from './rpe'
+import { formatDecimal } from '../../lib/format'
 import { RpeSheet } from './RpeSheet'
 
 // Match backend WorkoutSessionSerializer boundaries so a finished offline
@@ -45,6 +55,8 @@ export function ActiveWorkoutPage() {
   const navigate = useNavigate()
   const { loaded, row, update, flush, conflict } = usePersistentWorkout()
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Card whose exercise is being swapped (picker in "replace" mode).
+  const [replaceFor, setReplaceFor] = useState<string | null>(null)
   // Never let a live cross-tab update swap the workout underneath an open
   // finish form (its local feeling/notes belong to the original workout).
   const [finishId, setFinishId] = useState<string | null>(null)
@@ -124,6 +136,37 @@ export function ActiveWorkoutPage() {
     if (Object.keys(previous).length) update((w) => ({ ...w, previous: { ...w.previous, ...previous } }))
   }
 
+  const replaceWith = async (exerciseKey: string, exercise: Exercise) => {
+    try {
+      replaceExercise(workout, exerciseKey, exercise) // validate first: the card may have confirmed sets
+    } catch (e) {
+      if (e instanceof SetInputError) return window.alert(t(e.message))
+      throw e
+    }
+    const item = workout.exercises.find((e) => e.key === exerciseKey)
+    const loss = item ? replacementLoss(item, exercise) : null
+    // Typed values belong to the old exercise; never drop them without asking.
+    if (loss && (loss.enteredSets || loss.resetsSets)) {
+      const lines = [
+        t('workout.swapConfirm', { from: item!.exercise.name, to: exercise.name }),
+        loss.enteredSets ? t('workout.replaceLosesValues', { count: loss.enteredSets }) : null,
+        loss.resetsSets ? t('workout.replaceResetsSets') : null,
+      ]
+      if (!window.confirm(lines.filter(Boolean).join('\n'))) return
+    }
+    // Another tab could confirm a set meanwhile; then keep the workout as it is.
+    update((w) => {
+      try {
+        return replaceExercise(w, exerciseKey, exercise)
+      } catch {
+        return w
+      }
+    })
+    if (workout.previous[exercise.id]) return
+    const previous = await loadPrevious([exercise.id])
+    if (Object.keys(previous).length) update((w) => ({ ...w, previous: { ...w.previous, ...previous } }))
+  }
+
   const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(workout.startedAt).getTime()) / 1000))
 
   return (
@@ -145,8 +188,18 @@ export function ActiveWorkoutPage() {
       <div className="mx-auto flex max-w-xl flex-col gap-3 p-4">
         <ReadinessRow readiness={workout.readiness} onOpen={() => setEditingCheckIn(true)} />
         {workout.exercises.length === 0 && <p className="py-6 text-center text-muted">{t('workout.noExercises')}</p>}
-        {workout.exercises.map((item) => (
-          <WorkoutExerciseCard key={item.key} workout={workout} item={item} update={update} />
+        {workout.exercises.map((item, index) => (
+          <WorkoutExerciseCard
+            key={item.key}
+            workout={workout}
+            item={item}
+            isFirst={index === 0}
+            isLast={index === workout.exercises.length - 1}
+            // The how-to line under the sets is the same on every card; show it once.
+            showHint={index === 0}
+            update={update}
+            onReplace={() => setReplaceFor(item.key)}
+          />
         ))}
         <Button variant="secondary" onClick={() => setPickerOpen(true)}>
           {t('workout.addExercise')}
@@ -155,14 +208,40 @@ export function ActiveWorkoutPage() {
 
       {workout.rest && <RestTimer rest={workout.rest} now={now} update={update} />}
       {pickerOpen && <ExercisePicker onClose={() => setPickerOpen(false)} onAdd={(list) => void addExercises(list)} />}
+      {replaceFor && (
+        <ExercisePicker
+          mode="replace"
+          onClose={() => setReplaceFor(null)}
+          onAdd={([exercise]) => exercise && void replaceWith(replaceFor, exercise)}
+        />
+      )}
     </div>
   )
 }
 
-function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout; item: ActiveExercise; update: Update }) {
+function WorkoutExerciseCard({
+  workout,
+  item,
+  isFirst,
+  isLast,
+  showHint,
+  update,
+  onReplace,
+}: {
+  workout: ActiveWorkout
+  item: ActiveExercise
+  isFirst: boolean
+  isLast: boolean
+  showHint: boolean
+  update: Update
+  onReplace: () => void
+}) {
   const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
   const [rpeFor, setRpeFor] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const notesRef = useRef<HTMLTextAreaElement>(null)
   const { exercise } = item
   const m = exercise.measurement
   // RPE fits anything done for reps; for timed or distance work it says little.
@@ -171,6 +250,7 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
   const rpeSet = rpeSetIndex >= 0 ? item.sets[rpeSetIndex] : null
   const previous = workout.previous[exercise.id]
   const warmup = t('routine.warmupShort')
+  const doneSets = item.sets.filter((s) => s.done).length
 
   const labels = item.sets.reduce<string[]>((acc, s) => {
     const done = acc.filter((l) => l !== warmup).length
@@ -178,6 +258,14 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
   }, [])
 
   const fields = inputFields(m, exercise.load_mode === 'per_side', t)
+  const plan = planSummary(item)
+  // Where the grey weight comes from, per row, when the plan prescribes RPE instead of a weight.
+  const rpeRows = rpeLoadRows(workout, item)
+  const rpeDriven = rpeRows.calculated.length > 0 || rpeRows.missing.length > 0
+
+  useEffect(() => {
+    if (notesOpen) notesRef.current?.focus()
+  }, [notesOpen])
 
   const toggleDone = (set: ActiveSet) => {
     setError(null)
@@ -209,9 +297,26 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
       exercises: w.exercises.map((e) => (e.key === item.key ? { ...e, sets: e.sets.filter((s) => s.key !== key) } : e)),
     }))
 
+  const act = (action: () => void) => () => {
+    setMenuOpen(false)
+    action()
+  }
+  const onRemoveExercise = () => {
+    const question = doneSets
+      ? t('workout.removeExerciseDoneConfirm', { name: exercise.name, count: doneSets })
+      : t('workout.removeExerciseConfirm', { name: exercise.name })
+    if (window.confirm(question)) update((w) => removeExercise(w, item.key))
+  }
+
+  const planText = plan && [
+    plan.warmups ? `${plan.warmups} ${warmup}` : null,
+    ...plan.groups.map((g) =>
+      `${g.count} × ${g.reps ?? '–'}${g.weight ? ` · ${g.weight} kg` : ''}${g.rpe !== null ? ` @ ${formatRpe(g.rpe)}` : ''}`),
+  ].filter(Boolean).join(' + ')
+
   return (
     <section className="rounded-2xl bg-card p-3 shadow-sm ring-1 ring-line/60">
-      <div className="flex px-1">
+      <div className="flex items-start gap-1 px-1">
         <ExerciseHeading exercise={exercise}>
           {previous && (
             <p className="text-xs text-muted">
@@ -219,7 +324,61 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
             </p>
           )}
         </ExerciseHeading>
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          aria-label={t('workout.exerciseMenu', { name: exercise.name })}
+          aria-haspopup="dialog"
+          className="-mr-1 flex size-11 shrink-0 items-center justify-center rounded-full text-muted active:bg-line"
+        >
+          <svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden>
+            <circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" />
+          </svg>
+        </button>
       </div>
+
+      {(planText || rpeDriven) && (
+        <div className="mt-2 flex flex-col gap-0.5 rounded-xl bg-surface px-3 py-2 text-xs">
+          {planText && (
+            <p>
+              <span className="font-semibold uppercase tracking-wide text-muted">{t('workout.plan')}</span>{' '}
+              <span className="font-semibold tabular-nums">{planText}</span>
+            </p>
+          )}
+          {rpeRows.calculated.length > 0 && rpeRows.e1rm !== null && (
+            <p className="text-muted">
+              {t('workout.rpeLoadSource', {
+                count: rpeRows.calculated.length,
+                sets: rpeRows.calculated.map((i) => labels[i]).join(', '),
+                e1rm: formatDecimal(Math.round(rpeRows.e1rm * 10) / 10),
+              })}
+            </p>
+          )}
+          {rpeRows.missing.length > 0 && (
+            <p className="text-muted">
+              {rpeRows.e1rm === null
+                ? t('workout.rpeLoadMissing')
+                : t('workout.rpeLoadOffChart', { count: rpeRows.missing.length, sets: rpeRows.missing.map((i) => labels[i]).join(', ') })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {(notesOpen || item.notes) && (
+        <label className="mt-2 block px-1">
+          <span className="text-xs font-medium text-muted">{t('workout.exerciseNotes')}</span>
+          <textarea
+            ref={notesRef}
+            value={item.notes}
+            onChange={(e) => update((w) => setExerciseNotes(w, item.key, e.target.value))}
+            onBlur={() => setNotesOpen(false)}
+            rows={2}
+            maxLength={MAX_EXERCISE_NOTES}
+            placeholder={t('workout.exerciseNotesPlaceholder')}
+            className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand focus:bg-card"
+          />
+        </label>
+      )}
 
       <div
         className="mt-3 grid items-center gap-x-1.5 gap-y-2"
@@ -237,12 +396,14 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
 
         {item.sets.map((set, index) => {
           const hint = suggestion(workout, item, index)
+          const last = previousSet(workout, item, index)
           return (
             <SetRow
               key={set.key}
               label={labels[index]}
               set={set}
-              previous={describeLogged(previousSet(workout, item, index), exercise, t('routine.phReps'))}
+              previous={describeLogged(last, exercise, t('routine.phReps'))}
+              previousRpe={showRpe ? parseRpe(last?.rpe) : null}
               fields={fields}
               hint={hint}
               hintFromRpe={rpeTargetWeight(workout, item, index)?.weight != null}
@@ -265,7 +426,7 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
       <button type="button" onClick={addSet} className="mt-2 min-h-11 w-full rounded-xl text-sm font-semibold text-brand-dark active:bg-brand-soft">
         {t('routine.addSet')}
       </button>
-      <p className="px-1 text-xs text-muted">{t('workout.setHint')}</p>
+      {showHint && <p className="px-1 text-xs text-muted">{t('workout.setHint')}</p>}
       {rpeSet && (
         <RpeSheet
           title={`${exercise.name} · ${t('routine.set')} ${labels[rpeSetIndex]}`}
@@ -278,7 +439,39 @@ function WorkoutExerciseCard({ workout, item, update }: { workout: ActiveWorkout
           onClose={() => setRpeFor(null)}
         />
       )}
+      {menuOpen && (
+        <BottomSheet label={t('workout.exerciseMenu', { name: exercise.name })} kicker={exercise.name} title={t('workout.exerciseActions')} onClose={() => setMenuOpen(false)}>
+          <ul className="mt-3 flex flex-col gap-1.5">
+            <MenuItem onClick={act(() => setNotesOpen(true))} label={item.notes ? t('workout.editNotes') : t('workout.addNotes')} />
+            <MenuItem
+              onClick={act(onReplace)}
+              label={t('workout.replaceExercise')}
+              disabled={doneSets > 0}
+              detail={doneSets > 0 ? t('workout.errors.replaceDone') : t('workout.replaceExerciseHint')}
+            />
+            <MenuItem onClick={act(() => update((w) => moveExercise(w, item.key, -1)))} label={t('workout.moveUp')} disabled={isFirst} />
+            <MenuItem onClick={act(() => update((w) => moveExercise(w, item.key, 1)))} label={t('workout.moveDown')} disabled={isLast} />
+            <MenuItem onClick={act(onRemoveExercise)} label={t('workout.removeExercise')} danger />
+          </ul>
+        </BottomSheet>
+      )}
     </section>
+  )
+}
+
+function MenuItem({ label, detail, onClick, disabled, danger }: { label: string; detail?: string; onClick: () => void; disabled?: boolean; danger?: boolean }) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={`flex min-h-12 w-full flex-col justify-center rounded-xl bg-card px-4 py-2 text-left ring-1 ring-line/70 active:bg-brand-soft disabled:opacity-50 ${danger ? 'text-danger' : ''}`}
+      >
+        <span className="font-semibold">{label}</span>
+        {detail && <span className="text-xs font-normal text-muted">{detail}</span>}
+      </button>
+    </li>
   )
 }
 
@@ -308,6 +501,7 @@ function SetRow({
   label,
   set,
   previous,
+  previousRpe,
   fields,
   hint,
   hintFromRpe,
@@ -321,6 +515,8 @@ function SetRow({
   label: string
   set: ActiveSet
   previous: string
+  /** RPE of last time's matching set, shown under it. */
+  previousRpe: number | null
   fields: Field[]
   hint: Record<Field['field'], string>
   hintFromRpe: boolean
@@ -350,7 +546,10 @@ function SetRow({
       >
         {label}
       </button>
-      <span className={`truncate rounded-lg py-3 text-center text-sm tabular-nums text-muted ${rowTone}`}>{previous}</span>
+      <span className={`flex min-h-11 min-w-0 flex-col items-center justify-center rounded-lg text-center text-sm tabular-nums leading-tight text-muted ${rowTone}`}>
+        <span className="max-w-full truncate">{previous}</span>
+        {previousRpe !== null && <span className="text-[11px] leading-none">@{formatRpe(previousRpe)}</span>}
+      </span>
       {fields.map((f) => (
         <input
           key={f.field}
