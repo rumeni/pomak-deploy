@@ -138,7 +138,7 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
         <p role="status" className="rounded-xl bg-brand-soft px-3 py-2 text-sm font-semibold">{t('programs.added', { count: program.routines.length })}</p>
       ) : (
         <Button variant={program.recommended ? 'primary' : 'secondary'} onClick={onAdd} disabled={add.isPending}>
-          {add.isPending ? t('common.saving') : add.isError || pending.current?.ownerId === me?.id || (me && loadPendingProgram(me.id, program)) ? t('programs.retry') : t('programs.add', { count: program.routines.length })}
+          {add.isPending ? t('common.saving') : add.isError ? t('programs.retry') : t('programs.add', { count: program.routines.length })}
         </Button>
       )}
     </article>

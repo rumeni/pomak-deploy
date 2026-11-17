@@ -74,8 +74,6 @@ export function FoodScanner({ onResult, onStart, autoStart = false }: { onResult
         note: [
           t('scan.labelRead', { fields: found.map(fieldName).join(', ') }),
           missing.length ? t('scan.labelMissing', { fields: missing.map(fieldName).join(', ') }) : null,
-          column === 'assumed' ? t('scan.labelColumnAssumed') : null,
-          perMl ? t('scan.labelPerMl') : null,
         ].filter(Boolean).join(' '),
       })
     } catch {
