@@ -654,6 +654,15 @@ msgstr "Trening nema nijednu potvrđenu seriju."
 msgid "RPE goes in steps of 0.5."
 msgstr "RPE se upisuje u koracima od 0,5."
 
+msgid "Enter the workout name."
+msgstr "Unesi naziv treninga."
+
+msgid "The exercises of a finished workout cannot be changed."
+msgstr "Vežbe završenog treninga ne mogu da se menjaju."
+
+msgid "This workout was changed elsewhere. Reload it and edit again."
+msgstr "Trening je u međuvremenu izmenjen na drugom mestu. Učitaj ga ponovo i izmeni još jednom."
+
 #: .\training\views.py:28
 msgid "Exercises from the shared library cannot be changed."
 msgstr "Vežbe iz zajedničke biblioteke ne mogu da se menjaju."

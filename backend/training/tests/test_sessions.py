@@ -277,3 +277,132 @@ class ReadinessAndRpeTests(APITestCase):
         self.assertEqual(res.json()['exercises'][0]['sets'][0]['rpe'], '8.0')
         body['exercises'][0]['sets'][0]['rpe'] = 7.25
         self.assertEqual(self.client.post('/api/training/routines/', body, format='json').status_code, 400)
+
+
+class WorkoutSessionEditTests(APITestCase):
+    """Correcting a finished, synced workout (PUT) without losing or overwriting data."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('edit@b.rs', 'jaka-lozinka-123')
+        self.client.force_authenticate(self.user)
+        self.bench = Exercise.objects.get(slug='bench-press')
+        self.squat = Exercise.objects.get(slug='back-squat')
+        self.start = timezone.now() - timedelta(hours=2)
+        body = {
+            'id': str(uuid.uuid4()), 'name': 'Snaga', 'started_at': self.start.isoformat(),
+            'finished_at': (self.start + timedelta(hours=1)).isoformat(), 'notes': '',
+            'readiness': {'sleep_hours': 6},
+            'exercises': [
+                {'exercise_id': str(self.bench.id), 'notes': '', 'sets': [
+                    {'set_type': 'working', 'weight_kg': '100', 'reps': 5, 'completed_at': self.start.isoformat()},
+                    {'set_type': 'working', 'weight_kg': '100', 'reps': 5,
+                     'completed_at': (self.start + timedelta(minutes=3)).isoformat()},
+                ]},
+                {'exercise_id': str(self.squat.id), 'notes': '', 'sets': [
+                    {'set_type': 'working', 'weight_kg': '120', 'reps': 3, 'completed_at': self.start.isoformat()},
+                ]},
+            ],
+        }
+        res = self.client.post('/api/training/sessions/', body, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.saved = self.client.get(f"/api/training/sessions/{body['id']}/").json()
+        self.url = f"/api/training/sessions/{body['id']}/"
+
+    def edit_body(self, **changes):
+        bench_times = [s['completed_at'] for s in self.saved['exercises'][0]['sets']]
+        squat_time = self.saved['exercises'][1]['sets'][0]['completed_at']
+        body = {
+            'revision': self.saved['updated_at'], 'name': self.saved['name'], 'feeling': 4, 'notes': 'Dobar dan',
+            'readiness': {'sleep_hours': 7, 'stress': 2},
+            'exercises': [
+                {'exercise_id': str(self.bench.id), 'notes': 'uži hvat', 'sets': [
+                    {'set_type': 'working', 'weight_kg': '102.5', 'reps': 5, 'rpe': 8, 'completed_at': bench_times[0]},
+                    {'set_type': 'working', 'weight_kg': '100', 'reps': 4, 'rpe': 9, 'completed_at': bench_times[1]},
+                    {'set_type': 'working', 'weight_kg': '90', 'reps': 8, 'completed_at': None},
+                ]},
+                {'exercise_id': str(self.squat.id), 'notes': '', 'sets': [
+                    {'set_type': 'working', 'weight_kg': '120', 'reps': 3, 'rpe': 7.5, 'completed_at': squat_time},
+                ]},
+            ],
+        }
+        body.update(changes)
+        return body
+
+    def put(self, body):
+        return self.client.put(self.url, body, format='json')
+
+    def test_corrects_values_notes_feeling_and_check_in(self):
+        res = self.put(self.edit_body())
+        self.assertEqual(res.status_code, 200, res.data)
+        data = res.json()
+        self.assertEqual((data['feeling'], data['notes']), (4, 'Dobar dan'))
+        self.assertEqual((data['readiness']['sleep_hours'], data['readiness']['stress']), (7, 2))
+        bench = data['exercises'][0]
+        self.assertEqual(bench['notes'], 'uži hvat')
+        self.assertEqual([(s['weight_kg'], s['reps'], s['rpe']) for s in bench['sets']],
+                         [('102.50', 5, '8.0'), ('100.00', 4, '9.0'), ('90.00', 8, None)])
+        # When each set was done is kept; the set added during the correction has no time.
+        old = [s['completed_at'] for s in self.saved['exercises'][0]['sets']]
+        self.assertEqual([s['completed_at'] for s in bench['sets']], old + [None])
+        self.assertIsNotNone(data['edited_at'])
+        self.assertNotEqual(data['updated_at'], self.saved['updated_at'])
+        # Times and exercises stay as they were done.
+        self.assertEqual((data['started_at'], data['finished_at']), (self.saved['started_at'], self.saved['finished_at']))
+        self.assertEqual(WorkoutSession.objects.count(), 1)
+        # Derived views use the corrected numbers.
+        e1rm = self.client.get(f'/api/training/progress/exercises/{self.bench.id}/').json()['records']['e1rm']
+        self.assertEqual((e1rm['weight'], e1rm['reps'], e1rm['rpe']), ('102.50', 5, '8.0'))
+
+    def test_removing_a_set_keeps_the_other_sets_times(self):
+        body = self.edit_body()
+        body['exercises'][0]['sets'] = body['exercises'][0]['sets'][1:2]
+        res = self.put(body)
+        self.assertEqual(res.status_code, 200, res.data)
+        sets = res.json()['exercises'][0]['sets']
+        self.assertEqual([(s['reps'], s['completed_at']) for s in sets], [(4, self.saved['exercises'][0]['sets'][1]['completed_at'])])
+        self.assertEqual(SetLog.objects.filter(session_exercise__session_id=self.saved['id']).count(), 2)
+
+    def test_stale_revision_is_a_conflict_and_changes_nothing(self):
+        self.assertEqual(self.put(self.edit_body()).status_code, 200)
+        # Another device still holds the original revision and sends a different correction.
+        res = self.put(self.edit_body(notes='Sa telefona'))
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.json()['current']['notes'], 'Dobar dan')
+        self.assertEqual(WorkoutSession.objects.get().notes, 'Dobar dan')
+
+    def test_retry_after_a_lost_response_is_accepted_once(self):
+        body = self.edit_body()
+        self.assertEqual(self.put(body).status_code, 200)
+        edited_at = WorkoutSession.objects.get().edited_at
+        # Same request again with the old revision: identical content, so 200 and no new write.
+        res = self.put(body)
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(WorkoutSession.objects.get().edited_at, edited_at)
+        self.assertEqual(SetLog.objects.count(), 4)
+
+    def test_exercises_and_set_rules_are_enforced(self):
+        swapped = self.edit_body()
+        swapped['exercises'].reverse()
+        missing = self.edit_body()
+        missing['exercises'] = missing['exercises'][:1]
+        empty = self.edit_body()
+        empty['exercises'][1]['sets'] = []
+        too_many = self.edit_body()
+        too_many['exercises'][1]['sets'] = [{'set_type': 'working', 'weight_kg': '60', 'reps': 5}] * 21
+        no_value = self.edit_body()
+        no_value['exercises'][1]['sets'] = [{'set_type': 'working'}]
+        bad_rpe = self.edit_body()
+        bad_rpe['exercises'][1]['sets'][0]['rpe'] = 8.3
+        no_revision = self.edit_body()
+        del no_revision['revision']
+        for body in (swapped, missing, empty, too_many, no_value, bad_rpe, no_revision, self.edit_body(name='  ')):
+            self.assertEqual(self.put(body).status_code, 400, body)
+        session = WorkoutSession.objects.get()
+        self.assertEqual((session.notes, session.edited_at), ('', None))
+
+    def test_only_the_owner_can_edit_and_patch_is_not_offered(self):
+        other = User.objects.create_user('drugi@b.rs', 'jaka-lozinka-123')
+        self.client.force_authenticate(other)
+        self.assertEqual(self.put(self.edit_body()).status_code, 404)
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.client.patch(self.url, {'notes': 'x'}, format='json').status_code, 405)

@@ -252,7 +252,7 @@ class CoachClientView(APIView):
             'workouts_30d': WorkoutSession.objects.filter(owner=client, started_at__gte=since).count(),
             'recent_workouts': [
                 {'id': str(x.id), 'name': x.name, 'started_at': x.started_at, 'finished_at': x.finished_at,
-                 'feeling': x.feeling, 'notes': x.notes,
+                 'feeling': x.feeling, 'notes': x.notes, 'edited_at': x.edited_at,
                  'exercises': [
                      {'name': item.exercise.name, 'sets': [
                          {'set_type': setlog.set_type, 'reps': setlog.reps, 'weight_kg': str(setlog.weight_kg) if setlog.weight_kg is not None else None,

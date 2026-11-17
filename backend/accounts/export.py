@@ -77,6 +77,7 @@ def collect(user) -> dict:
             {
                 'name': s.name, 'started_at': s.started_at, 'finished_at': s.finished_at, 'feeling': s.feeling, 'notes': s.notes,
                 'readiness': {f: getattr(s, f) for f in READINESS_EXPORT},
+                'edited_at': s.edited_at,
                 'exercises': [
                     {'exercise': e.exercise.name, 'notes': e.notes, 'sets': _sets(e.sets.all(), SET_FIELDS)} for e in s.exercises.all()
                 ],

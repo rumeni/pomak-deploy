@@ -161,6 +161,8 @@ class WorkoutSession(TimeStampedModel):
     motivation = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE_VALIDATORS)
     soreness_upper = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE_VALIDATORS)
     soreness_lower = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE_VALIDATORS)
+    # Set when the athlete corrects a finished workout, so the coach can see it was changed.
+    edited_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-started_at']

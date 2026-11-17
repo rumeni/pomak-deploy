@@ -81,6 +81,9 @@ SR = {
     'The workout cannot start in the future.': 'Trening ne može da počne u budućnosti.',
     'The workout has no confirmed sets.': 'Trening nema nijednu potvrđenu seriju.',
     'RPE goes in steps of 0.5.': 'RPE se upisuje u koracima od 0,5.',
+    'Enter the workout name.': 'Unesi naziv treninga.',
+    'The exercises of a finished workout cannot be changed.': 'Vežbe završenog treninga ne mogu da se menjaju.',
+    'This workout was changed elsewhere. Reload it and edit again.': 'Trening je u međuvremenu izmenjen na drugom mestu. Učitaj ga ponovo i izmeni još jednom.',
     # Namirnice
     'Custom': 'Lična',
     'Raw': 'Sirovo',
