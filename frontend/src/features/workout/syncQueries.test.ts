@@ -4,7 +4,7 @@ import { workoutQueriesAfterSync } from './syncQueries'
 
 describe('query refresh after workout sync', () => {
   it('refreshes weekly summary and goals after successful uploads', () => {
-    expect(workoutQueriesAfterSync({ sent: 2, rejected: 0 })).toEqual([['sessions'], ['week'], ['goals']])
+    expect(workoutQueriesAfterSync({ sent: 2, rejected: 0 })).toEqual([['sessions'], ['week'], ['goals'], ['progress']])
   })
   it('does not refresh weekly totals after rejected writes', () => {
     expect(workoutQueriesAfterSync({ sent: 0, rejected: 1 })).toEqual([['sessions']])
@@ -12,7 +12,7 @@ describe('query refresh after workout sync', () => {
   it('does nothing when there is no change', () => {
     expect(workoutQueriesAfterSync({ sent: 0, rejected: 0 })).toEqual([])
     expect(workoutQueriesAfterSync({ sent: 0, rejected: 0, deleted: 1 })).toEqual([
-      ['sessions'], ['week'], ['goals'],
+      ['sessions'], ['week'], ['goals'], ['progress'],
     ])
   })
 })

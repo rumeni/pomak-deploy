@@ -20,6 +20,7 @@ MAX_WORKOUT_SNAPSHOT_BYTES = 256 * 1024
 
 
 class ExerciseSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(required=False)
     is_custom = serializers.SerializerMethodField()
 
     class Meta:
@@ -45,6 +46,10 @@ class ExerciseSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError(_('Enter the exercise name.'))
         return value
+
+    def update(self, instance, validated_data):
+        validated_data.pop('id', None)  # Never re-key an existing exercise.
+        return super().update(instance, validated_data)
 
     def validate(self, attrs):
         name = attrs.get('name', getattr(self.instance, 'name', ''))

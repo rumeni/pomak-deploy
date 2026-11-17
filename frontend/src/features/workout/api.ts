@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '../../lib/api'
 import type { Exercise } from '../training/api'
 import type { LoggedSet, PreviousPerformance, SessionPayload } from './model'
+import { workoutQueriesAfterSync } from './syncQueries'
 
 export interface WorkoutSession {
   id: string
@@ -54,7 +55,9 @@ export function useSaveSession() {
   return useMutation({
     // Isti ID pri ponovnom slanju: server vraća postojeći trening umesto duplikata.
     mutationFn: async (body: SessionPayload) => (await api.post<WorkoutSession>('/training/sessions/', body)).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+    onSuccess: () => Promise.all(
+      workoutQueriesAfterSync({ sent: 1, rejected: 0 }).map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    ),
   })
 }
 
@@ -71,6 +74,8 @@ export function useDeleteSession() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => api.delete(`/training/sessions/${id}/`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+    onSuccess: () => Promise.all(
+      workoutQueriesAfterSync({ sent: 0, rejected: 0, deleted: 1 }).map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    ),
   })
 }
