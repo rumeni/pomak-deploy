@@ -13,6 +13,8 @@ export interface LoggedSet {
   distance_m: number | null
   /** How hard the set felt; absent in sets logged before RPE existed. */
   rpe?: string | null
+  /** When the set was confirmed; sent back unchanged when a finished workout is corrected. */
+  completed_at?: string | null
 }
 
 export interface PreviousPerformance {
@@ -94,6 +96,22 @@ export function startEmpty(name: string, now: Date): ActiveWorkout {
 
 export function emptyActiveSet(set_type: SetType = 'working'): ActiveSet {
   return { key: uuid(), set_type, weight: '', reps: '', duration: '', distance: '', rpe: null, target: null, done: false, completedAt: null }
+}
+
+/** A saved set as an editable, already confirmed row (restoring or correcting a workout). */
+export function loggedToActiveSet(set: LoggedSet): ActiveSet {
+  return {
+    key: uuid(),
+    set_type: set.set_type,
+    weight: set.weight_kg === null ? '' : formatDecimal(Number(set.weight_kg)),
+    reps: set.reps === null ? '' : String(set.reps),
+    duration: set.duration_seconds === null ? '' : formatDuration(set.duration_seconds),
+    distance: set.distance_m === null ? '' : formatDecimal(set.distance_m / 1000),
+    rpe: parseRpe(set.rpe),
+    target: null,
+    done: true,
+    completedAt: set.completed_at ?? null,
+  }
 }
 
 export function newActiveExercise(exercise: Exercise): ActiveExercise {

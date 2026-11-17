@@ -42,6 +42,7 @@ import { ReadinessRow, ReadinessStep } from './ReadinessCard'
 import { formatRpe, parseRpe } from './rpe'
 import { formatDecimal } from '../../lib/format'
 import { RpeSheet } from './RpeSheet'
+import { inputFields, type Field } from './fields'
 
 // Match backend WorkoutSessionSerializer boundaries so a finished offline
 // workout is never rejected merely for having too many items.
@@ -473,28 +474,6 @@ function MenuItem({ label, detail, onClick, disabled, danger }: { label: string;
       </button>
     </li>
   )
-}
-
-type Field = { field: 'weight' | 'reps' | 'duration' | 'distance'; label: string; inputMode: 'decimal' | 'numeric' | 'text' }
-
-function inputFields(m: Exercise['measurement'], perSide: boolean, t: ReturnType<typeof useTranslation>['t']): Field[] {
-  const reps: Field = { field: 'reps', label: t('routine.colReps'), inputMode: 'numeric' }
-  const time: Field = { field: 'duration', label: t('routine.colTime'), inputMode: 'text' }
-  const weight = (label: string): Field => ({ field: 'weight', label, inputMode: 'decimal' })
-  switch (m) {
-    case 'weight_reps':
-      return [weight(perSide ? t('routine.colKgPerDumbbell') : t('routine.colKg')), reps]
-    case 'weighted_bodyweight':
-      return [weight(t('routine.colAddedKg')), reps]
-    case 'assisted_bodyweight':
-      return [weight(t('routine.colAssistKg')), reps]
-    case 'bodyweight_reps':
-      return [reps]
-    case 'duration':
-      return [time]
-    case 'distance_duration':
-      return [{ field: 'distance', label: t('routine.colKm'), inputMode: 'decimal' }, time]
-  }
 }
 
 function SetRow({

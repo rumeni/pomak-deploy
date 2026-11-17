@@ -5,10 +5,8 @@ import { db, type OutboxRow } from '../../lib/db'
 import { getCurrentUserId } from '../../lib/currentUser'
 import { StaleWorkoutError } from './store'
 import type { Exercise } from '../training/api'
-import { formatDuration } from '../training/labels'
 import { uuid } from '../../lib/uuid'
-import { prepareSessionPayload, uploadSafePlanSnapshot, type ActiveWorkout, type PreviousPerformance, type SessionPayload } from './model'
-import { parseRpe } from './rpe'
+import { loggedToActiveSet, prepareSessionPayload, uploadSafePlanSnapshot, type ActiveWorkout, type PreviousPerformance, type SessionPayload } from './model'
 
 /**
  * Završava trening: u JEDNOJ transakciji ga upisuje u red za slanje i briše aktivan trening.
@@ -91,18 +89,7 @@ export async function restoreRejectedWorkout(ownerId: string, id: string): Promi
         exercise,
         restSeconds: 0,
         notes: item.notes,
-        sets: item.sets.map((set) => ({
-          key: uuid(),
-          set_type: set.set_type,
-          weight: set.weight_kg ?? '',
-          reps: set.reps === null ? '' : String(set.reps),
-          duration: set.duration_seconds === null ? '' : formatDuration(set.duration_seconds),
-          distance: set.distance_m === null ? '' : String(set.distance_m / 1000),
-          rpe: parseRpe(set.rpe),
-          target: null,
-          done: true,
-          completedAt: set.completed_at,
-        })),
+        sets: item.sets.map(loggedToActiveSet),
       }
     })
 

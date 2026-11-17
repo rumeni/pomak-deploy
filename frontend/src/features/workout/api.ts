@@ -1,8 +1,10 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import axios from 'axios'
 
 import { api } from '../../lib/api'
 import type { Exercise } from '../training/api'
 import type { LoggedSet, PreviousPerformance, SessionPayload } from './model'
+import type { SessionEditPayload } from './edit'
 import type { Readiness } from './rpe'
 import { workoutQueriesAfterSync } from './syncQueries'
 
@@ -16,6 +18,9 @@ export interface WorkoutSession {
   notes: string
   /** All nulls when the check-in was skipped; missing from servers older than this field. */
   readiness?: Readiness
+  /** Revision for corrections; set when the athlete corrected the workout after finishing it. */
+  updated_at?: string
+  edited_at?: string | null
   exercises: { exercise: Exercise; notes: string; sets: LoggedSet[] }[]
 }
 
@@ -70,6 +75,40 @@ export function useSession(id: string | undefined, enabled: boolean) {
     queryFn: async () => (await api.get<WorkoutSession>(`/training/sessions/${id}/`)).data,
     enabled: !!id && enabled,
     retry: false,
+  })
+}
+
+/** The server refused a correction because the workout changed elsewhere since it was loaded. */
+export class SessionEditConflict extends Error {
+  readonly current: WorkoutSession
+
+  constructor(current: WorkoutSession) {
+    super('SESSION_EDIT_CONFLICT')
+    this.current = current
+  }
+}
+
+/** Corrects a finished workout. Online only: the result must be checked against the server. */
+export function useEditSession() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: SessionEditPayload }) => {
+      try {
+        return (await api.put<WorkoutSession>(`/training/sessions/${id}/`, body)).data
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 409 && error.response.data?.current) {
+          throw new SessionEditConflict(error.response.data.current as WorkoutSession)
+        }
+        throw error
+      }
+    },
+    onSuccess: (session) => {
+      queryClient.setQueryData(['sessions', session.id], session)
+      // History, weekly summary, goals and exercise progress all derive from set values.
+      return Promise.all(
+        workoutQueriesAfterSync({ sent: 1, rejected: 0 }).map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      )
+    },
   })
 }
 
