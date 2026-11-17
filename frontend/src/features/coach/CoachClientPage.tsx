@@ -10,6 +10,7 @@ import { formatCoachSet } from './formatCoach'
 import { useRoutines } from '../training/api'
 import { useAssignCoachRoutine, useCoachClient, useDisconnectCoach } from './api'
 import { CoachMessages } from './CoachMessages'
+import { CoachNutritionDays } from './CoachNutritionDays'
 
 function dateLabel(value: string) {
   return new Date(value).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' })
@@ -75,30 +76,7 @@ export function CoachClientPage() {
         <Card title={t('coach.nutrition')}>
           {data.nutrition_days === null ? <p className="text-muted">{t('coach.notShared')}</p> : (
             data.nutrition_days.length === 0 ? <p className="text-muted">{t('coach.noNutrition')}</p> :
-            data.nutrition_days.map((day) => {
-              const macros = ([
-                ['protein_g', 'protein_unknown', 'protein'],
-                ['carbs_g', 'carbs_unknown', 'carbs'],
-                ['fat_g', 'fat_unknown', 'fat'],
-              ] as const)
-              const hasUnknown = macros.some(([, count]) => (day[count] ?? 0) > 0)
-              return (
-                <div key={day.date} className="border-b border-line py-2 text-sm last:border-0">
-                  <p>{day.date}: <strong>{Math.round(Number(day.kcal))} kcal</strong></p>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted">
-                    {macros.map(([valueKey, unknownKey, label]) => (
-                      <span key={valueKey}>
-                        {t(`nutrition.${label}`)}: {day[valueKey] === null ? '—' : `${formatDecimal(Number(day[valueKey]))} g`}
-                        {(day[unknownKey] ?? 0) > 0 && (
-                          <span className="ml-1">· {t('diary.unknownMacro', { count: day[unknownKey] })}</span>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                  {hasUnknown && <p className="mt-1 text-xs text-muted">{t('diary.unknownNote')}</p>}
-                </div>
-              )
-            })
+            <CoachNutritionDays days={data.nutrition_days} />
           )}
         </Card>
         <Card title={t('coach.assignRoutine')}>
