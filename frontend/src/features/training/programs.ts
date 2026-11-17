@@ -65,9 +65,11 @@ export class ProgramImportAuthChanged extends Error {
 export interface ImportDeps {
   /** Whether the account and login session that started the import are still the current ones. */
   isCurrent: () => boolean
-  /** Does a routine with this ID already exist for the user? */
-  exists: (id: string) => Promise<boolean>
-  create: (body: RoutinePayload) => Promise<unknown>
+  /**
+   * Create-only on the server (`?create_only=1`): makes the routine, or reports that the ID
+   * already exists and leaves that routine exactly as it is (never an update).
+   */
+  create: (body: RoutinePayload) => Promise<'created' | 'exists'>
 }
 
 /** Bumped when an account's local data is cleared, so imports already in flight stop writing. */
@@ -87,8 +89,10 @@ export function isImportingProgram(ownerId: string, programKey: string): boolean
  *
  * - Progress is stored after every routine, so a retry (also after leaving the screen or a
  *   reload) continues with the same IDs instead of duplicating.
- * - On a resumed import a routine that already exists (created before a lost response) is left
- *   exactly as it is: the user may have edited it since, and a repeated create would replace it.
+ * - Every routine is sent create-only: one that already exists (created before a lost response,
+ *   or by the same import in another tab) is left exactly as it is on the server - the user may
+ *   have edited it since. This holds across tabs and devices, not just in this one.
+ * - Progress records are merged by batch identity, so two tabs never erase each other's progress.
  * - One import per account and program at a time: starting it again (e.g. after leaving and
  *   reopening the screen) joins the one in flight instead of running a second loop.
  * - Every step - including writing progress after a request returns - runs only while the
@@ -113,23 +117,19 @@ async function runImport(ownerId: string, programKey: string, record: PendingPro
     if (!valid()) throw new ProgramImportAuthChanged()
   }
   guard()
-  const resumed = record.done.length > 0 || loadPendingRecord(ownerId, programKey) !== null
   const done = new Set(record.done)
   savePendingRecord(ownerId, programKey, { batch: record.batch, done: [...done] })
   for (const body of record.batch) {
     const id = body.id!
-    if (done.has(id)) continue
+    if (done.has(id) || loadPendingRecord(ownerId, programKey)?.done.includes(id)) continue
     guard()
-    const exists = resumed && await deps.exists(id)
+    await deps.create(body) // 'exists' is fine too: that routine is never touched
     guard() // the answer may arrive after a logout
-    if (!exists) {
-      await deps.create(body)
-      guard()
-    }
     done.add(id)
     savePendingRecord(ownerId, programKey, { batch: record.batch, done: [...done] })
   }
-  clearPendingProgram(ownerId, programKey)
+  // Only this batch's record: another tab may have started a different one meanwhile.
+  if (sameBatch(loadPendingRecord(ownerId, programKey)?.batch, record.batch)) clearPendingProgram(ownerId, programKey)
 }
 
 /** Keep an unfinished import's UUIDs and progress across unmount/reopen and network retries. */
@@ -152,8 +152,16 @@ function loadPendingRecord(ownerId: string, programKey: string): PendingProgram 
   return null
 }
 
+const batchIds = (batch: RoutinePayload[] | undefined) => (batch ?? []).map((b) => b.id).join(',')
+function sameBatch(a: RoutinePayload[] | undefined, b: RoutinePayload[]): boolean {
+  return batchIds(a) === batchIds(b)
+}
+
+/** Writes progress; for the same batch (another tab) the done lists are merged, never reduced. */
 function savePendingRecord(ownerId: string, programKey: string, record: PendingProgram): void {
-  try { localStorage.setItem(pendingKey(ownerId, programKey), JSON.stringify(record)) } catch { /* in-memory retry still works */ }
+  const stored = loadPendingRecord(ownerId, programKey)
+  const done = stored && sameBatch(stored.batch, record.batch) ? [...new Set([...stored.done, ...record.done])] : record.done
+  try { localStorage.setItem(pendingKey(ownerId, programKey), JSON.stringify({ batch: record.batch, done })) } catch { /* in-memory retry still works */ }
 }
 
 export function loadPendingProgram(ownerId: string, program: Program): PendingProgram | null {

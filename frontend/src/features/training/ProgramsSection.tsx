@@ -33,16 +33,17 @@ function useAddProgram() {
       const config: ScopedRequestConfig = { __pomakScope: scope }
       return importProgram(scope.ownerId, programKey, record, {
         isCurrent: () => scopeIsCurrent(scope),
-        exists: async (id) => {
+        // Create-only on the server: an existing routine (e.g. made by this import in another
+        // tab and edited since) answers 412 and stays untouched.
+        create: async (body: RoutinePayload) => {
           try {
-            await api.get(`/training/routines/${id}/`, config)
-            return true
+            await api.post('/training/routines/?create_only=1', body, config)
+            return 'created'
           } catch (error) {
-            if (axios.isAxiosError(error) && error.response?.status === 404) return false
+            if (axios.isAxiosError(error) && error.response?.status === 412) return 'exists'
             throw error
           }
         },
-        create: (body: RoutinePayload) => api.post('/training/routines/', body, config),
       })
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['routines'] }),

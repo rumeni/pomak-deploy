@@ -70,38 +70,79 @@ describe('suggested programs', () => {
       const list = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222']
       return () => list.shift()!
     }
-    /** A server with routines by ID; `created` lists every POST it received. */
+    /** A create-only server: an existing ID answers 'exists' and is never changed. */
     const server = () => {
-      const routines = new Map<string, unknown>()
+      const routines = new Map<string, { name: string }>()
       const created: string[] = []
-      return {
-        routines, created,
-        exists: async (id: string) => routines.has(id),
-        create: async (body: { id?: string }) => { created.push(body.id!); routines.set(body.id!, body) },
+      const create = async (body: { id?: string; name: string }): Promise<'created' | 'exists'> => {
+        if (routines.has(body.id!)) return 'exists'
+        created.push(body.id!)
+        routines.set(body.id!, { name: body.name })
+        return 'created'
       }
+      return { routines, created, create }
     }
 
-    it('resuming never re-sends a routine that exists, so later edits survive', async () => {
+    it('resuming never changes a routine that exists, so later edits survive', async () => {
       const api = server()
       const batch = programToRoutines(program, ids())
-      // First attempt: routine 1 is created but its response is lost (the call "fails").
+      // First attempt: routine 1 is created but its response is lost.
       let lose = true
       await expect(importProgram('athlete-1', program.key, { batch, done: [] }, {
         isCurrent: () => true,
-        exists: api.exists,
         create: async (body) => {
-          await api.create(body)
+          const result = await api.create(body)
           if (lose) { lose = false; throw new Error('timeout') }
+          return result
         },
       })).rejects.toThrow('timeout')
-      // The athlete edits routine 1 meanwhile.
-      api.routines.set(batch[0].id!, { ...batch[0], name: 'Moj A' })
+      api.routines.set(batch[0].id!, { name: 'Moj A' }) // the athlete edits routine 1
       // Retry after leaving and coming back (language changed too): the stored record resumes.
       const stored = loadPendingProgram('athlete-1', { ...program, name: 'Beginner full body' })!
       expect(stored.batch.map((b) => b.id)).toEqual(batch.map((b) => b.id))
-      await importProgram('athlete-1', program.key, stored, { isCurrent: () => true, exists: api.exists, create: api.create })
-      expect(api.created).toEqual([batch[0].id, batch[1].id]) // routine 1 was not sent again
-      expect(api.routines.get(batch[0].id!)).toMatchObject({ name: 'Moj A' })
+      await importProgram('athlete-1', program.key, stored, { isCurrent: () => true, create: api.create })
+      expect(api.created).toEqual([batch[0].id, batch[1].id])
+      expect(api.routines.get(batch[0].id!)).toEqual({ name: 'Moj A' })
+    })
+
+    it('two tabs importing the same program at once: each routine made once, none overwritten', async () => {
+      const api = server()
+      const batch = programToRoutines(program, ids())
+      // Both tabs load the same stored batch (the second one opened while the first ran).
+      const tabA = { batch, done: [] as string[] }
+      const tabB = { batch, done: [] as string[] }
+      let releaseA!: () => void
+      const gateA = new Promise<void>((resolve) => { releaseA = resolve })
+      const runA = importProgram('athlete-1', program.key, tabA, {
+        isCurrent: () => true,
+        create: async (body) => { await gateA; return api.create(body) },
+      })
+      // Tab B is another JavaScript runtime: simulate it by finishing first, through the server.
+      for (const body of batch) await api.create(body)
+      api.routines.set(batch[0].id!, { name: 'Moj A' }) // edited in tab B meanwhile
+      releaseA()
+      await runA
+      expect(api.created).toEqual(batch.map((b) => b.id))
+      expect(api.routines.get(batch[0].id!)).toEqual({ name: 'Moj A' })
+      expect(tabB.done).toEqual([])
+      expect(storage.size).toBe(0)
+    })
+
+    it('progress written by another tab for the same batch is merged, not erased', async () => {
+      const api = server()
+      const batch = programToRoutines(program, ids())
+      // Another tab already finished routine 2 and stored that.
+      storage.set(`pomak.pendingProgram.athlete-1.${program.key}`, JSON.stringify({ batch, done: [batch[1].id] }))
+      let stop = true
+      await expect(importProgram('athlete-1', program.key, { batch, done: [] }, {
+        isCurrent: () => true,
+        create: async (body) => {
+          const result = await api.create(body)
+          if (stop) { stop = false; throw new Error('timeout') }
+          return result
+        },
+      })).rejects.toThrow('timeout')
+      expect(loadPendingProgram('athlete-1', program)?.done).toEqual([batch[1].id])
     })
 
     it('stops when the login changes and keeps the record with the original account', async () => {
@@ -110,11 +151,10 @@ describe('suggested programs', () => {
       let current = true
       await expect(importProgram('athlete-1', program.key, { batch, done: [] }, {
         isCurrent: () => current,
-        exists: api.exists,
-        create: async (body) => { await api.create(body); current = false }, // logged out after the first
+        create: async (body) => { const r = await api.create(body); current = false; return r }, // logged out after the first
       })).rejects.toBeInstanceOf(ProgramImportAuthChanged)
       expect(api.created).toEqual([batch[0].id])
-      // Nothing is written after the login changed; resuming later finds routine 1 on the server.
+      // Nothing is written after the login changed; resuming later gets 'exists' for routine 1.
       expect(loadPendingProgram('athlete-1', program)?.done).toEqual([])
       expect(loadPendingProgram('athlete-2', program)).toBeNull()
     })
@@ -122,11 +162,11 @@ describe('suggested programs', () => {
     it('a late answer after logout cleanup never brings the record back', async () => {
       const api = server()
       let release!: () => void
-      const create = (body: { id?: string }) => new Promise<void>((resolve) => {
-        release = () => { void api.create(body); resolve() }
+      const create = (body: { id?: string; name: string }) => new Promise<'created' | 'exists'>((resolve) => {
+        release = () => { void api.create(body).then(resolve) }
       })
       const run = importProgram('athlete-1', program.key, { batch: programToRoutines(program, ids()), done: [] },
-        { isCurrent: () => true, exists: api.exists, create })
+        { isCurrent: () => true, create })
       await Promise.resolve()
       clearUserPendingPrograms('athlete-1') // logout or account deletion while the POST is out
       release()
@@ -140,8 +180,7 @@ describe('suggested programs', () => {
       const gate = new Promise<void>((resolve) => { release = resolve })
       const deps = {
         isCurrent: () => true,
-        exists: api.exists,
-        create: async (body: { id?: string }) => { await gate; await api.create(body) },
+        create: async (body: { id?: string; name: string }) => { await gate; return api.create(body) },
       }
       const record = { batch: programToRoutines(program, ids()), done: [] }
       const first = importProgram('athlete-1', program.key, record, deps)
@@ -158,9 +197,8 @@ describe('suggested programs', () => {
     it('clears its record on success by itself, whether or not the screen is still open', async () => {
       const api = server()
       await importProgram('athlete-1', program.key, { batch: programToRoutines(program, ids()), done: [] },
-        { isCurrent: () => true, exists: api.exists, create: api.create })
+        { isCurrent: () => true, create: api.create })
       expect(storage.size).toBe(0)
-      // A fresh import never asks the server first.
       expect(api.created).toHaveLength(2)
     })
 

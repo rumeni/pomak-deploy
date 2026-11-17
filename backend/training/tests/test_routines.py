@@ -1,4 +1,5 @@
 import uuid
+from unittest import mock
 
 from rest_framework.test import APITestCase
 
@@ -128,3 +129,51 @@ class RoutineTests(APITestCase):
         self.assertEqual(self.client.delete(f'/api/training/routines/{rid}/').status_code, 204)
         self.assertTrue(Routine.objects.filter(pk=rid, archived_at__isnull=False).exists())
         self.assertEqual([r['name'] for r in self.client.get('/api/training/routines/').data], ['Trening A (kopija)'])
+
+
+class CreateOnlyRoutineTests(APITestCase):
+    """`?create_only=1` (program import): create the ID or leave the existing routine alone."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('co@b.rs', 'jaka-lozinka-123')
+        self.client.force_authenticate(self.user)
+        self.bench = Exercise.objects.get(slug='bench-press')
+
+    def body(self, routine_id, name='Celo telo A'):
+        return {'id': routine_id, 'name': name, 'notes': '', 'exercises': [{
+            'exercise_id': str(self.bench.id), 'rest_seconds': 120, 'notes': '',
+            'sets': [{'set_type': 'working', 'reps_min': 8, 'reps_max': 10, 'weight_kg': None,
+                      'duration_seconds': None, 'distance_m': None, 'rpe': '6.5'}],
+        }]}
+
+    def post(self, body, create_only=True):
+        return self.client.post('/api/training/routines/' + ('?create_only=1' if create_only else ''), body, format='json')
+
+    def test_an_existing_routine_is_never_overwritten(self):
+        rid = str(uuid.uuid4())
+        self.assertEqual(self.post(self.body(rid)).status_code, 201)
+        # The user edits it; then the other tab's import sends the original payload.
+        self.client.put(f'/api/training/routines/{rid}/', self.body(rid, name='Moj A'), format='json')
+        res = self.post(self.body(rid))
+        self.assertEqual(res.status_code, 412)
+        self.assertEqual(Routine.objects.get(pk=rid).name, 'Moj A')
+        # Ordinary (editor) retries keep updating as before.
+        self.assertEqual(self.post(self.body(rid, name='Editor retry'), create_only=False).status_code, 200)
+        self.assertEqual(Routine.objects.get(pk=rid).name, 'Editor retry')
+
+    def test_two_creates_of_the_same_new_id_at_once_leave_one_untouched_routine(self):
+        from training.views import RoutineViewSet
+        rid = str(uuid.uuid4())
+        # The other tab's create landed just after this request looked for the ID.
+        Routine.objects.create(id=rid, owner=self.user, name='Iz drugog taba')
+        with mock.patch.object(RoutineViewSet, 'find_existing', return_value=None):
+            res = self.post(self.body(rid))
+        self.assertEqual(res.status_code, 412)
+        self.assertEqual(Routine.objects.filter(pk=rid).count(), 1)
+        self.assertEqual(Routine.objects.get(pk=rid).name, 'Iz drugog taba')
+
+    def test_another_users_id_is_still_refused(self):
+        rid = str(uuid.uuid4())
+        self.post(self.body(rid))
+        self.client.force_authenticate(User.objects.create_user('drugi@b.rs', 'jaka-lozinka-123'))
+        self.assertEqual(self.post(self.body(rid)).status_code, 400)
