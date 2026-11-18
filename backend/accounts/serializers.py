@@ -1,6 +1,7 @@
 import datetime
 
 from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -104,7 +105,11 @@ class RegisterSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
-        user = User.objects.create_user(validated_data['email'], validated_data['password'])
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(validated_data['email'], validated_data['password'])
+        except IntegrityError:
+            raise serializers.ValidationError({'email': _('An account with this email already exists.')}) from None
         user.profile.display_name = validated_data.get('display_name', '')
         user.profile.is_coach = validated_data['account_type'] == 'coach'
         user.profile.language = validated_data['language']
