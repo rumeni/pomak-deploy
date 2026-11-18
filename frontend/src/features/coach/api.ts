@@ -11,6 +11,8 @@ export interface Connection {
   share_nutrition: boolean
   // Older servers did not send it; treat missing as not shared.
   share_readiness?: boolean
+  // Server-made: +1 on every consent change and on the end (see access.ts).
+  access_version?: number
   connected_at: string
   // Older servers did not send these; treat missing as an active collaboration.
   status?: 'active' | 'paused' | 'ended'
@@ -96,6 +98,7 @@ export type CoachDashboard =
     archived_clients?: Connection[]
     profile_completed?: boolean
     workouts_today?: number
+    server_time?: string
   }
   | {
     role: 'client'

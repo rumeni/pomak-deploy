@@ -53,6 +53,9 @@ class CoachConnection(TimeStampedModel):
     # The pre-workout check-in (sleep, stress, soreness...) and its score: subjective recovery
     # data, shared only with its own consent, never implied by sharing workouts.
     share_readiness = models.BooleanField(default=False)
+    # Server-made version of what the coach may see: +1 on every consent change and on the end.
+    # Clients order access facts by it, never by when a response happened to arrive.
+    access_version = models.PositiveIntegerField(default=1)
     # Coach-side workflow state: a paused client (holiday, injury) raises no inactivity tasks.
     paused_at = models.DateTimeField(null=True, blank=True)
     # When the client became active (connected or resumed); inactivity counts from here at the earliest.

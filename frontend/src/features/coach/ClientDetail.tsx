@@ -7,7 +7,7 @@ import { Button, Card, FormError, selectClass } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { formatDecimal, getFormatLocale } from '../../lib/format'
 import { useRoutines } from '../training/api'
-import { isAccessRevoked, isNetworkFailure, purgeClient, refreshCoachLists, viewableClient, visibleTaskList } from './access'
+import { dashboardAccess, isAccessRevoked, isNetworkFailure, purgeClient, redactCached, refreshCoachLists, viewableClient, visibleTaskList } from './access'
 import {
   useAssignCoachRoutine, useClientStatus, useCoachClient, useCoachDashboard, useCoachNotes, useCoachTasks, useCreateCoachNote,
   useDeleteCoachNote, useDisconnectCoach, useUpdateCoachNote, type CoachClientDetails, type CoachNote,
@@ -34,22 +34,27 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   const client = useCoachClient(clientId)
   const dashboard = useCoachDashboard()
   const qc = useQueryClient()
-  const rows = dashboard.data?.role === 'coach' ? dashboard.data.clients : undefined
-  // Which data may be shown: the newer of the client screen and the dashboard decides.
+  // Which data may be shown is decided by server facts (access version, collaboration identity),
+  // never by which response arrived last.
   const view = viewableClient(client.data, {
     error: client.isError ? client.error : null,
-    detailUpdatedAt: client.dataUpdatedAt,
-    rows,
-    dashboardUpdatedAt: dashboard.dataUpdatedAt,
+    dashboard: dashboardAccess(dashboard.data),
   })
   const revoked = (client.isError && isAccessRevoked(client.error)) || view.purge
+  const redactWith = view.redactWith
 
-  // Access confirmed gone (the server said no, or a newer dashboard no longer lists the
-  // collaboration): forget what was cached. A confirmed consent change: load again.
+  // Access gone: forget what was cached. Access changed: drop from the cache what the current
+  // consents no longer allow (so it cannot reappear) and load again at the current version.
   useEffect(() => {
-    if (view.purge) void purgeClient(qc, clientId)
-    else if (view.refresh) void refreshCoachLists(qc, clientId)
-  }, [view.purge, view.refresh, qc, clientId])
+    if (view.purge) {
+      void purgeClient(qc, clientId)
+      return
+    }
+    if (redactWith) {
+      qc.setQueryData<CoachClientDetails>(['coach-client', clientId], (old) => (old ? redactCached(old, redactWith) : old))
+    }
+    if (view.refresh) void refreshCoachLists(qc, clientId)
+  }, [view.purge, view.refresh, redactWith, qc, clientId])
 
   if (revoked) {
     return (
@@ -143,8 +148,7 @@ function OverviewTab({ data }: { data: CoachClientDetails }) {
   const { t, i18n } = useTranslation()
   const tasks = useCoachTasks()
   const dashboard = useCoachDashboard()
-  const rows = dashboard.data?.role === 'coach' ? dashboard.data.clients : undefined
-  const open = visibleTaskList(tasks.data ?? [], rows, dashboard.dataUpdatedAt >= tasks.dataUpdatedAt)
+  const open = visibleTaskList(tasks.data ?? [], dashboardAccess(dashboard.data))
     .filter((task) => task.client.id === data.connection.client.id && task.state === 'open')
   const last = data.recent_workouts[0]
   const withReadiness = data.recent_workouts.find((w) => w.readiness?.score != null)

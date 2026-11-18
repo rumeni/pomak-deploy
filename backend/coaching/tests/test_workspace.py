@@ -407,3 +407,27 @@ class LaterRecordTests(WorkspaceTestCase):
             middle.delete()
         self.assertEqual(self.records(), [str(last.pk)])
 
+
+
+class AccessVersionTests(WorkspaceTestCase):
+    def test_every_consent_change_and_the_end_raise_the_access_version(self):
+        connection = self.connect(days_ago=1, readiness=True)
+        self.workout()
+        task = self.tasks()[0]
+        self.assertEqual(task['connection'], {
+            'id': str(connection.pk), 'access_version': 1, 'connected_at': task['connection']['connected_at'],
+        })
+        dashboard = self.client.get('/api/coach/dashboard/').data
+        self.assertIn('server_time', dashboard)
+        self.assertEqual(dashboard['clients'][0]['access_version'], 1)
+        self.as_user(self.athlete)
+        same = self.client.patch('/api/coach/connection/', {'share_readiness': True}, format='json').data
+        self.assertEqual(same['access_version'], 1)  # nothing changed, no new version
+        revoked = self.client.patch('/api/coach/connection/', {'share_readiness': False}, format='json').data
+        self.assertEqual(revoked['access_version'], 2)
+        regranted = self.client.patch('/api/coach/connection/', {'share_readiness': True}, format='json').data
+        self.assertEqual(regranted['access_version'], 3)
+        self.client.delete('/api/coach/connection/')
+        self.as_user(self.coach)
+        archived = self.client.get('/api/coach/dashboard/').data['archived_clients'][0]
+        self.assertEqual((archived['status'], archived['access_version']), ('ended', 4))

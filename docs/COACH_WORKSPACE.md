@@ -118,6 +118,8 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
   - Lični rekordi su trenutne činjenice, ne snimak u trenutku otkrivanja. Ispravka ili brisanje
     treninga ponovo ocenjuje rekorde kasnijih treninga u oba smera: kasniji trening može da
     postane rekord ili da prestane da bude rekord.
+  - Ponovo se ocenjuje najviše 100 najnovijih kasnijih treninga te saradnje. Starijim
+    treninzima rekord ostaje kako je bio ocenjen.
 - **Zaključavanje:** svako ko menja zadatke prvo zaključava saradnju i ponovo je čita. To važi
   za proveru novih treninga, usklađivanje, brisanje treninga, promenu dozvola, prekid i
   trenerovu radnju nad zadatkom. Zato provera koja je u toku ne može da upiše odgovore posle
@@ -144,13 +146,23 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Ekran bivšeg trenera:** čim server odgovori da trener više nema pristup (401/403/404), podaci
   klijenta se brišu i iz keša u aplikaciji. Ne prikazuju se ni posle povratka na taj ekran, ni
   uz neku novu saradnju sa istim klijentom.
-- **Novije stanje ima prednost:** između ekrana klijenta i spiska klijenata uvek odlučuje novije.
-  - Spisak je noviji, a saradnje nema na njemu: podaci se ne prikazuju ni bez interneta, a keš
-    se briše.
-  - Spisak je noviji, a klijent je u međuvremenu isključio neko deljenje: ti podaci se odmah
-    sakrivaju, i ništa se ne vraća bez ponovnog učitavanja.
-  - Spisak još nije učitan (npr. bez interneta od početka): prikazuje se poslednji učitani
-    ekran, sa dozvolama sa kojima je učitan.
+- **Šta trener vidi određuju podaci sa servera, ne redosled odgovora.**
+  - **Šta šalje server:**
+    - verziju pristupa uz svaku saradnju, koja raste sa svakom promenom deljenja i sa prekidom;
+    - datum početka saradnje;
+    - vreme kada je spisak klijenata bio tačan.
+  - **Pravila u aplikaciji:**
+    - Saradnja koja je završena, zamenjena novijom ili je nema na spisku koji je noviji od nje:
+      ništa se ne prikazuje ni bez interneta, a keš se briše. Takva saradnja se pamti kao
+      ukinuta, pa je ni zakasneli odgovor ne vraća.
+    - Ako je verzija pristupa promenjena (dozvola uzeta ili ponovo data), prikazuju se samo
+      treninzi. Merenja, ishrana i spremnost čekaju novo učitavanje na trenutnoj verziji. Iz
+      keša se brišu kategorije koje trenutne dozvole više ne pokrivaju, pa ih ponovo data
+      dozvola ne otkriva iz starih podataka.
+    - Zadaci se ocenjuju po saradnji i verziji pod kojom su pročitani. Zadatak o spremnosti
+      pročitan na staroj verziji se ne prikazuje.
+    - Spisak još nije učitan (npr. bez interneta od početka): prikazuje se poslednji učitani
+      ekran, sa dozvolama sa kojima je učitan.
 - Klijent kasnije može da se poveže ponovo, i sa istim trenerom. To je nova saradnja, a stara
   arhiva ostaje odvojena.
 - U bazi važi pravilo da klijent ima najviše jednu aktivnu saradnju.

@@ -6,7 +6,7 @@ import { Button, Card, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { useCoachDashboard, useCoachTasks, useTaskAction } from './api'
 import { CoachHeader } from './SpaceSwitch'
-import { visibleTaskList } from './access'
+import { dashboardAccess, visibleTaskList } from './access'
 import { taskText } from './taskText'
 import { groupTasks, type CoachTask, type TaskState } from './tasks'
 import { initials } from './workspace'
@@ -19,7 +19,7 @@ export function CoachHomePage() {
   const [view, setView] = useState<TaskState>('open')
   const data = dashboard.data?.role === 'coach' ? dashboard.data : null
   // Tasks of clients no longer listed, or readiness tasks without that consent, never show.
-  const groups = groupTasks(visibleTaskList(tasks.data ?? [], data?.clients, dashboard.dataUpdatedAt >= tasks.dataUpdatedAt))
+  const groups = groupTasks(visibleTaskList(tasks.data ?? [], dashboardAccess(dashboard.data)))
   const activeClients = data?.clients.filter((c) => c.status !== 'paused').length ?? 0
 
   return (

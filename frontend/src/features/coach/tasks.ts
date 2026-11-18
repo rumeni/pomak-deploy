@@ -20,6 +20,8 @@ export interface CoachTask {
     last_workout_at?: string | null
   }
   client: { id: string; name: string }
+  /** The collaboration and access version it was read under (older servers did not send it). */
+  connection?: { id: string; access_version: number; connected_at: string }
 }
 
 /** Open first (most recent event first), snoozed by when they come back, done by when closed. */

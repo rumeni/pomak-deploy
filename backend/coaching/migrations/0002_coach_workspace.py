@@ -110,6 +110,11 @@ class Migration(migrations.Migration):
             field=models.BooleanField(default=False),
         ),
         migrations.AddField(
+            model_name='coachconnection',
+            name='access_version',
+            field=models.PositiveIntegerField(default=1),
+        ),
+        migrations.AddField(
             model_name='coachinvitation',
             name='label',
             field=models.CharField(blank=True, max_length=60),

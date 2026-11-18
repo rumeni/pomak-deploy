@@ -128,6 +128,7 @@ def connection_summary(connection):
         'share_measurements': connection.share_measurements,
         'share_nutrition': connection.share_nutrition,
         'share_readiness': connection.share_readiness,
+        'access_version': connection.access_version,
         'connected_at': connection.created_at,
         'status': connection_status(connection),
         'ended_at': connection.ended_at,
@@ -188,6 +189,11 @@ def task_summary(task, now):
         'event_at': task.event_at,
         'data': task.data,
         'client': {'id': str(task.connection.client_id), 'name': display_name(task.connection.client)},
+        # Which collaboration and access version this task was read under (see access_version).
+        'connection': {
+            'id': str(task.connection_id), 'access_version': task.connection.access_version,
+            'connected_at': task.connection.created_at,
+        },
     }
 
 
@@ -355,6 +361,9 @@ class DashboardView(APIView):
                 'clients': coach_client_rows(connections, now),
                 'archived_clients': [connection_summary(c) for c in archived],
                 'profile_completed': bool(profile and profile.completed_at),
+                # When this list was true on the server: a collaboration that began before it and is
+                # not listed has ended (or is gone).
+                'server_time': now,
                 'workouts_today': WorkoutSession.objects.filter(
                     owner_id__in=[c.client_id for c in connections], started_at__gte=day_start,
                 ).count(),
@@ -485,7 +494,8 @@ def end_connection(connection, ended_by):
     now = timezone.now()
     connection.ended_at = now
     connection.ended_by = ended_by
-    connection.save(update_fields=['ended_at', 'ended_by', 'updated_at'])
+    connection.access_version += 1
+    connection.save(update_fields=['ended_at', 'ended_by', 'access_version', 'updated_at'])
     # Tasks are about the client's current data, which the coach may no longer see.
     connection.tasks.all().delete()
 
@@ -499,10 +509,12 @@ class ConnectionView(APIView):
         connection = active_connections().select_for_update().filter(client=request.user).first()
         if connection is None:
             raise NotFound()
-        for key, value in serializer.validated_data.items():
+        changed = {k: v for k, v in serializer.validated_data.items() if getattr(connection, k) != v}
+        for key, value in changed.items():
             setattr(connection, key, value)
-        if serializer.validated_data:
-            connection.save(update_fields=[*serializer.validated_data.keys(), 'updated_at'])
+        if changed:
+            connection.access_version += 1
+            connection.save(update_fields=[*changed.keys(), 'access_version', 'updated_at'])
         if not connection.share_readiness:
             # Revoked: the stored readiness answers in tasks go too, not just their display.
             connection.tasks.filter(kind=CoachTask.Kind.LOW_READINESS).delete()
