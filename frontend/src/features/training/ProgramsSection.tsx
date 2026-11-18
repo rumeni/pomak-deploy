@@ -113,9 +113,16 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
           pending.current = { ownerId: me.id, record: previous ?? pending.current?.record ?? { batch: [], done: [] } }
         } else {
           const fresh = (await api.get<Routine[]>('/training/routines/')).data
+          const standard = await firstImportRoutines(program, me.id)
+          const present = new Set(fresh.map((routine) => routine.id))
+          const seenSome = standard.some((routine) => present.has(routine.id!))
+          const seenAll = standard.every((routine) => present.has(routine.id!))
+          // A second device must RESUME a partially committed first import.
+          // Ask for a deliberate second copy only once the first batch is done.
           const alreadyThere = programAlreadyAdded(program, fresh)
-          if (alreadyThere && !window.confirm(t('programs.addAgainConfirm'))) return
-          const batch = alreadyThere ? programToRoutines(program, uuid) : await firstImportRoutines(program, me.id)
+          const needsConfirm = alreadyThere && (!seenSome || seenAll)
+          if (needsConfirm && !window.confirm(t('programs.addAgainConfirm'))) return
+          const batch = needsConfirm ? programToRoutines(program, uuid) : standard
           if (!scopeIsCurrent(scope)) return
           pending.current = { ownerId: me.id, record: { batch, done: [] } }
         }
