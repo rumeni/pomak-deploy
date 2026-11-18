@@ -16,4 +16,5 @@ urlpatterns = [
     path('api/progress/', include('progress.urls')),
     path('api/training/', include('training.urls')),
     path('api/nutrition/', include('nutrition.urls')),
+    path('api/push/', include('notifications.urls')),
 ]

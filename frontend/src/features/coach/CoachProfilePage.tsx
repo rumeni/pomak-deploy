@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { Button, Card, ChoiceCards, Field, FormError, ScreenHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
+import { PictureError, shrinkPicture, useCoachPhoto } from './pictures'
 import { useCoachProfile, useSaveCoachProfile, type CoachCard, type CoachProfile, type CoachProfileInput, type Specialty, type WorkMode } from './api'
 import { CoachCardView } from './CoachCardView'
 
@@ -63,6 +64,35 @@ function toInput(d: Draft): CoachProfileInput {
  * The coach's starting questions (three short steps, shown once) and, later, the same answers
  * as an editable profile. This is what a client sees before accepting an invitation.
  */
+/** The coach's own picture: shrunk on the device, re-encoded on the server, shown on his card. */
+function PhotoControls({ hasPhoto }: { hasPhoto: boolean }) {
+  const { t } = useTranslation()
+  const { upload, remove } = useCoachPhoto()
+  const [error, setError] = useState<string | null>(null)
+  const pick = async (file: File | undefined) => {
+    if (!file) return
+    setError(null)
+    try {
+      upload.mutate(await shrinkPicture(file, 1024))
+    } catch (e) {
+      setError(e instanceof PictureError ? t(e.message) : errorMessage(e))
+    }
+  }
+  const busy = upload.isPending || remove.isPending
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <FormError message={error ?? (upload.error ? errorMessage(upload.error) : remove.error ? errorMessage(remove.error) : null)} />
+      <div className="flex flex-wrap gap-2">
+        <label className={`app-button inline-flex min-h-10 cursor-pointer items-center bg-brand-soft px-4 text-sm text-brand-dark ${busy ? 'pointer-events-none opacity-60' : ''}`}>
+          {upload.isPending ? t('common.saving') : hasPhoto ? t('coachSpace.profile.changePhoto') : t('coachSpace.profile.addPhoto')}
+          <input type="file" accept="image/*" className="sr-only" disabled={busy} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = '' }} />
+        </label>
+        {hasPhoto && <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => remove.mutate()}>{t('coachSpace.profile.removePhoto')}</Button>}
+      </div>
+    </div>
+  )
+}
+
 export function CoachProfilePage({ onboarding = false }: { onboarding?: boolean }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -150,7 +180,8 @@ function EditProfile({ profile }: { profile: CoachProfile }) {
       <div className="mx-auto flex max-w-xl flex-col gap-3 px-4 py-4">
         <Card title={t('coachSpace.profile.preview')}>
           <p className="mb-3 text-sm text-muted">{t('coachSpace.profile.previewHint')}</p>
-          <CoachCardView coach={{ id: '', name: profile.name, ...draftCard(draft) }} />
+          <CoachCardView coach={{ id: profile.id ?? '', name: profile.name, ...draftCard(draft), photo: profile.photo ?? null }} />
+          <PhotoControls hasPhoto={!!profile.photo} />
         </Card>
         <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
           <Card><div className="flex flex-col gap-4"><ExperienceFields draft={draft} set={set} /></div></Card>

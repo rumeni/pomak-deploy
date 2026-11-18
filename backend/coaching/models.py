@@ -86,6 +86,28 @@ class CoachConnection(TimeStampedModel):
         indexes = [models.Index(fields=['coach', 'ended_at'], name='coach_conn_coach_ended_idx')]
 
 
+class MessageImage(TimeStampedModel):
+    """A picture in a conversation: a re-encoded JPEG (no metadata), stored in the database and
+    served only to the two people of that collaboration."""
+
+    connection = models.ForeignKey('CoachConnection', on_delete=models.CASCADE, related_name='images')
+    uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    data = models.BinaryField()
+    width = models.PositiveIntegerField()
+    height = models.PositiveIntegerField()
+
+    class Meta:
+        indexes = [models.Index(fields=['uploader', 'created_at'], name='coach_img_uploader_idx')]
+
+
+class CoachPhoto(models.Model):
+    """The coach's profile picture (re-encoded, square-ish, small), shown on his card."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True, related_name='coach_photo')
+    data = models.BinaryField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class CoachMessage(TimeStampedModel):
     connection = models.ForeignKey(CoachConnection, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='coaching_messages')
@@ -98,6 +120,8 @@ class CoachMessage(TimeStampedModel):
     workout_context_id = models.UUIDField(null=True, blank=True)
     # A comment on a week (its Monday): seen in the conversation and on the week's review.
     week_start = models.DateField(null=True, blank=True)
+    # A picture sent with the message (the text may then be empty).
+    image = models.OneToOneField(MessageImage, null=True, blank=True, on_delete=models.SET_NULL, related_name='message')
 
     class Meta:
         ordering = ['created_at', 'id']

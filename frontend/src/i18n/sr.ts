@@ -602,6 +602,11 @@ export const sr = {
     unread_one: '{{count}} nepročitana poruka',
     unread_few: '{{count}} nepročitane poruke',
     unread_other: '{{count}} nepročitanih poruka',
+    pictures: {
+      add: 'Slika', uploading: 'Šaljem sliku…', remove: 'Ukloni sliku', alt: 'Slika iz razgovora',
+      open: 'Otvori sliku', unavailable: 'Slika nije dostupna.', notPicture: 'Taj fajl nije slika.',
+      tooLarge: 'Slika je prevelika (najviše 4 MB).',
+    },
     loadOlderMessages: 'Učitaj starije poruke',
     loadingOlderMessages: 'Učitavanje starijih poruka…',
     newMessage: 'Nova poruka',
@@ -1039,6 +1044,7 @@ export const sr = {
       bio: 'Kratko o tebi',
       preview: 'Ovako te vide klijenti',
       previewHint: 'Pre prihvatanja pozivnice i na njihovoj kartici Trener.',
+      addPhoto: 'Dodaj sliku', changePhoto: 'Promeni sliku', removePhoto: 'Ukloni sliku',
       saved: 'Sačuvano.',
       account: 'Nalog i podešavanja',
       errors: {
@@ -1048,6 +1054,12 @@ export const sr = {
         city: 'Upiši grad u kom treniraš klijente.',
       },
     },
+  },
+  push: {
+    title: 'Obaveštenja na ovom uređaju',
+    text: 'Nova poruka, izmena plana ili uputstvo od trenera. Obaveštenje kaže samo ko je šta uradio, nikad sadržaj poruke.',
+    turnOn: 'Uključi obaveštenja', turnOff: 'Isključi obaveštenja',
+    denied: 'Obaveštenja su blokirana u podešavanjima uređaja ili pregledača. Dozvoli ih tamo, pa pokušaj ponovo.',
   },
   profile: {
     exactAlarmsTitle: 'Tačna obaveštenja za pauzu',

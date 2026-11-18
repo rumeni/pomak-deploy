@@ -125,6 +125,8 @@ class WeekReviewView(APIView):
         from coaching.errors import CollaborationChanged
         from coaching.models import CoachConnection, CoachTask
         from coaching.tasks import weekly_checkin_task
+        from coaching.views import display_name
+        from notifications.push import notify
 
         # Shared only with the collaboration the athlete chose on the form, and only if that very
         # one is still active (locked while saving); never with one that replaced it meanwhile.
@@ -161,5 +163,8 @@ class WeekReviewView(APIView):
                     ).delete()
                 else:
                     weekly_checkin_task(active.pk, monday)
+                    if previous != share_with:
+                        notify(active.coach, title=display_name(request.user), body=_('Shared the weekly review.'),
+                               url=f'/trener/klijenti/{request.user.pk}/nedelja?od={monday.isoformat()}', tag=f'week-{active.pk}')
         return Response(weekly.week_review(request.user, monday))
 

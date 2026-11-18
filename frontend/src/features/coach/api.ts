@@ -59,9 +59,13 @@ export interface CoachCard {
   gym_name: string
   city: string
   address: string
+  /** Version of the profile picture, or null without one. */
+  photo?: string | null
 }
 
 export interface CoachProfile {
+  id?: string
+  photo?: string | null
   name: string
   years_experience: number | null
   specialties: Specialty[]
@@ -144,6 +148,8 @@ export interface CoachMessage {
   workout?: { id: string; name: string; started_at: string } | null
   /** A comment on a week's review: its Monday. */
   week_start?: string | null
+  /** A picture sent with the message. */
+  image?: { id: string } | null
 }
 
 const DASHBOARD = ['coach-dashboard']
@@ -268,8 +274,8 @@ export function useSendCoachMessage(target: ChatTarget = {}) {
   return useMutation({
     networkMode: 'always',
     // The client-made ID makes a retry after a lost response return the stored message, not a copy.
-    mutationFn: async ({ id, text }: { id: string; text: string }) =>
-      (await api.post<CoachMessage>('/coach/messages/', { id, text, ...chatParams(target) })).data,
+    mutationFn: async ({ id, text, image_id }: { id: string; text: string; image_id?: string | null }) =>
+      (await api.post<CoachMessage>('/coach/messages/', { id, text, ...(image_id ? { image_id } : {}), ...chatParams(target) })).data,
     onSuccess: () => Promise.all([
       // A comment shows in the conversation and with the workout: refresh both.
       qc.invalidateQueries({ queryKey: ['coach-messages'] }),

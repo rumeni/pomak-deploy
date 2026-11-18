@@ -340,3 +340,60 @@ klijenta iz T1.
 ### Uvođenje na produkciju
 
 - Migracija `coaching.0005_coach_inbox_instructions`.
+
+## T3b: push obaveštenja, slike u porukama i slika trenera
+
+### Push obaveštenja
+
+- **Uključuju se po uređaju.** U Profilu je stavka „Obaveštenja na ovom uređaju“. Odjava sa
+  uređaja odmah poništava pretplatu na tom uređaju, pa obaveštenja tamo više ne stižu, a server
+  briše uređaj (i sam, čim servis za push javi da pretplata ne postoji).
+- **Kanali.**
+  - u pregledaču: Web Push (VAPID), preko service worker-a (`public/push-sw.js`);
+  - u Android aplikaciji: Firebase Cloud Messaging (FCM HTTP v1).
+- **Šta šaljemo.**
+  - nova poruka (i komentar na trening ili nedelju) drugoj strani;
+  - izmena plana i novo uputstvo klijentu;
+  - podeljen nedeljni osvrt treneru.
+- **Sadržaj obaveštenja.** Samo ko je šta uradio i koji ekran otvara, nikad tekst poruke ili
+  zdravstveni podatak. Jezik je jezik primaoca.
+- **Kada se šalje.** Posle potvrde upisa u bazu, sa kratkim rokom čekanja. Greška u slanju nikad
+  ne obara zahtev, samo se zapiše u log.
+- **Bez podešavanja servera ništa se ne šalje.** Aplikacija tada ne nudi uključivanje
+  obaveštenja.
+
+### Slike
+
+- **Obrada na serveru.** Svaka slika se dekodira, uspravi, smanji i ponovo snimi kao JPEG.
+  - Time se brišu svi metapodaci (GPS lokacija, model telefona, vreme) i odbija sve što nije
+    prava slika.
+  - Do 4 MB po slanju; telefon je pre slanja smanji.
+  - Slike u porukama su najviše 1600 px, slika trenera najviše 512 px.
+- **Čuvanje.** U bazi (Neon), bez spoljnog naloga. Za pilot je to dovoljno; ako slika bude
+  mnogo, isti API može da pređe na Vercel Blob bez promene aplikacije.
+- **Ko vidi.**
+  - **Sliku iz razgovora** vide samo dve osobe iz te saradnje, i u arhivi. Pre slanja poruke
+    sliku vidi samo onaj ko ju je postavio.
+  - **Slika trenera** je deo njegove kartice, pa je vidi svaki prijavljen korisnik koji zna ID
+    trenera.
+- **Neposlate slike.** Slika postavljena za poruku koja nije poslata briše se posle jednog dana
+  (dnevni cron). Najviše 20 neposlatih slika dnevno po korisniku.
+- **Poruka sa slikom.** Tekst može da bude prazan. Ponovljeno slanje proverava i sliku, pa isti ID
+  sa drugom slikom ne prolazi. Slika iz druge saradnje ili od druge osobe se odbija.
+
+### Uvođenje na produkciju
+
+- **Migracije:** `coaching.0006_coach_photos_images` i `notifications.0001_initial`.
+- **Nove biblioteke:** `requirements.txt` dobija `cryptography` i `Pillow`.
+- **Web push**, na pomak-api kao šifrovane promenljive:
+  1. `python manage.py generate_vapid_keys` ispisuje novi par ključeva.
+  2. Postavi `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` i `WEB_PUSH_CONTACT`
+     (`mailto:` adresa).
+- **Android push (Firebase):**
+  1. Napravi Firebase projekat i dodaj Android aplikaciju sa ID-jem iz `capacitor.config`.
+  2. `google-services.json` stavi u `frontend/android/app/`. Fajl je u `.gitignore`; za CI ide
+     kroz GitHub secret.
+  3. Android build pravi se sa `VITE_FCM_ENABLED=1`. Bez Firebase-a registracija bi srušila
+     aplikaciju, pa je ova oznaka obavezna.
+  4. Servisni nalog (Project settings → Service accounts → Generate new private key) postavi
+     kao `FCM_SERVICE_ACCOUNT` na pomak-api: ceo JSON ili base64.

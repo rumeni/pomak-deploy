@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     'progress',
     'training',
     'nutrition',
+    'notifications',
 ]
 
 MIDDLEWARE = [

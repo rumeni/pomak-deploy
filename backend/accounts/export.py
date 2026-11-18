@@ -63,7 +63,7 @@ def collect(user) -> dict:
             ).first(),
             'messages': [
                 {'sender_role': 'coach' if m.sender_id == m.connection.coach_id else 'client',
-                 'text': m.text, 'created_at': m.created_at}
+                 'text': m.text, 'created_at': m.created_at, 'has_picture': m.image_id is not None}
                 for m in CoachMessage.objects.filter(connection__in=connections).select_related('connection').order_by('created_at')
             ],
             'assigned_routines': list(CoachAssignment.objects.filter(connection__client=user).values('routine__name', 'created_at')),

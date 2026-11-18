@@ -8,6 +8,8 @@ import { getFormatLocale } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { useCoachMessages, useSendCoachMessage } from './api'
 import { useMarkRead } from './inboxApi'
+import { MessagePicture } from './Picture'
+import { PictureError, shrinkPicture, useUploadPicture } from './pictures'
 import { mergeCoachMessagePages } from './messages'
 import { planDate } from './plans'
 import { chatScrollTop, nearChatBottom } from './chatScroll'
@@ -38,7 +40,11 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
   const send = useSendCoachMessage(target)
   const [text, setText] = useState('')
   // Preserve the same ID across a lost response and a manual retry.
-  const pendingMessage = useRef<{ id: string; text: string } | null>(null)
+  const pendingMessage = useRef<{ id: string; text: string; image_id: string | null } | null>(null)
+  const upload = useUploadPicture(connectionId ? { connection_id: connectionId } : clientId ? { client_id: clientId } : {})
+  // A picture uploaded for the next message (sent with it, or dropped).
+  const [picture, setPicture] = useState<{ id: string; preview: string } | null>(null)
+  const [pictureError, setPictureError] = useState<string | null>(null)
   const items = mergeCoachMessagePages(messages.data?.pages ?? [])
   const newestId = items.at(-1)?.id ?? null
   const listRef = useRef<HTMLDivElement>(null)
@@ -58,6 +64,7 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
       // A lost-response retry belongs to its original workout/week, never to a new conversation.
       pendingMessage.current = null
       setText('')
+      setPicture(null)
       previousCount.current = 0
       previousNewestId.current = null
       readerNearBottom.current = true
@@ -106,13 +113,30 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
     void messages.fetchNextPage()
   }
 
+  const pickPicture = async (file: File | undefined) => {
+    if (!file) return
+    setPictureError(null)
+    try {
+      const blob = await shrinkPicture(file)
+      const stored = await upload.mutateAsync(blob)
+      setPicture({ id: stored.id, preview: URL.createObjectURL(blob) })
+    } catch (e) {
+      setPictureError(e instanceof PictureError ? t(e.message) : errorMessage(e))
+    }
+  }
+  const dropPicture = () => {
+    if (picture) URL.revokeObjectURL(picture.preview)
+    setPicture(null)
+  }
+
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const message = text.trim()
-    if (!message || send.isPending) return
-    const body = pendingMessage.current?.text === message
+    const imageId = picture?.id ?? null
+    if ((!message && !imageId) || send.isPending || upload.isPending) return
+    const body = pendingMessage.current?.text === message && pendingMessage.current.image_id === imageId
       ? pendingMessage.current
-      : { id: uuid(), text: message }
+      : { id: uuid(), text: message, image_id: imageId }
     pendingMessage.current = body
     send.mutate(body, {
       onSuccess: () => {
@@ -120,6 +144,11 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
         if (pendingMessage.current?.id !== body.id) return
         pendingMessage.current = null
         setText((current) => current.trim() === message ? '' : current)
+        setPicture((current) => {
+          if (current?.id !== imageId) return current
+          URL.revokeObjectURL(current.preview)
+          return null
+        })
       },
     })
   }
@@ -154,7 +183,8 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
                 ? <Link to={weekLink(message.week_start)} className="mb-1 block text-xs font-semibold underline">{t('coachSpace.week.aboutWeek', { date: planDate(message.week_start) })}</Link>
                 : <p className="mb-1 text-xs font-semibold">{t('coachSpace.week.aboutWeek', { date: planDate(message.week_start) })}</p>
             )}
-            <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
+            {message.image && <MessagePicture imageId={message.image.id} />}
+            {message.text && <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>}
             <p className="mt-1 text-right text-xs text-muted">
               {new Date(message.created_at).toLocaleString(getFormatLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </p>
@@ -165,8 +195,21 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
       <form className="flex flex-col gap-2" onSubmit={submit}>
         <label htmlFor="coach-message" className="text-sm font-medium">{t('coach.newMessage')}</label>
         <textarea id="coach-message" value={text} onChange={(e) => setText(e.target.value)} maxLength={800} rows={3} className="w-full rounded-xl border border-line bg-card p-3 outline-none focus:border-brand" placeholder={t('coach.messagePlaceholder')} />
-        <FormError message={send.error ? errorMessage(send.error) : null} />
-        <Button disabled={send.isPending || !text.trim()}>{t('coach.sendMessage')}</Button>
+        {picture && (
+          <div className="flex items-start gap-2">
+            <img src={picture.preview} alt={t('coach.pictures.alt')} className="max-h-32 rounded-lg object-contain" />
+            <Button type="button" size="sm" variant="ghost" onClick={dropPicture}>{t('coach.pictures.remove')}</Button>
+          </div>
+        )}
+        <FormError message={pictureError ?? (upload.error && !pictureError ? errorMessage(upload.error) : send.error ? errorMessage(send.error) : null)} />
+        <div className="flex gap-2">
+          <label className={`app-button inline-flex min-h-11 cursor-pointer items-center bg-surface px-4 text-sm ${upload.isPending || picture ? 'pointer-events-none opacity-60' : ''}`}>
+            {upload.isPending ? t('coach.pictures.uploading') : t('coach.pictures.add')}
+            <input type="file" accept="image/*" className="sr-only" disabled={upload.isPending || !!picture}
+              onChange={(e) => { void pickPicture(e.target.files?.[0]); e.target.value = '' }} />
+          </label>
+          <Button className="flex-1" disabled={send.isPending || upload.isPending || (!text.trim() && !picture)}>{t('coach.sendMessage')}</Button>
+        </div>
       </form>
       )}
     </Card>

@@ -20,6 +20,8 @@ from training.stats import PERIODS, training_stats
 
 from .models import CoachMessage, CoachTask, ExerciseInstruction
 from .plan_views import active_connection_for
+from notifications.push import notify
+
 from .errors import workout_not_found
 from .views import access_facts, instruction_summary, message_summary, readiness_summary
 
@@ -277,6 +279,8 @@ class ClientInstructionsView(APIView):
             raise ValidationError({'exercise_id': _('That exercise is not available to this client.')})
         if data['text']:
             ExerciseInstruction.objects.update_or_create(connection=connection, exercise=exercise, defaults={'text': data['text']})
+            notify(connection.client, title='POMAK', tag=f'instruction-{connection.id}', url='/trening',
+                   body=lambda: _('Your coach added an instruction for %(exercise)s.') % {'exercise': exercise.name})
         else:
             ExerciseInstruction.objects.filter(connection=connection, exercise=exercise).delete()
         return Response(self.listing(connection))

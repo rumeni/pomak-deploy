@@ -593,6 +593,11 @@ export const en = {
     noMessages: 'No messages yet. Send the first one.',
     unread_one: '{{count}} unread message',
     unread_other: '{{count}} unread messages',
+    pictures: {
+      add: 'Picture', uploading: 'Sending picture…', remove: 'Remove picture', alt: 'Picture from the conversation',
+      open: 'Open picture', unavailable: 'Picture not available.', notPicture: 'That file is not a picture.',
+      tooLarge: 'The picture is too large (at most 4 MB).',
+    },
     loadOlderMessages: 'Load older messages',
     loadingOlderMessages: 'Loading older messages…',
     newMessage: 'New message',
@@ -1011,6 +1016,7 @@ export const en = {
       bio: 'A few words about you',
       preview: 'How clients see you',
       previewHint: 'Before accepting an invitation and on their Coach tab.',
+      addPhoto: 'Add picture', changePhoto: 'Change picture', removePhoto: 'Remove picture',
       saved: 'Saved.',
       account: 'Account and settings',
       errors: {
@@ -1020,6 +1026,12 @@ export const en = {
         city: 'Enter the city where you train clients.',
       },
     },
+  },
+  push: {
+    title: 'Notifications on this device',
+    text: 'A new message, a plan change or an instruction from your coach. A notification only says who did what, never the message itself.',
+    turnOn: 'Turn on notifications', turnOff: 'Turn off notifications',
+    denied: 'Notifications are blocked in the device or browser settings. Allow them there, then try again.',
   },
   profile: {
     exactAlarmsTitle: 'Exact rest notifications',

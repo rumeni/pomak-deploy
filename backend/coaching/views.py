@@ -11,12 +11,14 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
+from django.http import HttpResponse
 from django.db.models import Count, Max, Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers, status
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -28,11 +30,16 @@ from training.readiness import readiness_answers, readiness_score
 from core.views import require_object_body
 
 from .models import (
+    CoachPhoto,
     ExerciseInstruction,
+    MessageImage,
     CoachAssignment, CoachConnection, CoachInvitation, CoachMessage, CoachNote, CoachProfile, CoachTask,
 )
 from .plans import assignable_routine, copy_routine
+from notifications.push import notify
+
 from .inbox import mark_read, unread_counts
+from .media import MESSAGE_SIDE, PHOTO_SIDE, process_image
 from .tasks import lock_active, sync_tasks, visible_tasks
 
 
@@ -151,6 +158,22 @@ def access_facts(connection):
     }
 
 
+def photo_version(user):
+    return CoachPhoto.objects.filter(user=user).values_list('updated_at', flat=True).first()
+
+
+def notify_message(connection, sender, message):
+    """Push to the other side: who wrote, never what (no message text on a lock screen)."""
+    to_coach = sender.pk == connection.client_id
+    recipient = connection.coach if to_coach else connection.client
+    body = (_('Sent a picture.') if message.image_id and not message.text
+            else _('Commented on a workout.') if message.workout_id
+            else _('Commented on a week.') if message.week_start
+            else _('New message.'))
+    notify(recipient, title=display_name(sender), body=body,
+           url=f'/trener/poruke/{connection.id}' if to_coach else '/trener', tag=f'chat-{connection.id}')
+
+
 def coach_card(user):
     """What a client may see about a coach: never the email or anything private."""
     profile = CoachProfile.objects.filter(user=user).first()
@@ -165,6 +188,8 @@ def coach_card(user):
         'gym_name': profile.gym_name if profile else '',
         'city': profile.city if profile else '',
         'address': profile.address if profile else '',
+        # Version of the profile picture (when it changed), or null without one.
+        'photo': photo_version(user),
     }
 
 
@@ -188,6 +213,8 @@ def message_summary(item):
         'workout': {'id': str(workout.id), 'name': workout.name, 'started_at': workout.started_at} if workout else None,
         # A comment on a week's review (its Monday), or null.
         'week_start': item.week_start,
+        # A picture, fetched separately by participants only (GET /api/coach/images/<id>/).
+        'image': {'id': str(item.image_id)} if item.image_id else None,
     }
 
 
@@ -258,7 +285,9 @@ class AssignSerializer(serializers.Serializer):
 
 class MessageSerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False)
-    text = serializers.CharField(max_length=800, trim_whitespace=True, allow_blank=False)
+    # May be empty only when a picture is sent.
+    text = serializers.CharField(max_length=800, trim_whitespace=True, allow_blank=True, required=False, default='')
+    image_id = serializers.UUIDField(required=False, allow_null=True)
     # A comment on one of the client's workouts, or on a week's review (any day of the week).
     workout_id = serializers.UUIDField(required=False, allow_null=True)
     week = serializers.DateField(required=False, allow_null=True)
@@ -270,6 +299,11 @@ class MessageSerializer(serializers.Serializer):
         if monday > timezone.localdate():
             raise serializers.ValidationError(_('That week has not started yet.'))
         return monday
+
+    def validate(self, data):
+        if not data.get('text') and not data.get('image_id'):
+            raise serializers.ValidationError({'text': _('Write a message or add a picture.')})
+        return data
 
 
 class NoteSerializer(serializers.Serializer):
@@ -340,7 +374,8 @@ def profile_response(user, profile):
         'years_experience': None, 'completed_at': None, 'specialties': [], 'qualifications': '', 'bio': '',
         'work_mode': '', 'gym_name': '', 'city': '', 'address': '',
     }
-    return {**data, 'name': display_name(user), 'specialty_choices': list(CoachProfile.SPECIALTIES)}
+    return {**data, 'id': str(user.id), 'name': display_name(user), 'photo': photo_version(user),
+            'specialty_choices': list(CoachProfile.SPECIALTIES)}
 
 
 def coach_client_rows(connections, now, unread=None):
@@ -730,7 +765,8 @@ class MessagesView(APIView):
                 # Keep checking after workout deletion (workout FK becomes NULL).
                 if (existing.text != text
                         or (existing.workout_context_id or existing.workout_id) != serializer.validated_data.get('workout_id')
-                        or existing.week_start != serializer.validated_data.get('week')):
+                        or existing.week_start != serializer.validated_data.get('week')
+                        or existing.image_id != serializer.validated_data.get('image_id')):
                     raise ValidationError({'id': 'This message ID has different content or destination.'})
                 return Response(message_summary(existing), status=status.HTTP_200_OK)
         workout = None
@@ -738,6 +774,14 @@ class MessagesView(APIView):
             workout = WorkoutSession.objects.filter(pk=serializer.validated_data['workout_id'], owner_id=connection.client_id).first()
             if workout is None:
                 raise ValidationError({'workout_id': _('That workout is not part of this collaboration.')})
+        image = None
+        if serializer.validated_data.get('image_id'):
+            # The sender's own upload to this conversation, not yet in any message.
+            image = MessageImage.objects.defer('data').filter(
+                pk=serializer.validated_data['image_id'], connection=connection, uploader=request.user, message__isnull=True,
+            ).first()
+            if image is None:
+                raise ValidationError({'image_id': _('That picture cannot be sent here.')})
         # Checked under the lock: an end that committed meanwhile wins.
         if connection.ended_at is not None:
             raise CollaborationEnded()
@@ -745,8 +789,9 @@ class MessagesView(APIView):
             **({'id': message_id} if message_id else {}),
             connection=connection, sender=request.user, text=text, workout=workout,
             workout_context_id=serializer.validated_data.get('workout_id'),
-            week_start=serializer.validated_data.get('week'),
+            week_start=serializer.validated_data.get('week'), image=image,
         )
+        notify_message(connection, request.user, message)
         return Response(message_summary(message), status=status.HTTP_201_CREATED)
 
 
@@ -930,4 +975,72 @@ class MyInstructionsView(APIView):
             connection__client=request.user, connection__ended_at__isnull=True,
         ).select_related('exercise')
         return Response([instruction_summary(x) for x in rows])
+
+
+IMAGE_HEADERS = {'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff',
+                 'Content-Security-Policy': "default-src 'none'", 'Cross-Origin-Resource-Policy': 'same-site'}
+MAX_PENDING_IMAGES = 20
+
+
+def image_response(data):
+    response = HttpResponse(bytes(data), content_type='image/jpeg')
+    for name, value in IMAGE_HEADERS.items():
+        response[name] = value
+    return response
+
+
+class MessageImagesView(APIView):
+    """Upload a picture for a message in an active conversation (sent with the next message)."""
+
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        relation = connection_for_messages(request)
+        if relation.ended_at is not None:
+            raise CollaborationEnded()
+        recent = timezone.now() - timedelta(days=1)
+        if MessageImage.objects.filter(uploader=request.user, message__isnull=True, created_at__gte=recent).count() >= MAX_PENDING_IMAGES:
+            raise ValidationError({'file': _('Too many unsent pictures. Send or wait a day.')})
+        data, width, height = process_image(request.FILES.get('file'), MESSAGE_SIDE)
+        image = MessageImage.objects.create(connection=relation, uploader=request.user, data=data, width=width, height=height)
+        return Response({'id': str(image.id), 'width': width, 'height': height}, status=status.HTTP_201_CREATED)
+
+
+class MessageImageView(APIView):
+    """A picture of a conversation, for its two people only (also in the archive)."""
+
+    def get(self, request, pk):
+        image = MessageImage.objects.filter(
+            Q(connection__coach=request.user) | Q(connection__client=request.user), pk=pk,
+        ).filter(Q(message__isnull=False) | Q(uploader=request.user)).values_list('data', flat=True).first()
+        if image is None:
+            raise NotFound()
+        return image_response(image)
+
+
+class CoachPhotoView(APIView):
+    """The coach's own profile picture: upload (replaces) or remove."""
+
+    parser_classes = [MultiPartParser]
+
+    def put(self, request):
+        coach_only(request)
+        data, _width, _height = process_image(request.FILES.get('file'), PHOTO_SIDE)
+        photo, _created = CoachPhoto.objects.update_or_create(user=request.user, defaults={'data': data})
+        return Response({'photo': photo.updated_at})
+
+    def delete(self, request):
+        coach_only(request)
+        CoachPhoto.objects.filter(user=request.user).delete()
+        return Response({'photo': None})
+
+
+class CoachPhotoImageView(APIView):
+    """A coach's picture: part of his card, which clients see before and during a collaboration."""
+
+    def get(self, request, user_id):
+        data = CoachPhoto.objects.filter(user_id=user_id, user__profile__is_coach=True).values_list('data', flat=True).first()
+        if data is None:
+            raise NotFound()
+        return image_response(data)
 

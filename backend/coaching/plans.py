@@ -30,6 +30,8 @@ from rest_framework.exceptions import APIException, ValidationError
 from training.models import Routine, RoutineExercise, RoutineSet
 from training.serializers import RoutineSerializer
 
+from notifications.push import notify
+
 from .models import ClientPlan, ClientPlanDay, ClientPlanVersion, CoachAssignment, PlanRequest
 
 MAX_PLAN_DAYS_AHEAD = 366
@@ -124,6 +126,7 @@ def save_version(connection, *, valid_from, weeks, name, reason, template, days)
     """Create a plan version. `days`: [(weekday, client routine, prescription)]. Call with the
     collaboration locked."""
     plan, _created = ClientPlan.objects.get_or_create(connection=connection)
+    notify(connection.client, title='POMAK', body=_('Your coach updated your plan.'), url='/trener', tag=f'plan-{connection.id}')
     replaced = set()
     old = plan.versions.filter(valid_from=valid_from).first()
     if old is not None:

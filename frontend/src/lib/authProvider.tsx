@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import i18n, { changeLanguage, fromServerLanguage, toServerLanguage } from '../i18n'
+import { disablePush } from './push'
 import { api, revokePendingWebLogout, webHeaders, withAuthLock, type AuthScope, type ScopedRequestConfig } from './api'
 import { performLogin } from './login'
 import { performRegistration } from './registration'
@@ -135,6 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
       }
     })
+    // Drop this device's push subscription first (locally at once, on the server best effort).
+    void disablePush()
     void tokens.clear() // Offline local logout never awaits the network.
     setHasToken(false)
     queryClient.clear()
