@@ -187,3 +187,35 @@ class CheckInRecipientTests(WeekTestCase):
         # Without saying who it is for, nothing is saved.
         self.assertEqual(self.client.put(self.own(), {'energy': 3}, format='json').status_code, 400)
 
+
+class CheckInWithdrawalTests(WeekTestCase):
+    def test_withdrawal_removes_task_and_versions_access(self):
+        from coaching.tasks import weekly_checkin_task
+
+        connection = CoachConnection.objects.create(coach=self.coach, client=self.ana)
+        url = f'/api/coach/clients/{self.ana.pk}/weeks/{self.today.isoformat()}/'
+        self.assertEqual(self.checkin(self.ana, notes='Shared note').status_code, 200)
+        task = CoachTask.objects.get(kind='weekly_checkin', connection=connection)
+        self.as_user(self.coach)
+        before = self.client.get(url).data
+        self.assertEqual(before['check_in']['notes'], 'Shared note')
+
+        self.assertEqual(self.checkin(self.ana, share=False, notes='Private note').status_code, 200)
+        # A delayed task writer must not resurrect the withdrawn check-in.
+        weekly_checkin_task(connection.pk, self.monday)
+        self.assertFalse(CoachTask.objects.filter(kind='weekly_checkin', connection=connection).exists())
+        self.as_user(self.coach)
+        after = self.client.get(url).data
+        self.assertIsNone(after['check_in'])
+        self.assertEqual(after['access']['access_version'], before['access']['access_version'] + 1)
+        self.assertEqual(self.client.patch(f'/api/coach/tasks/{task.pk}/', {'action': 'done'}, format='json').status_code, 404)
+
+        self.assertEqual(self.checkin(self.ana, share=False, notes='Still private').status_code, 200)
+        connection.refresh_from_db()
+        self.assertEqual(connection.access_version, after['access']['access_version'])
+        self.assertEqual(self.checkin(self.ana, notes='Shared again').status_code, 200)
+        self.assertEqual(CoachTask.objects.filter(kind='weekly_checkin', connection=connection).count(), 1)
+        self.as_user(self.coach)
+        fresh = self.client.get(url).data
+        self.assertEqual(fresh['check_in']['notes'], 'Shared again')
+        self.assertEqual(fresh['access']['access_version'], after['access']['access_version'] + 1)

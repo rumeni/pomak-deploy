@@ -4,7 +4,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { accessRegistry, dashboardAccess, guardVerdict, isAccessRevoked, isCollaborationChanged, isMissingResource, purgeClient, type ServerAccess } from './access'
+import { accessRegistry, dashboardAccess, guardVerdict, isAccessRevoked, isCollaborationChanged, isMissingResource, purgeClient, redactWeek, visibleTaskList, type ServerAccess } from './access'
+
+import type { WeekReview } from '../progress/weekApi'
+import type { CoachTask } from './tasks'
 
 const state: { qc: QueryClient; dashboard?: unknown; targets: Record<string, unknown>; stats: Record<string, unknown> } = {
   qc: new QueryClient(), targets: {}, stats: {},
@@ -105,6 +108,30 @@ describe('every coach view of client data follows the access registry', () => {
     // Fresh, valid views of the same client keep working.
     expect(guardVerdict(access(), null, dashboardAccess(dashboard(), registry), registry).state).toBe('ok')
     expect(isAccessRevoked(httpError(404, { code: 'collaboration_not_found' }))).toBe(true)
+  })
+
+  it('a newer sharing version hides cached weekly answers and the old check-in task', () => {
+    const registry = accessRegistry(state.qc)
+    const old: WeekReview = {
+      week_start: '2026-11-16', week_end: '2026-11-22', access: access(),
+      workouts: { count: 1, target: null },
+      training: { sessions: 1, working_sets: 1, volume_kg: '100', avg_rpe: null },
+      plan: null, weight: null, nutrition: null, readiness: null,
+      shared: { measurements: true, nutrition: true, readiness: true },
+      check_in: { energy: 4, progress: null, nutrition: null, satisfaction: null, hardest: '', notes: 'Private note' },
+    }
+    const task: CoachTask = {
+      id: 'weekly-1', kind: 'weekly_checkin', state: 'open', snoozed_until: null, resolved_at: null,
+      event_at: '2026-11-18T10:00:00Z', data: { week_start: old.week_start },
+      client: { id: 'client-1', name: 'Ana' },
+      connection: { id: 'conn-1', access_version: 1, connected_at: CONNECTED },
+    }
+    const fresh = dashboardAccess(dashboard({ access_version: 2 }), registry)
+    expect(guardVerdict(old.access, null, fresh, registry).state).toBe('stale')
+    expect(redactWeek(old).check_in).toBeNull()
+    expect(redactWeek(old).training).toEqual(old.training)
+    expect(visibleTaskList([task], fresh, registry)).toEqual([])
+    expect(visibleTaskList([{ ...task, connection: { id: 'conn-1', access_version: 2, connected_at: CONNECTED } }], fresh, registry)).toHaveLength(1)
   })
 
   it('tells a write meant for an older collaboration apart', () => {

@@ -123,24 +123,43 @@ class WeekReviewView(APIView):
         serializer = WeeklyCheckInSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         from coaching.errors import CollaborationChanged
-        from coaching.tasks import lock_active, weekly_checkin_task
+        from coaching.models import CoachConnection, CoachTask
+        from coaching.tasks import weekly_checkin_task
 
         # Shared only with the collaboration the athlete chose on the form, and only if that very
         # one is still active (locked while saving); never with one that replaced it meanwhile.
         data = dict(serializer.validated_data)
         share_with = data.pop('share_with')
         with transaction.atomic():
-            coach = None
-            if share_with is not None:
-                coach = lock_active(share_with)
-                if coach is None or coach.client_id != request.user.id:
-                    raise CollaborationChanged()
+            # Always lock the active collaboration first, even for a private save.
+            # This is the same lock order as task actions and collaboration teardown.
+            active = CoachConnection.objects.select_for_update().filter(
+                client=request.user, ended_at__isnull=True,
+            ).first()
+            if share_with is not None and (active is None or active.pk != share_with):
+                raise CollaborationChanged()
             checkin, _created = WeeklyCheckIn.objects.select_for_update().get_or_create(user=request.user, week_start=monday)
+            previous = checkin.shared_with_id
+            # A new collaboration may have appeared while a private save was waiting.
+            # Never change a live recipient without holding its lock; retry instead.
+            if previous and (active is None or previous != active.pk) and CoachConnection.objects.filter(
+                pk=previous, ended_at__isnull=True,
+            ).exists():
+                raise CollaborationChanged()
             for field, value in data.items():
                 setattr(checkin, field, value)
-            checkin.shared_with = coach
+            checkin.shared_with_id = share_with
             checkin.save()
-        if coach is not None:
-            weekly_checkin_task(coach.id, monday)
+            if active is not None and previous != share_with:
+                # Version both sharing and withdrawal so delayed responses cannot reveal old answers.
+                active.access_version += 1
+                active.save(update_fields=['access_version', 'updated_at'])
+            if active is not None:
+                if share_with is None:
+                    CoachTask.objects.filter(
+                        connection=active, kind=CoachTask.Kind.WEEKLY_CHECKIN, key=monday.isoformat(),
+                    ).delete()
+                else:
+                    weekly_checkin_task(active.pk, monday)
         return Response(weekly.week_review(request.user, monday))
 

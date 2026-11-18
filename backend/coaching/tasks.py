@@ -300,10 +300,14 @@ def visible_tasks(coach, now=None) -> list:
 
 
 def weekly_checkin_task(connection_id, monday) -> None:
-    """The client wrote his week's check-in for this coach: one task (never repeated for the week)."""
+    """Raise one task only while the check-in is still explicitly shared with this coach."""
+    from progress.models import WeeklyCheckIn
+
     with transaction.atomic():
         connection = lock_active(connection_id)
-        if connection is None:
+        if connection is None or not WeeklyCheckIn.objects.filter(
+            user_id=connection.client_id, week_start=monday, shared_with_id=connection.pk,
+        ).exists():
             return
         CoachTask.objects.bulk_create([CoachTask(
             connection=connection, kind=CoachTask.Kind.WEEKLY_CHECKIN, key=monday.isoformat(),

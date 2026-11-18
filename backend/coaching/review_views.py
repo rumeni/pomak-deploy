@@ -43,7 +43,7 @@ def _text(value, limit=100):
 def _decimal_text(value):
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return str(value) if 0 <= number <= 100_000 else None
 
@@ -73,7 +73,7 @@ def clean_plan(snapshot):
                 'distance_m': _int(s.get('distance_m'), high=1_000_000),
             })
         exercises.append({'exercise': {'id': _text(exercise.get('id'), 40), 'name': _text(exercise.get('name'))}, 'sets': sets[:30]})
-    return {'name': _text(snapshot.get('name')), 'exercises': exercises}
+    return {'name': _text(snapshot.get('name')), 'exercises': exercises} if exercises else None
 
 
 def _decimal(value):

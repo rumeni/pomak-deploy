@@ -297,3 +297,5 @@ klijenta iz T1.
   učitavanje na trenutnoj verziji.
 - **Osvežavanje:** ovi ekrani se sami osvežavaju na 30 sekundi, pa i otvoren ekran primeti opoziv.
 
+
+- Povlačenje deljenja nedeljnog osvrta uklanja njegov zadatak i povećava verziju pristupa, u istoj transakciji kao čuvanje osvrta. Zakasneli zadatak ne može se ponovo napraviti dok je osvrt privatan. Prethodno učitani osvrt i zadatak se sakrivaju kada aplikacija sazna za noviju verziju; bez veze opoziv nije trenutno vidljiv.

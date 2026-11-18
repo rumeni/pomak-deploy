@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import type { CoachClientDetails } from './api'
 import type { CoachTask } from './tasks'
+import type { WeekReview } from '../progress/weekApi'
 
 /**
  * What the coach may see is ordered by facts from the SERVER, never by when a response happened
@@ -238,6 +239,15 @@ export function redactCached(detail: CoachClientDetails, facts: AccessFacts): Co
   }
 }
 
+/** Drop all opt-in weekly data until a response at the current access version arrives. */
+export function redactWeek(review: WeekReview): WeekReview {
+  return {
+    ...review,
+    weight: null, nutrition: null, readiness: null, check_in: null,
+    shared: { measurements: false, nutrition: false, readiness: false },
+  }
+}
+
 /**
  * Tasks the coach may see now, each judged by its own collaboration and access version against
  * the highest version known from any source: none of a revoked collaboration; a readiness task
@@ -249,6 +259,8 @@ export function visibleTaskList(tasks: CoachTask[], dashboard: DashboardAccess |
     if (!c) return !dashboard || dashboard.rows.some((r) => r.client.id === task.client.id)
     const { verdict, known } = judge({ id: c.id, client_id: task.client.id, access_version: c.access_version, connected_at: c.connected_at }, dashboard, registry)
     if (verdict === 'revoked') return false
+    // A withdrawn check-in has no task at the new version, even if an old list arrives late.
+    if (task.kind === 'weekly_checkin') return verdict !== 'stale'
     if (task.kind !== 'low_readiness') return true
     if (verdict === 'stale') return false
     if (!known) return true

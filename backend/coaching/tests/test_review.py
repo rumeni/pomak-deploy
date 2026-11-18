@@ -216,6 +216,19 @@ class ReviewIntegrityTests(ReviewTestCase):
                         self.assertIsNone(s['reps_min']) if s['reps_min'] is None else self.assertIsInstance(s['reps_min'], int)
             self.assertEqual(response.data['exercises'][0]['sets'][0]['reps'], 9)
 
+    def test_oversized_snapshot_numbers_are_ignored(self):
+        self.as_user(self.coach)
+        WorkoutSession.objects.filter(pk=self.workout.pk).update(plan_snapshot={
+            'exercises': [{'exercise': {'id': 'exercise', 'name': 'Test'},
+                           'sets': [{'weight_kg': 10**400, 'rpe': 10**400}]}],
+        })
+        response = self.client.get(self.url())
+        self.assertEqual(response.status_code, 200)
+        planned = response.data['plan']['exercises'][0]['sets'][0]
+        self.assertIsNone(planned['weight_kg'])
+        self.assertIsNone(planned['rpe'])
+        self.assertEqual(response.data['exercises'][0]['sets'][0]['reps'], 9)
+
     def test_target_and_review_writes_are_bound_to_their_collaboration(self):
         CoachConnection.objects.filter(pk=self.connection.pk).update(coach_sets_nutrition=True)
         stale = str(self.connection.pk)

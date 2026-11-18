@@ -7,6 +7,7 @@ import { CheckInAnswers, WeekReport } from '../progress/WeekReport'
 import { useClientWeek } from '../progress/weekApi'
 import { mondayFromParam, shiftWeek, thisMonday, weekLabel } from '../progress/weeks'
 import { CoachMessages } from './CoachMessages'
+import { redactWeek } from './access'
 import { useClientGuard } from './guard'
 
 /** A client's week for the coach: the facts he shares, his check-in, and the comments on the week. */
@@ -21,12 +22,10 @@ export function ClientWeekPage() {
   const week = useClientWeek(id, monday)
   const guard = useClientGuard(id, week, {
     key: ['coach-client-week', id, monday],
-    redact: (d) => ({ ...d, weight: null, nutrition: null, readiness: null }),
+    redact: redactWeek,
   })
-  // Access changed since: no weight, nutrition or readiness until read again.
-  const review = week.data && guard.state === 'stale'
-    ? { ...week.data, weight: null, nutrition: null, readiness: null, shared: { measurements: false, nutrition: false, readiness: false } }
-    : week.data
+  // Access changed since: no consent categories or check-in until read again.
+  const review = week.data && guard.state === 'stale' ? redactWeek(week.data) : week.data
   const go = (value: string) => setParams(value === current ? {} : { od: value }, { replace: true })
   return (
     <div className="min-h-full pb-12">
