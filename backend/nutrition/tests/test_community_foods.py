@@ -78,6 +78,32 @@ class CommunityFoodTests(APITestCase):
         self.client.force_authenticate(self.other)
         self.assertEqual(self.create(shared=True, id=food_id).status_code, 400)
 
+    def test_identical_shared_retry_does_not_rewrite_food_or_portions(self):
+        food_id = str(uuid.uuid4())
+        payload = body(shared=True, id=food_id, portions=[{'name': 'Čaša', 'grams': '200'}])
+        self.assertEqual(self.client.post(URL, payload, format='json').status_code, 201)
+        food = Food.objects.get(pk=food_id)
+        original_time = food.updated_at
+        original_portion_ids = list(food.portions.values_list('id', flat=True))
+        retry = self.client.post(URL, payload, format='json')
+        self.assertEqual(retry.status_code, 200, retry.data)
+        food.refresh_from_db()
+        self.assertEqual(food.updated_at, original_time)
+        self.assertEqual(list(food.portions.values_list('id', flat=True)), original_portion_ids)
+
+    def test_open_reports_have_a_database_uniqueness_guard(self):
+        from django.db import IntegrityError, transaction
+
+        food = Food.objects.get(pk=self.create(shared=True).json()['id'])
+        FoodReport.objects.create(food=food, reporter=self.author, reason='Original')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                FoodReport.objects.create(food=food, reporter=self.author, reason='Duplicate')
+        self.assertEqual(FoodReport.objects.filter(food=food, resolved_at__isnull=True).count(), 1)
+        FoodReport.objects.filter(food=food).update(resolved_at=timezone.now())
+        FoodReport.objects.create(food=food, reporter=self.author, reason='New report')
+        self.assertEqual(FoodReport.objects.filter(food=food).count(), 2)
+
     def test_report_wrong_values_on_shared_foods_only(self):
         shared = self.create(shared=True).json()
         private = self.create(name='Moj jogurt').json()

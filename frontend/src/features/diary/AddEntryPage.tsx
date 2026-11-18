@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -30,6 +30,9 @@ export function AddEntryPage() {
   const recent = useRecentFoods(me?.id)
   const savedMeals = useSavedMeals()
   const deleteSaved = useDeleteSavedMeal()
+  const addingMealRef = useRef(false)
+  const [addingMeal, setAddingMeal] = useState(false)
+  const [addMealError, setAddMealError] = useState<string | null>(null)
   const label = mealLabel(meal, mealSettings(me?.profile.meals), t)
   // A food added from here goes straight into this meal afterwards.
   const newFoodLink = (name: string) =>
@@ -42,12 +45,24 @@ export function AddEntryPage() {
 
   // Ceo sačuvani obrok odjednom; namirnice daju svoje današnje vrednosti.
   const addSavedMeal = async (saved: SavedMeal) => {
-    if (!me) return
-    const now = new Date()
-    const drafts = saved.items.flatMap((item) => entryFromSavedItem(item, uuid(), date, meal, now) ?? [])
-    for (const item of saved.items) if (item.food) await rememberFood(me.id, item.food)
-    await saveDrafts(me.id, drafts)
-    navigate(`/ishrana?datum=${date}`, { replace: true })
+    // A rapid second tap must not generate a second set of entry UUIDs.
+    if (!me || addingMealRef.current) return
+    addingMealRef.current = true
+    setAddingMeal(true)
+    setAddMealError(null)
+    try {
+      const now = new Date()
+      const drafts = saved.items.flatMap((item) => entryFromSavedItem(item, uuid(), date, meal, now) ?? [])
+      await saveDrafts(me.id, drafts)
+      // The diary is already durable; a failed recent-food cache must not invite a second import.
+      await Promise.allSettled(saved.items.filter((item) => item.food).map((item) => rememberFood(me.id, item.food!)))
+      navigate(`/ishrana?datum=${date}`, { replace: true })
+    } catch (error) {
+      setAddMealError(errorMessage(error))
+    } finally {
+      addingMealRef.current = false
+      setAddingMeal(false)
+    }
   }
 
   const onDeleteSaved = (saved: SavedMeal) => {
@@ -82,7 +97,7 @@ export function AddEntryPage() {
             <ul className="flex flex-col rounded-2xl bg-card shadow-sm ring-1 ring-line/60">
               {savedMeals.data.map((saved) => (
                 <li key={saved.id} className="flex items-center border-b border-line last:border-0">
-                  <button type="button" onClick={() => void addSavedMeal(saved)} className="flex min-h-16 flex-1 flex-col justify-center px-4 py-2 text-left active:bg-brand-soft">
+                  <button type="button" disabled={addingMeal} onClick={() => void addSavedMeal(saved)} className="flex min-h-16 flex-1 flex-col justify-center px-4 py-2 text-left active:bg-brand-soft">
                     <span className="font-medium">{saved.name}</span>
                     <span className="line-clamp-1 text-sm text-muted">
                       {t('diary.items', { count: saved.items.length })} · {saved.items.map((i) => i.food?.name ?? i.name).join(', ')}
@@ -101,7 +116,7 @@ export function AddEntryPage() {
             </ul>
           </>
         )}
-        {!search && <FormError message={deleteSaved.error ? errorMessage(deleteSaved.error) : null} />}
+        {!search && <FormError message={addMealError ?? (deleteSaved.error ? errorMessage(deleteSaved.error) : null)} />}
         {!search && savedMeals.isError && <p className="text-sm text-muted">{t('diary.savedMealsOffline')}</p>}
 
         {!search && <h2 className="mt-2 text-lg font-semibold">{t('diary.recent')}</h2>}

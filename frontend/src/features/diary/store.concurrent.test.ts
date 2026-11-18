@@ -39,6 +39,20 @@ afterEach(() => {
 })
 
 describe('atomic offline diary ordering across independent tabs', () => {
+  it('saves a complete meal in one transaction and requests sync once', async () => {
+    const { first } = await separateTabs()
+    await first.saveDrafts('u1', [entry(100), entry(200)])
+    const ops = await db.diaryOps.where('ownerId').equals('u1').sortBy('seq')
+    expect(ops).toHaveLength(2)
+    expect(ops[0].seq).toBeLessThan(ops[1].seq)
+  })
+
+  it('rolls back the entire saved meal when a later item fails', async () => {
+    const { first } = await separateTabs()
+    await expect(first.saveDrafts('u1', [entry(100), undefined as never])).rejects.toThrow()
+    expect(await db.diaryOps.count()).toBe(0)
+  })
+
   it('orders successive edits from different tabs in the same millisecond', async () => {
     const { first, second } = await separateTabs()
     await first.saveEntry('u1', 'same-entry', entry(150))

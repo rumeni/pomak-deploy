@@ -72,7 +72,7 @@ export function entryFromFood(
     fiber_g: scale(per100.fiber_g, grams, 'fiber_g'),
     created_at: now.toISOString(),
   }
-  return { body: bodyFor(preview), preview }
+  return { body: { ...bodyFor(preview), ...snapshotFields(preview) }, preview }
 }
 
 /** Izmena količine/obroka postojeće stavke iz namirnice: računa se iz njenog snimka, ne iz namirnice. */
@@ -158,6 +158,17 @@ export interface DisplayDay extends DiaryDay {
   statusPending: boolean
 }
 
+/** Immutable per-100 values sent with new food entries and exact historical copies. */
+function snapshotFields(e: DiaryEntry) {
+  return {
+    per100_kcal: e.per100_kcal!,
+    per100_protein_g: e.per100_protein_g,
+    per100_carbs_g: e.per100_carbs_g,
+    per100_fat_g: e.per100_fat_g,
+    per100_fiber_g: e.per100_fiber_g,
+  }
+}
+
 /** Dan za prikaz: stanje sa servera (ako ga ima) + neposlate izmene, redom. */
 export function applyOps(date: string, server: DiaryDay | null, ops: DiaryOpRow[]): DisplayDay {
   let entries = [...(server?.entries ?? [])]
@@ -231,14 +242,7 @@ export function copyEntry(entry: DiaryEntry, id: string, date: string, meal: Mea
   if (isFromFood(entry) && entry.food_id) {
     const preview: DiaryEntry = { ...entry, id, date, meal, created_at: now.toISOString() }
     return {
-      body: {
-        ...bodyFor(preview),
-        per100_kcal: entry.per100_kcal!,
-        per100_protein_g: entry.per100_protein_g,
-        per100_carbs_g: entry.per100_carbs_g,
-        per100_fat_g: entry.per100_fat_g,
-        per100_fiber_g: entry.per100_fiber_g,
-      },
+      body: { ...bodyFor(preview), ...snapshotFields(entry) },
       preview,
     }
   }

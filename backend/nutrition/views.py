@@ -1,5 +1,7 @@
 import datetime
 
+from collections.abc import Mapping
+
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from django.utils import timezone
@@ -62,6 +64,12 @@ class FoodViewSet(
         # A shared community food has no owner; its author may still retry its creation.
         return record.owner_id == user.pk or (record.owner_id is None and record.created_by_id == user.pk)
 
+    def _matches_retry(self, body, saved):
+        # shared is create-only and absent from FoodSerializer output.
+        if isinstance(body, Mapping) and 'shared' in body:
+            saved = {**saved, 'shared': saved['source'] == Food.Source.COMMUNITY}
+        return super()._matches_retry(body, saved)
+
     def _require_own(self, item):
         # A community food can be corrected by its author until an admin verified it.
         if not can_edit_food(item, self.request):
@@ -123,13 +131,26 @@ class MealEntryView(APIView):
     """PUT /entries/<id>/ upisuje ili menja stavku (isti zahtev dvaput = isti rezultat); DELETE je briše."""
 
     def put(self, request, entry_id):
-        existing = MealEntry.objects.filter(pk=entry_id).first()
-        if existing is not None and existing.owner_id != request.user.pk:
-            raise NotFound()
-        serializer = MealEntryWriteSerializer(data=request.data, context={'request': request, 'existing': existing})
-        serializer.is_valid(raise_exception=True)
-        entry = serializer.save_entry(entry_id, request.user)
-        return Response(MealEntrySerializer(entry).data, status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)
+        # Two tabs may both find the same new UUID absent. The losing insert
+        # retries after the winner commits and updates only that owned entry.
+        for attempt in range(2):
+            try:
+                with transaction.atomic():
+                    existing = MealEntry.objects.select_for_update().filter(pk=entry_id).first()
+                    if existing is not None and existing.owner_id != request.user.pk:
+                        raise NotFound()
+                    serializer = MealEntryWriteSerializer(
+                        data=request.data, context={'request': request, 'existing': existing},
+                    )
+                    serializer.is_valid(raise_exception=True)
+                    entry = serializer.save_entry(entry_id, request.user)
+                    return Response(
+                        MealEntrySerializer(entry).data,
+                        status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED,
+                    )
+            except IntegrityError:
+                if attempt:
+                    raise
 
     def delete(self, request, entry_id):
         # Brisanje nepostojeće stavke je uspeh: ponovljeno slanje posle prekida veze ne sme da pukne.

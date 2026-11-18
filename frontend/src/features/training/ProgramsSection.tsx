@@ -11,7 +11,7 @@ import { tokens } from '../../lib/tokens'
 import { uuid } from '../../lib/uuid'
 import { useAuth } from '../../lib/auth'
 import type { Routine, RoutinePayload } from './api'
-import { describePrescription, importProgram, isImportingProgram, loadPendingProgram, programToRoutines, type PendingProgram, type Program } from './programs'
+import { describePrescription, importProgram, isImportingProgram, loadPendingProgram, programAlreadyAdded, programToRoutines, type PendingProgram, type Program } from './programs'
 
 function usePrograms() {
   return useQuery({
@@ -92,8 +92,7 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
   const [added, setAdded] = useState(false)
   // The batch (with its routine IDs) of an add that has not finished: a retry resumes it.
   const pending = useRef<{ ownerId: string; record: PendingProgram } | null>(null)
-  const names = new Set(program.routines.map((r) => r.name))
-  const alreadyThere = !!routines?.some((r) => names.has(r.name) && r.notes === program.name)
+  const alreadyThere = programAlreadyAdded(program, routines)
 
   const onAdd = () => {
     if (!me) return

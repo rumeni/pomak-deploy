@@ -36,13 +36,17 @@ def _monday(day: datetime.date) -> datetime.date:
     return day - datetime.timedelta(days=day.weekday())
 
 
-def _sessions(user, first: datetime.date | None, last: datetime.date):
+def _query_sessions(user, first: datetime.date | None, last: datetime.date):
     qs = WorkoutSession.objects.filter(owner=user, started_at__lt=_local_start(last + datetime.timedelta(days=1)))
     if first is not None:
         qs = qs.filter(started_at__gte=_local_start(first))
-    return list(qs.order_by('started_at').prefetch_related(
+    return qs.order_by('started_at').prefetch_related(
         Prefetch('exercises', queryset=SessionExercise.objects.select_related('exercise').prefetch_related('sets')),
-    ))
+    )
+
+
+def _sessions(user, first: datetime.date | None, last: datetime.date):
+    return list(_query_sessions(user, first, last))
 
 
 class _Totals:
@@ -138,7 +142,9 @@ def training_stats(user, period: str) -> dict:
 
     # Best estimated 1RM per exercise in the period, flagged when it is also the all-time best.
     period_best = _best_e1rm(sessions)
-    all_time = _best_e1rm(_sessions(user, None, today)) if days else period_best
+    # Stream older workouts in bounded batches instead of loading a second full
+    # history merely to compare all-time personal records.
+    all_time = _best_e1rm(_query_sessions(user, None, today).iterator(chunk_size=100)) if days else period_best
     top = sorted(period_best.items(), key=lambda kv: kv[1][0], reverse=True)[:TOP_LIFTS]
 
     return {
