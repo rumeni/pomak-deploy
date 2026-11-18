@@ -299,3 +299,166 @@ klijenta iz T1.
 
 
 - Povlačenje deljenja nedeljnog osvrta uklanja njegov zadatak i povećava verziju pristupa, u istoj transakciji kao čuvanje osvrta. Zakasneli zadatak ne može se ponovo napraviti dok je osvrt privatan. Prethodno učitani osvrt i zadatak se sakrivaju kada aplikacija sazna za noviju verziju; bez veze opoziv nije trenutno vidljiv.
+
+## T3a: nepročitane poruke i uputstva za vežbe
+
+### Nepročitane poruke
+
+- **Oznaka pročitanosti.** Svaka strana saradnje ima svoju oznaku: poslednju pročitanu poruku
+  (vreme i ID). Nepročitane su poruke druge strane posle nje. Oznaka se pomera samo napred, pa
+  stariji ekran ili zakasneli zahtev ne mogu ponovo da označe poruke kao nepročitane.
+- **Kada je poruka pročitana.** Kad je ceo razgovor na ekranu i aplikacija je vidljiva.
+  Komentari na treningu ili nedelji ne pomeraju oznaku, jer ne prikazuju ceo razgovor.
+  Arhivirani razgovor može da se pročita.
+- **Gde se vidi.**
+  - broj na kartici Poruke (trener) i Trener (klijent);
+  - broj uz razgovor i uz klijenta na listi;
+  - kartica „N nepročitanih poruka“ na Pregledu, sa imenima klijenata.
+- **API.**
+  - `POST /api/coach/messages/read/ {message_id}` pomera oznaku do te poruke. Strani razgovor
+    vraća 404.
+  - `GET /api/coach/unread/` vraća ukupan broj za navigaciju, uz osvežavanje na 30 sekundi.
+  - Dashboard i lista razgovora dobijaju nova polja `unread_messages` i `unread`; stara polja
+    ostaju, pa starije Android verzije rade kao do sada.
+- **Nepročitane poruke nisu zadatak.** Broj se računa uživo i nestaje čim se razgovor pročita,
+  pa nema zadatka koji bi trebalo ručno zatvoriti.
+
+### Uputstva za vežbe
+
+- **Šta je uputstvo.** Trenerova stalna napomena za jednu vežbu jednog klijenta (tehnika, tempo,
+  na šta da pazi). Po vežbi postoji najviše jedno uputstvo; novo zamenjuje staro, a prazno ga
+  briše.
+- **Gde ga trener piše.** U pregledu treninga, uz svaku urađenu vežbu, i na listi u tabu Plan.
+  Upis nosi ID saradnje, kao i ostali upisi iz T2 (409 `collaboration_changed` za staru saradnju).
+- **Koje vežbe.** Samo vežbe iz zajedničke biblioteke ili klijentove lične vežbe, nikad tuđe.
+- **Šta klijent vidi.** Uputstvo stoji na kartici te vežbe tokom treninga („Trener: …“), i to
+  samo od trenutnog trenera.
+  - Server navodi saradnju kojoj uputstva pripadaju.
+  - Ako aplikacija zna za drugu saradnju ili za prekid, stara uputstva se sakrivaju.
+  - Tokom treninga se osvežavaju svakog minuta.
+- **Trener vidi uputstva pod istom kontrolom pristupa kao ostale podatke klijenta.** Kad izgubi
+  pristup, brišu se iz keša. Pregled treninga prikazuje samo uputstva iste saradnje.
+- **Prvo uputstvo iz taba Plan.** Može se dodati i za vežbu iz trenutnog ili sledećeg plana.
+- **Izvoz podataka.** Uputstva su u izvozu i klijenta i trenera.
+- **Bez interneta.** Uputstva se učitavaju na početku treninga i ostaju dok je aplikacija
+  otvorena. Ako se aplikacija pokrene bez interneta, trening radi normalno, samo bez uputstava.
+
+### Uvođenje na produkciju
+
+- Migracija `coaching.0005_coach_inbox_instructions`.
+
+## T3b: push obaveštenja, slike u porukama i slika trenera
+
+### Push obaveštenja
+
+- **Uključuju se po uređaju, za svoj nalog.** U Profilu je stavka „Obaveštenja na ovom
+  uređaju“.
+  - Uključivanje je vezano za sesiju koja ga je pokrenulo. Ako dozvola stigne posle odjave ili
+    posle prijave drugog naloga, ništa se ne registruje.
+  - Uključivanje i isključivanje se nikad ne preklapaju.
+  - Uređaj pamti kom nalogu je registrovan; drugi nalog na istom uređaju vidi obaveštenja kao
+    isključena.
+- **Odjava.**
+  - Pretplata na uređaju se odmah poništava, a već prikazana obaveštenja se brišu.
+  - Server briše registraciju kroz sam zahtev za odjavu. Na webu se taj zahtev ponavlja dok ne
+    uspe.
+  - Obaveštenje koje je sistem već primio pre odjave i dalje može da se pojavi.
+- **Nova pretplata ili token.** Posle prijave aplikacija osvežava registraciju ako je pregledač
+  obnovio pretplatu ili je Firebase promenio token.
+- **Kanali.**
+  - u pregledaču: Web Push (VAPID), preko service worker-a (`public/push-sw.js`);
+  - u Android aplikaciji: Firebase Cloud Messaging (FCM HTTP v1).
+- **Šta šaljemo.**
+  - nova poruka (i komentar na trening ili nedelju) drugoj strani;
+  - izmena plana i novo uputstvo klijentu (bez naziva vežbe);
+  - podeljen nedeljni osvrt treneru.
+- **Sadržaj obaveštenja.** Samo ko je šta uradio i koji ekran otvara, nikad tekst poruke ili
+  zdravstveni podatak. Jezik je jezik primaoca.
+- **Kako se šalje.** Preko reda za slanje u bazi (`PushMessage`).
+  - Obaveštenje se upisuje u istoj transakciji kao događaj; ako se događaj poništi, nema ni
+    obaveštenja.
+  - Posle upisa jedan QStash poziv pokreće worker (`/api/internal/push-deliver/`, samo sa
+    potpisom za `PUSH_WORKER_URL`). Worker isprazni red u vremenskom okviru od 7 sekundi, a ako
+    ostane posla, pokreće se ponovo.
+  - Bez QStash-a red se prazni kratko (do 3 s) posle upisa. Ostatak odlazi uz sledeće
+    osvežavanje broja nepročitanih poruka, ili najkasnije uz dnevni cron.
+  - Svi uređaji primaoca dobijaju obaveštenje istovremeno, sa rokom čekanja od 4 s.
+  - Obaveštenje starije od sat vremena se odbacuje.
+  - Uređaj koji servis prijavi kao nepostojeći briše se samo ako u međuvremenu nije ponovo
+    registrovan.
+  - Dodela programa za 50 klijenata pokreće jedno pražnjenje reda, ne 50.
+  - Greška u slanju nikad ne obara zahtev.
+- **Samo pravi push servisi.** Web pretplata se prihvata samo za push servise pregledača:
+  Google (FCM), Mozilla, Apple i Microsoft.
+  - Adresa mora biti na `https`, na podrazumevanom portu i bez korisničkog imena i lozinke.
+  - Ključevi pretplate moraju biti ispravni.
+  - Preusmeravanja se ne prate.
+  - Provera se ponavlja i pri slanju, pa server nikad ne šalje zahtev na druge adrese.
+- **Bez podešavanja servera ništa se ne šalje.** Aplikacija tada ne nudi uključivanje
+  obaveštenja.
+
+### Slike
+
+- **Obrada na serveru.** Svaka slika se dekodira, uspravi, smanji i ponovo snimi kao JPEG.
+  - Time se brišu svi metapodaci (GPS lokacija, model telefona, vreme) i odbija sve što nije
+    prava slika.
+  - Do 4 MB po slanju; telefon je pre slanja smanji.
+  - Slike u porukama su najviše 1600 px, slika trenera najviše 512 px.
+- **Čuvanje.** U bazi (Neon), bez spoljnog naloga. Za pilot je to dovoljno; ako slika bude
+  mnogo, isti API može da pređe na Vercel Blob bez promene aplikacije.
+- **Ko vidi.**
+  - **Sliku iz razgovora** vide samo dve osobe iz te saradnje, i u arhivi. Pre slanja poruke
+    sliku vidi samo onaj ko ju je postavio.
+  - **Slika trenera** je deo njegove kartice, pa je vidi svaki prijavljen korisnik koji zna ID
+    trenera.
+- **Bez keširanja.** Slike se šalju sa `Cache-Control: no-store`, a aplikacija ih čuva u
+  memoriji odvojeno po nalogu i briše pri odjavi. Drugi nalog na istom uređaju ih ne dobija.
+- **Zaključavanje.** Slika se obrađuje van zaključavanja, a upisuje pod zaključanom saradnjom. Ako
+  se saradnja u međuvremenu završi, slika se ne čuva.
+- **Neposlate slike.** Slika postavljena za poruku koja nije poslata briše se posle jednog dana
+  (dnevni cron). Brisanje ide pod istim zaključavanjem kao slanje poruke, pa se slika koja se
+  upravo šalje nikad ne obriše.
+- **Ograničenja po korisniku.** Najviše 20 neposlatih slika, a dnevno najviše 60 slika i 20 MB.
+- **Izvoz podataka.** Izvoz za sada samo označava da je poruka imala sliku. Kako korisnik može da
+  preuzme svoje slike, treba odlučiti pre šireg puštanja.
+- **Poruka sa slikom.** Tekst može da bude prazan. Ponovljeno slanje proverava i sliku, pa isti ID
+  sa drugom slikom ne prolazi. Slika iz druge saradnje ili od druge osobe se odbija.
+
+### Uvođenje na produkciju
+
+- **Migracije:** `coaching.0006_coach_photos_images` i `notifications.0001_initial`
+  (`PushDevice`, `PushMessage`).
+- **Nove biblioteke:** `requirements.txt` dobija `cryptography` i `Pillow`.
+- **Isporuka preko QStash-a.** Postavi `PUSH_WORKER_URL` na
+  `https://<api>/api/internal/push-deliver/`; QStash ključevi su isti kao za mejlove. Bez toga
+  isporuka radi u ograničenom režimu opisanom gore.
+- **Web push (VAPID)**, na Vercel projektu `pomak-api`, Production:
+  - `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` i `WEB_PUSH_CONTACT`.
+  - Ključevi su već postavljeni u Vercel Production 18.11.2026. Ne generisati novi par
+    bez plana za ponovno prijavljivanje postojećih browser pretplata.
+  - Kontakt može biti `mailto:` ili `https:` URL. Promena Vercel env zahteva novi
+    produkcioni deployment da bi ključ bio dostupan kodu.
+- **Android push (Firebase projekat `pomak-rs`):**
+  1. Firebase Android aplikacija ima package ID `rs.pomak.app`.
+  2. **Android klijentska konfiguracija nije u Git repozitorijumu.**
+     `frontend/android/app/google-services.json` je u `.gitignore`. U GitHub
+     Settings → Secrets and variables → Actions sačuvati **`ANDROID_GOOGLE_SERVICES_JSON`**
+     kao repository secret, čija je vrednost kompletan tekst izvornog JSON-a za
+     Firebase projekat `pomak-rs`. **To nije servisni nalog.**
+  3. Android CI učitava secret **isključivo pri `push` na `main`**, posle
+     pregleda i merge-a koda, proverava `project_id=pomak-rs` i
+     `package_name=rs.pomak.app`, pa postavlja `VITE_FCM_ENABLED=1`.
+     CI za PR ne dobija secret, tako da build bez FCM-a može da se testira
+     bez izlaganja vrednosti neproverenom PR kodu. Ako secret izostane,
+     Android se gradi bez push-a; proveriti log pre izdavanja APK-a.
+     Za lokalni Android build, kopirati JSON u `frontend/android/app/`
+     i postaviti `VITE_FCM_ENABLED=1` pre `npm run build`.
+  4. U Firebase Console → Project settings → Service accounts → Generate new private key
+     preuzeti serverski servisni nalog. Ceo njegov JSON uneti **direktno u Vercel**
+     `pomak-api` Production kao šifrovanu osetljivu promenljivu `FCM_SERVICE_ACCOUNT`.
+     Ovo **nije** `google-services.json` i nikad ne ide u Git niti u PR komentar.
+     Uveriti se da je Firebase Cloud Messaging API (HTTP v1) omogućen.
+  5. Pošto PR sa `notifications` kodom bude mergovan, uraditi migracije
+     `coaching.0005`, `coaching.0006`, `notifications.0001` i objaviti API/web.
+     Na uređaju instalirati novi APK napravljen sa konfiguracijom i proveriti prijavu
+     tokena, odobrenje za notifikacije i prijem stvarnog FCM push-a.

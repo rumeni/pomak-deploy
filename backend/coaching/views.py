@@ -11,12 +11,14 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
+from django.http import HttpResponse
 from django.db.models import Count, Max, Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers, status
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -28,9 +30,17 @@ from training.readiness import readiness_answers, readiness_score
 from core.views import require_object_body
 
 from .models import (
+    CoachPhoto,
+    ExerciseInstruction,
+    MessageImage,
     CoachAssignment, CoachConnection, CoachInvitation, CoachMessage, CoachNote, CoachProfile, CoachTask,
 )
 from .plans import assignable_routine, copy_routine
+from notifications.models import PushMessage
+from notifications.push import drain, notify, push_enabled, queue_configured
+
+from .inbox import mark_read, unread_counts
+from .media import MESSAGE_SIDE, PHOTO_SIDE, process_image
 from .tasks import lock_active, sync_tasks, visible_tasks
 
 
@@ -149,6 +159,22 @@ def access_facts(connection):
     }
 
 
+def photo_version(user):
+    return CoachPhoto.objects.filter(user=user).values_list('updated_at', flat=True).first()
+
+
+def notify_message(connection, sender, message):
+    """Push to the other side: who wrote, never what (no message text on a lock screen)."""
+    to_coach = sender.pk == connection.client_id
+    recipient = connection.coach if to_coach else connection.client
+    body = (_('Sent a picture.') if message.image_id and not message.text
+            else _('Commented on a workout.') if message.workout_id
+            else _('Commented on a week.') if message.week_start
+            else _('New message.'))
+    notify(recipient, title=display_name(sender), body=body,
+           url=f'/trener/poruke/{connection.id}' if to_coach else '/trener', tag=f'chat-{connection.id}')
+
+
 def coach_card(user):
     """What a client may see about a coach: never the email or anything private."""
     profile = CoachProfile.objects.filter(user=user).first()
@@ -163,6 +189,8 @@ def coach_card(user):
         'gym_name': profile.gym_name if profile else '',
         'city': profile.city if profile else '',
         'address': profile.address if profile else '',
+        # Version of the profile picture (when it changed), or null without one.
+        'photo': photo_version(user),
     }
 
 
@@ -186,6 +214,8 @@ def message_summary(item):
         'workout': {'id': str(workout.id), 'name': workout.name, 'started_at': workout.started_at} if workout else None,
         # A comment on a week's review (its Monday), or null.
         'week_start': item.week_start,
+        # A picture, fetched separately by participants only (GET /api/coach/images/<id>/).
+        'image': {'id': str(item.image_id)} if item.image_id else None,
     }
 
 
@@ -256,7 +286,9 @@ class AssignSerializer(serializers.Serializer):
 
 class MessageSerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False)
-    text = serializers.CharField(max_length=800, trim_whitespace=True, allow_blank=False)
+    # May be empty only when a picture is sent.
+    text = serializers.CharField(max_length=800, trim_whitespace=True, allow_blank=True, required=False, default='')
+    image_id = serializers.UUIDField(required=False, allow_null=True)
     # A comment on one of the client's workouts, or on a week's review (any day of the week).
     workout_id = serializers.UUIDField(required=False, allow_null=True)
     week = serializers.DateField(required=False, allow_null=True)
@@ -268,6 +300,11 @@ class MessageSerializer(serializers.Serializer):
         if monday > timezone.localdate():
             raise serializers.ValidationError(_('That week has not started yet.'))
         return monday
+
+    def validate(self, data):
+        if not data.get('text') and not data.get('image_id'):
+            raise serializers.ValidationError({'text': _('Write a message or add a picture.')})
+        return data
 
 
 class NoteSerializer(serializers.Serializer):
@@ -338,11 +375,13 @@ def profile_response(user, profile):
         'years_experience': None, 'completed_at': None, 'specialties': [], 'qualifications': '', 'bio': '',
         'work_mode': '', 'gym_name': '', 'city': '', 'address': '',
     }
-    return {**data, 'name': display_name(user), 'specialty_choices': list(CoachProfile.SPECIALTIES)}
+    return {**data, 'id': str(user.id), 'name': display_name(user), 'photo': photo_version(user),
+            'specialty_choices': list(CoachProfile.SPECIALTIES)}
 
 
-def coach_client_rows(connections, now):
-    """Client list rows: status, last workout, workouts this week and open tasks."""
+def coach_client_rows(connections, now, unread=None):
+    """Client list rows: status, last workout, workouts this week, open tasks and unread messages."""
+    unread = unread or {}
     client_ids = [c.client_id for c in connections]
     last = dict(
         WorkoutSession.objects.filter(owner_id__in=client_ids).values('owner_id')
@@ -363,6 +402,7 @@ def coach_client_rows(connections, now):
             'last_workout_at': last.get(c.client_id),
             'workouts_7d': week.get(c.client_id, 0),
             'open_tasks': open_tasks.get(c.id, 0),
+            'unread_messages': unread.get(c.id, 0),
         }
         for c in connections
     ]
@@ -386,10 +426,13 @@ class DashboardView(APIView):
             )
             profile = CoachProfile.objects.filter(user=request.user).first()
             day_start = timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
+            unread = unread_counts(request.user)
             return Response({
                 'role': 'coach',
                 'invitations': [invitation_summary(i) for i in invitations],
-                'clients': coach_client_rows(connections, now),
+                'clients': coach_client_rows(connections, now, unread),
+                # In every conversation, archived ones included.
+                'unread_messages': sum(unread.values()),
                 'archived_clients': [connection_summary(c) for c in archived],
                 'profile_completed': bool(profile and profile.completed_at),
                 # When this list was true on the server: a collaboration that began before it and is
@@ -416,6 +459,7 @@ class DashboardView(APIView):
             ] if connection else [],
             'assignments': [assignment_summary(x) for x in assignments if x.routine.archived_at is None],
             'archived': [connection_summary(c) for c in archived],
+            'unread_messages': sum(unread_counts(request.user).values()),
         })
 
 
@@ -722,7 +766,8 @@ class MessagesView(APIView):
                 # Keep checking after workout deletion (workout FK becomes NULL).
                 if (existing.text != text
                         or (existing.workout_context_id or existing.workout_id) != serializer.validated_data.get('workout_id')
-                        or existing.week_start != serializer.validated_data.get('week')):
+                        or existing.week_start != serializer.validated_data.get('week')
+                        or existing.image_id != serializer.validated_data.get('image_id')):
                     raise ValidationError({'id': 'This message ID has different content or destination.'})
                 return Response(message_summary(existing), status=status.HTTP_200_OK)
         workout = None
@@ -730,6 +775,15 @@ class MessagesView(APIView):
             workout = WorkoutSession.objects.filter(pk=serializer.validated_data['workout_id'], owner_id=connection.client_id).first()
             if workout is None:
                 raise ValidationError({'workout_id': _('That workout is not part of this collaboration.')})
+        image = None
+        if serializer.validated_data.get('image_id'):
+            # The sender's own upload to this conversation, not yet in any message.
+            # Locked after the collaboration (as the daily cleanup does): never attached and deleted at once.
+            image = MessageImage.objects.select_for_update(of=('self',)).defer('data').filter(
+                pk=serializer.validated_data['image_id'], connection=connection, uploader=request.user, message__isnull=True,
+            ).first()
+            if image is None:
+                raise ValidationError({'image_id': _('That picture cannot be sent here.')})
         # Checked under the lock: an end that committed meanwhile wins.
         if connection.ended_at is not None:
             raise CollaborationEnded()
@@ -737,8 +791,9 @@ class MessagesView(APIView):
             **({'id': message_id} if message_id else {}),
             connection=connection, sender=request.user, text=text, workout=workout,
             workout_context_id=serializer.validated_data.get('workout_id'),
-            week_start=serializer.validated_data.get('week'),
+            week_start=serializer.validated_data.get('week'), image=image,
         )
+        notify_message(connection, request.user, message)
         return Response(message_summary(message), status=status.HTTP_201_CREATED)
 
 
@@ -754,8 +809,10 @@ class ConversationsView(APIView):
             m.connection_id: m for m in CoachMessage.objects.filter(connection__in=rows)
             .order_by('connection_id', '-created_at', '-id').distinct('connection_id')
         }
+        unread = unread_counts(request.user, rows)
         result = [
-            {**connection_summary(c), 'last_message': message_summary(last[c.id]) if c.id in last else None}
+            {**connection_summary(c), 'last_message': message_summary(last[c.id]) if c.id in last else None,
+             'unread': unread.get(c.id, 0)}
             for c in rows
         ]
 
@@ -874,3 +931,142 @@ class TaskView(APIView):
         task.auto_resolved = False
         task.save(update_fields=['status', 'resolved_at', 'auto_resolved', 'snoozed_until', 'updated_at'])
         return Response(task_summary(task, now))
+
+
+class MessageReadSerializer(serializers.Serializer):
+    message_id = serializers.UUIDField()
+
+
+class MessagesReadView(APIView):
+    """The user has seen the conversation up to this message (any of his, active or archived)."""
+
+    def post(self, request):
+        serializer = MessageReadSerializer(data=require_object_body(request))
+        serializer.is_valid(raise_exception=True)
+        message = CoachMessage.objects.filter(
+            Q(connection__coach=request.user) | Q(connection__client=request.user),
+            pk=serializer.validated_data['message_id'],
+        ).first()
+        if message is None:
+            raise NotFound()
+        return Response({'connection_id': str(message.connection_id), 'unread': mark_read(request.user, message)})
+
+
+class UnreadView(APIView):
+    """Unread messages in all of the user's conversations: a light poll for the navigation badge."""
+
+    def get(self, request):
+        counts = unread_counts(request.user)
+        # Without the QStash worker, pushes left over by a busy request go out with the next poll.
+        if push_enabled() and not queue_configured() and PushMessage.objects.exists():
+            drain(1.5)
+        return Response({'total': sum(counts.values()), 'by_connection': {str(k): v for k, v in counts.items()}})
+
+
+def instruction_summary(item):
+    return {
+        'exercise_id': str(item.exercise_id), 'exercise_name': item.exercise.name,
+        'text': item.text, 'updated_at': item.updated_at,
+    }
+
+
+class MyInstructionsView(APIView):
+    """The client's instructions from the coach he has now (none after the collaboration ends)."""
+
+    def get(self, request):
+        if request.user.profile.is_coach:
+            return Response({'connection_id': None, 'results': []})
+        connection = active_connections().filter(client=request.user).first()
+        rows = ExerciseInstruction.objects.filter(connection=connection).select_related('exercise') if connection else []
+        # Which collaboration these belong to: the app shows them only for its current one.
+        return Response({'connection_id': str(connection.id) if connection else None,
+                         'results': [instruction_summary(x) for x in rows]})
+
+
+# Never stored by the browser or a proxy: after sign-out, nobody else on the device gets it back.
+IMAGE_HEADERS = {'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+                 'Content-Security-Policy': "default-src 'none'", 'Cross-Origin-Resource-Policy': 'same-site'}
+MAX_PENDING_IMAGES = 20
+# Per person and day: protects the database (pictures live there) and the decoding work.
+MAX_DAILY_IMAGES = 60
+MAX_DAILY_IMAGE_BYTES = 20 * 1024 * 1024
+
+
+def image_response(data):
+    response = HttpResponse(bytes(data), content_type='image/jpeg')
+    for name, value in IMAGE_HEADERS.items():
+        response[name] = value
+    return response
+
+
+class MessageImagesView(APIView):
+    """Upload a picture for a message in an active conversation (sent with the next message)."""
+
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        relation = connection_for_messages(request)
+        if relation.ended_at is not None:
+            raise CollaborationEnded()
+        self.check_quota(request.user)
+        # The slow part (decoding) runs before taking any lock.
+        data, width, height = process_image(request.FILES.get('file'), MESSAGE_SIDE)
+        with transaction.atomic():
+            # Re-checked under the collaboration lock: an end that committed meanwhile wins.
+            connection = CoachConnection.objects.select_for_update().filter(pk=relation.pk).first()
+            if connection is None or connection.ended_at is not None:
+                raise CollaborationEnded()
+            self.check_quota(request.user, len(data))
+            image = MessageImage.objects.create(
+                connection=connection, uploader=request.user, data=data, width=width, height=height, size=len(data),
+            )
+        return Response({'id': str(image.id), 'width': width, 'height': height}, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def check_quota(user, adding=0):
+        recent = MessageImage.objects.filter(uploader=user, created_at__gte=timezone.now() - timedelta(days=1))
+        if recent.filter(message__isnull=True).count() >= MAX_PENDING_IMAGES:
+            raise ValidationError({'file': _('Too many unsent pictures. Send or wait a day.')})
+        totals = recent.aggregate(n=Count('id'), size=Sum('size'))
+        if totals['n'] >= MAX_DAILY_IMAGES or (totals['size'] or 0) + adding > MAX_DAILY_IMAGE_BYTES:
+            raise ValidationError({'file': _('You have sent many pictures today. Try again tomorrow.')})
+
+
+class MessageImageView(APIView):
+    """A picture of a conversation, for its two people only (also in the archive)."""
+
+    def get(self, request, pk):
+        image = MessageImage.objects.filter(
+            Q(connection__coach=request.user) | Q(connection__client=request.user), pk=pk,
+        ).filter(Q(message__isnull=False) | Q(uploader=request.user)).values_list('data', flat=True).first()
+        if image is None:
+            raise NotFound()
+        return image_response(image)
+
+
+class CoachPhotoView(APIView):
+    """The coach's own profile picture: upload (replaces) or remove."""
+
+    parser_classes = [MultiPartParser]
+
+    def put(self, request):
+        coach_only(request)
+        data, _width, _height = process_image(request.FILES.get('file'), PHOTO_SIDE)
+        photo, _created = CoachPhoto.objects.update_or_create(user=request.user, defaults={'data': data})
+        return Response({'photo': photo.updated_at})
+
+    def delete(self, request):
+        coach_only(request)
+        CoachPhoto.objects.filter(user=request.user).delete()
+        return Response({'photo': None})
+
+
+class CoachPhotoImageView(APIView):
+    """A coach's picture: part of his card, which clients see before and during a collaboration."""
+
+    def get(self, request, user_id):
+        data = CoachPhoto.objects.filter(user_id=user_id, user__profile__is_coach=True).values_list('data', flat=True).first()
+        if data is None:
+            raise NotFound()
+        return image_response(data)
+

@@ -120,6 +120,28 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: npm ci
+      # Never expose repository secrets to PR code. The trusted main build
+      # installs Firebase client config at build time, while PR builds remain
+      # functional without FCM until code is reviewed and merged.
+      - name: Configure Firebase for production Android build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$ANDROID_GOOGLE_SERVICES_JSON" ]; then
+            echo 'ANDROID_GOOGLE_SERVICES_JSON secret is not set; FCM disabled'
+            exit 0
+          fi
+          printf '%s' "$ANDROID_GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          node -e '
+            const fs = require("node:fs");
+            const cfg = JSON.parse(fs.readFileSync("android/app/google-services.json", "utf8"));
+            const valid = cfg.project_info?.project_id === "pomak-rs"
+              && cfg.client?.some(c => c.client_info?.android_client_info?.package_name === "rs.pomak.app");
+            if (!valid) throw Error("Firebase configuration does not match Pomak");
+            console.log("Firebase client configuration verified");
+          '
+          echo 'VITE_FCM_ENABLED=1' >> "$GITHUB_ENV"
       - run: npm run build
       - name: Verify Secure Storage native wiring
         run: |

@@ -69,6 +69,12 @@ class CoachConnection(TimeStampedModel):
     # in that order, have not been turned into tasks yet.
     tasks_checked_at = models.DateTimeField(null=True, blank=True)
     tasks_checked_id = models.UUIDField(null=True, blank=True)
+    # Read cursors, one per side: the other side's messages after (read_at, read_id), in message
+    # order, are unread. They only move forward.
+    coach_read_at = models.DateTimeField(null=True, blank=True)
+    coach_read_id = models.UUIDField(null=True, blank=True)
+    client_read_at = models.DateTimeField(null=True, blank=True)
+    client_read_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -78,6 +84,29 @@ class CoachConnection(TimeStampedModel):
             ),
         ]
         indexes = [models.Index(fields=['coach', 'ended_at'], name='coach_conn_coach_ended_idx')]
+
+
+class MessageImage(TimeStampedModel):
+    """A picture in a conversation: a re-encoded JPEG (no metadata), stored in the database and
+    served only to the two people of that collaboration."""
+
+    connection = models.ForeignKey('CoachConnection', on_delete=models.CASCADE, related_name='images')
+    uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    data = models.BinaryField()
+    width = models.PositiveIntegerField()
+    height = models.PositiveIntegerField()
+    size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        indexes = [models.Index(fields=['uploader', 'created_at'], name='coach_img_uploader_idx')]
+
+
+class CoachPhoto(models.Model):
+    """The coach's profile picture (re-encoded, square-ish, small), shown on his card."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True, related_name='coach_photo')
+    data = models.BinaryField()
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class CoachMessage(TimeStampedModel):
@@ -92,10 +121,25 @@ class CoachMessage(TimeStampedModel):
     workout_context_id = models.UUIDField(null=True, blank=True)
     # A comment on a week (its Monday): seen in the conversation and on the week's review.
     week_start = models.DateField(null=True, blank=True)
+    # A picture sent with the message (the text may then be empty).
+    image = models.OneToOneField(MessageImage, null=True, blank=True, on_delete=models.SET_NULL, related_name='message')
 
     class Meta:
         ordering = ['created_at', 'id']
         indexes = [models.Index(fields=['connection', '-created_at'], name='coach_msg_recent_idx')]
+
+
+class ExerciseInstruction(TimeStampedModel):
+    """The coach's standing instruction for one exercise of one client (technique, tempo, cues),
+    shown to the client on that exercise during a workout while the collaboration is active."""
+
+    connection = models.ForeignKey(CoachConnection, on_delete=models.CASCADE, related_name='instructions')
+    exercise = models.ForeignKey('training.Exercise', on_delete=models.CASCADE, related_name='+')
+    text = models.CharField(max_length=500)
+
+    class Meta:
+        ordering = ['-updated_at', 'id']
+        constraints = [models.UniqueConstraint(fields=['connection', 'exercise'], name='coach_one_instruction_per_exercise')]
 
 
 class CoachAssignment(TimeStampedModel):

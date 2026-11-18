@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 
 import type { CoachCard } from './api'
 import { Avatar } from './Avatar'
+import { coachPhotoPath } from './pictures'
 
 /** Who the coach is: shown to a client before connecting and on the Coach tab afterwards. */
 export function CoachCardView({ coach }: { coach: CoachCard }) {
@@ -11,7 +12,7 @@ export function CoachCardView({ coach }: { coach: CoachCard }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
-        <Avatar name={coach.name || '?'} size="lg" />
+        <Avatar name={coach.name || '?'} size="lg" photo={coachPhotoPath(coach)} />
         <div className="min-w-0">
           <p className="truncate text-lg font-bold">{coach.name}</p>
           <p className="text-sm text-muted">

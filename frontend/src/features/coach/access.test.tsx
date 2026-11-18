@@ -23,6 +23,8 @@ vi.mock('../training/api', () => ({ useRoutines: () => ({ data: [] }) }))
 vi.mock('../../lib/api', () => ({ errorMessage: (error: unknown) => String(error) }))
 vi.mock('./ClientTabs', () => ({ ClientStats: () => null, ClientTargetPanel: () => null, WorkoutLinks: () => null }))
 vi.mock('./PlanPanel', () => ({ PlanPanel: () => null }))
+vi.mock('./Instructions', () => ({ InstructionsPanel: () => null }))
+vi.mock('./pictures', () => ({ usePictureUrl: () => ({ url: null, failed: false }) }))
 vi.mock('./api', () => {
   const idle = { mutate: vi.fn(), isPending: false, error: null, reset: vi.fn() }
   return {

@@ -6,6 +6,7 @@ import { LanguageMenu } from '../../components/LanguageMenu'
 import { Button, Card, FormError, ScreenHeader } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
+import { PushSetting } from './PushSetting'
 import { toISODate } from '../../lib/format'
 import { saveFile } from '../../lib/saveFile'
 import { ExactAlarmSetting } from '../workout/ExactAlarmSetting'
@@ -62,6 +63,7 @@ export function ProfilePage() {
         <NavRow to="/profil/obroci">{t('profile.mealsLink')}</NavRow>
         <NavRow to="/ishrana/cilj">{t('profile.targetLink')}</NavRow>
         <ExactAlarmSetting />
+        <PushSetting />
 
         <h2 className="mt-2 text-sm font-semibold uppercase tracking-wide text-muted">{t('profile.yourData')}</h2>
         <Card className="flex flex-col gap-2">

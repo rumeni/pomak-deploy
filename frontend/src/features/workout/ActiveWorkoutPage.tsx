@@ -37,6 +37,10 @@ import {
 import { loadPrevious } from './previous'
 import { cancelRestEnd, restEndedFeedback, restNotificationAction, scheduleRestEnd } from './restNotification'
 import { usePersistentWorkout } from './store'
+import { useQueryClient } from '@tanstack/react-query'
+import type { CoachDashboard } from '../coach/api'
+import { useMyInstructions } from '../coach/inboxApi'
+import { useAuth } from '../../lib/auth'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 import { ReadinessRow, ReadinessStep } from './ReadinessCard'
 import { formatRpe, parseRpe } from './rpe'
@@ -309,6 +313,13 @@ function WorkoutExerciseCard({
     if (window.confirm(question)) update((w) => removeExercise(w, item.key))
   }
 
+  const { me } = useAuth()
+  const athlete = !!me && !me.profile.is_coach
+  // The collaboration the app knows (from the cached dashboard, if loaded): undefined = unknown.
+  const dashboard = useQueryClient().getQueryData<CoachDashboard>(['coach-dashboard'])
+  const knownConnection = dashboard?.role === 'client' ? (dashboard.connection?.id ?? null) : undefined
+  const instruction = useMyInstructions(athlete ? me.id : null, knownConnection).data?.get(exercise.id)
+
   const planText = plan && [
     plan.warmups ? `${plan.warmups} ${warmup}` : null,
     ...plan.groups.map((g) =>
@@ -337,6 +348,12 @@ function WorkoutExerciseCard({
           </svg>
         </button>
       </div>
+
+      {instruction && (
+        <p className="mt-2 whitespace-pre-wrap rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand-dark">
+          <span className="font-semibold">{t('workout.coachInstruction')}:</span> {instruction}
+        </p>
+      )}
 
       {(planText || rpeDriven) && (
         <div className="mt-2 flex flex-col gap-0.5 rounded-xl bg-surface px-3 py-2 text-xs">

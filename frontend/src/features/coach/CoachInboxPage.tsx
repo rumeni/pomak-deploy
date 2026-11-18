@@ -79,10 +79,15 @@ function ConversationList({ rows, selectedId, selfId }: { rows: Conversation[]; 
                   <span className="truncate font-semibold">{name}</span>
                   {last && <span className="shrink-0 text-xs text-muted">{new Date(last.created_at).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short' })}</span>}
                 </span>
-                <span className="block truncate text-sm text-muted">
+                <span className={`block truncate text-sm ${c.unread ? 'font-semibold text-ink' : 'text-muted'}`}>
                   {last ? `${last.sender_id === selfId ? `${t('coachSpace.inbox.you')}: ` : ''}${last.text}` : t('coach.noMessages')}
                 </span>
               </span>
+              {!!c.unread && (
+                <span className="min-w-7 rounded-full bg-accent px-2 py-0.5 text-center text-xs font-bold text-white" aria-label={t('coach.unread', { count: c.unread })}>
+                  {c.unread}
+                </span>
+              )}
             </Link>
           </li>
         )

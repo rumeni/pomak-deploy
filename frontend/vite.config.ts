@@ -32,6 +32,8 @@ export default defineConfig({
       // Registruje se ručno u main.tsx, samo u pregledaču (ne u Android aplikaciji).
       injectRegister: null,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      // Push and notification clicks (public/push-sw.js) inside the generated service worker.
+      workbox: { importScripts: ['push-sw.js'] },
       manifest: {
         name: 'POMAK',
         short_name: 'POMAK',

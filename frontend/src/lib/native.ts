@@ -2,6 +2,8 @@ import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { StatusBar, Style } from '@capacitor/status-bar'
 
+import { listenForNativePushTaps } from './push'
+
 /** Podešavanja koja važe samo u Android aplikaciji; u pregledaču registruje service worker. */
 export async function setupNative(): Promise<void> {
   if (!Capacitor.isNativePlatform()) {
@@ -17,6 +19,9 @@ export async function setupNative(): Promise<void> {
     StatusBar.setStyle({ style: Style.Light }),
     StatusBar.setBackgroundColor({ color: '#f4f7f7' }),
   ])
+
+  // A tapped push notification opens its screen (only in builds with Firebase).
+  await listenForNativePushTaps().catch(() => undefined)
 
   // Sistemsko dugme "nazad" vraća na prethodni ekran, a sa početnog izlazi iz aplikacije.
   await App.addListener('backButton', ({ canGoBack }) => {

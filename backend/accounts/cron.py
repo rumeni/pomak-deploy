@@ -21,5 +21,11 @@ def cleanup_auth_throttle_cron(request):
     if not secrets.compare_digest(request.headers.get('Authorization', ''), expected):
         return JsonResponse({'detail': 'Unauthorized'}, status=401)
     deleted, more = cleanup_expired_auth_throttle_buckets()
+    # Pictures uploaded for a message that was never sent (one daily job on the Hobby plan).
+    from coaching.media import delete_orphan_images
+    from notifications.push import drain
+
+    delete_orphan_images()
+    drain(5.0)  # delivers what is left and drops what is too old
     return JsonResponse({'status': 'ok', 'deleted': deleted, 'more_expired': more})
 

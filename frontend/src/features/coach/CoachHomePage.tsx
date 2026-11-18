@@ -35,6 +35,15 @@ export function CoachHomePage() {
           <Stat value={tasks.data ? groups.open.length : null} label={t('coachSpace.stats.toReview')} />
         </div>
 
+        {!!data?.unread_messages && (
+          <Link to="/trener/poruke" className="app-card flex items-center justify-between gap-3 !p-4">
+            <span className="font-semibold">{t('coach.unread', { count: data.unread_messages })}</span>
+            <span className="text-sm text-muted">
+              {data.clients.filter((c) => c.unread_messages).map((c) => c.client.name).join(', ')}
+            </span>
+          </Link>
+        )}
+
         <div className="flex gap-2" role="tablist" aria-label={t('coachSpace.tasksTitle')}>
           {(['open', 'snoozed', 'done'] as const).map((state) => (
             <button
