@@ -123,6 +123,7 @@ class AssignSerializer(serializers.Serializer):
 
 
 class MessageSerializer(serializers.Serializer):
+    id = serializers.UUIDField(required=False)
     text = serializers.CharField(max_length=800, trim_whitespace=True, allow_blank=False)
 
 
@@ -153,15 +154,18 @@ class DashboardView(APIView):
 class InvitationCreateView(APIView):
     def post(self, request):
         coach_only(request)
-        now = timezone.now()
-        if CoachInvitation.objects.filter(
-            coach=request.user, redeemed_at__isnull=True, revoked_at__isnull=True, expires_at__gt=now,
-        ).count() >= MAX_ACTIVE_INVITES:
-            raise ValidationError({'detail': 'Revoke an invitation before creating another one.'})
-        # Very unlikely token collision; still retry without exposing DB errors.
+        # Count and insert under the SAME per-coach lock. Without this,
+        # simultaneous tabs may both pass the 5-invitation limit.
         for _ in range(3):
             try:
                 with transaction.atomic():
+                    from accounts.models import User
+                    User.objects.select_for_update().get(pk=request.user.pk)
+                    now = timezone.now()
+                    if CoachInvitation.objects.filter(
+                        coach=request.user, redeemed_at__isnull=True, revoked_at__isnull=True, expires_at__gt=now,
+                    ).count() >= MAX_ACTIVE_INVITES:
+                        raise ValidationError({'detail': 'Revoke an invitation before creating another one.'})
                     invite = CoachInvitation.objects.create(coach=request.user)
                 return Response(invitation_summary(invite), status=status.HTTP_201_CREATED)
             except IntegrityError:
@@ -373,7 +377,18 @@ class MessagesView(APIView):
         connection = CoachConnection.objects.select_for_update().filter(pk=relation.pk).first()
         if connection is None:
             raise NotFound()
+        message_id = serializer.validated_data.get('id')
+        text = serializer.validated_data['text']
+        if message_id:
+            existing = CoachMessage.objects.filter(pk=message_id).first()
+            if existing is not None:
+                if existing.connection_id != connection.pk or existing.sender_id != request.user.pk:
+                    raise ValidationError({'id': 'This message ID is already in use.'})
+                if existing.text != text:
+                    raise ValidationError({'id': 'This message ID has different content.'})
+                return Response(message_summary(existing), status=status.HTTP_200_OK)
         message = CoachMessage.objects.create(
-            connection=connection, sender=request.user, text=serializer.validated_data['text'],
+            **({'id': message_id} if message_id else {}),
+            connection=connection, sender=request.user, text=text,
         )
         return Response(message_summary(message), status=status.HTTP_201_CREATED)

@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from core.i18n import localized_name
+from core.views import AlreadySavedConflict
 from core.text import EXERCISE_PREMIGRATION_KEY_LIMIT, search_key_fits
 
 from .models import READINESS_FIELDS, Exercise, Routine, RoutineExercise, RoutineSet, SessionExercise, SetLog, WorkoutSession
@@ -119,11 +120,12 @@ class RoutineExerciseSerializer(serializers.ModelSerializer):
 
 class RoutineSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(required=False)
+    revision = serializers.DateTimeField(required=False, write_only=True)
     exercises = RoutineExerciseSerializer(many=True)
 
     class Meta:
         model = Routine
-        fields = ['id', 'name', 'notes', 'program_key', 'exercises', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'notes', 'program_key', 'revision', 'exercises', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
     def validate_name(self, value):
@@ -141,6 +143,7 @@ class RoutineSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
+        validated_data.pop('revision', None)
         exercises = validated_data.pop('exercises')
         routine = Routine.objects.create(**validated_data)
         self._write_exercises(routine, exercises)
@@ -148,6 +151,9 @@ class RoutineSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, routine, validated_data):
+        revision = validated_data.pop('revision', None)
+        if revision is not None and revision != routine.updated_at:
+            raise AlreadySavedConflict()
         exercises = validated_data.pop('exercises', None)
         validated_data.pop('id', None)
         validated_data.pop('program_key', None)  # Provenance cannot change when editing a routine.
