@@ -24,6 +24,7 @@ import { usePendingSessions } from '../workout/outbox'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { nextRoutine, sessionsWithPending } from './next'
 import { progressDate, weekActivity, workoutCountWithPending } from './week'
+import { useMyPlan } from '../coach/plansApi'
 import { SpaceSwitch } from '../coach/SpaceSwitch'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
@@ -150,7 +151,13 @@ function TrainingCard() {
   const [starting, setStarting] = useState(false)
 
   const doneToday = recent.filter((s) => progressDate(new Date(s.started_at)) === today)
-  const next = routines ? nextRoutine(routines, recent) : null
+  // A coach's plan decides today's workout; without one (or once trained today) the usual next routine.
+  const plan = useMyPlan(!!me && !me.profile.is_coach)
+  const planToday = plan.data?.today ?? null
+  const plannedId = planToday?.routine?.id ?? null
+  const plannedDone = !!plannedId && doneToday.some((s) => s.routine_id === plannedId)
+  const planned = plannedId && !plannedDone ? routines?.find((r) => r.id === plannedId) ?? null : null
+  const next = planned ?? (routines ? nextRoutine(routines, recent) : null)
   const onStart = async (routine: Parameters<typeof start>[0]) => {
     setStarting(true)
     try {
@@ -189,7 +196,8 @@ function TrainingCard() {
       {isLoading && <p className="py-2 text-muted">{t('common.loading')}</p>}
       {next ? (
         <>
-          <p className="mt-5 text-xs font-bold uppercase tracking-widest text-muted">{t('today.nextWorkout')}</p>
+          {planToday && !planToday.routine && doneToday.length === 0 && <p className="mt-4 text-sm text-muted">{t('today.planRestDay')}</p>}
+          <p className="mt-5 text-xs font-bold uppercase tracking-widest text-muted">{planned ? t('today.plannedWorkout') : t('today.nextWorkout')}</p>
           <p className="mt-1 text-xl font-bold tracking-tight">{next.name}</p>
           <p className="truncate text-sm text-muted">{next.exercises.map((e) => e.exercise.name).join(' · ')}</p>
           <Button className="mt-3 w-full" onClick={() => void onStart(next)} disabled={starting}>

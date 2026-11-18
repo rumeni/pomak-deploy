@@ -8,6 +8,12 @@ import { CoachClientsPage } from '../features/coach/CoachClientsPage'
 import { ArchivePage, CoachInboxPage } from '../features/coach/CoachInboxPage'
 import { CoachProfilePage } from '../features/coach/CoachProfilePage'
 import { CoachProgramsPage } from '../features/coach/CoachProgramsPage'
+import { AssignTemplatePage } from '../features/coach/AssignTemplatePage'
+import { PlanEditorPage } from '../features/coach/PlanEditorPage'
+import { TemplateEditorPage } from '../features/coach/TemplateEditorPage'
+import { WorkoutReviewPage } from '../features/coach/WorkoutReviewPage'
+import { ClientWeekPage } from '../features/coach/ClientWeekPage'
+import { WeekPage } from '../features/progress/WeekPage'
 import { CoachOnly, CoachRoot, InviteLinkLoggedOut, InviteLinkPage } from '../features/coach/CoachRoutes'
 import { usePendingInviteRedirect } from '../features/coach/pendingInvite'
 import { lastSpace } from '../features/coach/workspace'
@@ -107,6 +113,12 @@ export function App() {
         <Route path="/povezi/:code" element={<InviteLinkPage />} />
       </Route>
       <Route path="/trener/pocetak" element={me.profile.is_coach ? <CoachProfilePage onboarding /> : <Navigate to="/trener" replace />} />
+      <Route path="/trener/programi/sablon/:id" element={<CoachOnly><TemplateEditorPage /></CoachOnly>} />
+      <Route path="/trener/programi/dodela" element={<CoachOnly><AssignTemplatePage /></CoachOnly>} />
+      <Route path="/trener/klijenti/:id/plan" element={<CoachOnly><PlanEditorPage /></CoachOnly>} />
+      <Route path="/trener/klijenti/:id/trening/:workoutId" element={<CoachOnly><WorkoutReviewPage /></CoachOnly>} />
+      <Route path="/trener/klijenti/:id/nedelja" element={<CoachOnly><ClientWeekPage /></CoachOnly>} />
+      <Route path="/napredak/nedelja" element={<WeekPage />} />
       <Route path="/trener/profil" element={me.profile.is_coach ? <CoachProfilePage /> : <Navigate to="/trener" replace />} />
       <Route path="/trening/aktivan" element={<ActiveWorkoutPage />} />
       <Route path="/trening/istorija/:id" element={<SessionDetailPage />} />

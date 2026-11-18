@@ -6,6 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button, FormError, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
+import { WorkoutCoachComments } from '../coach/WorkoutCoachComments'
 import { useAuth } from '../../lib/auth'
 import { db } from '../../lib/db'
 import { getFormatLocale } from '../../lib/format'
@@ -156,6 +157,8 @@ export function SessionDetailPage() {
             <span className="font-medium">{t('history.notes')}:</span> {session.notes}
           </p>
         )}
+
+        {session.status === 'sent' && me && !me.profile.is_coach && <WorkoutCoachComments workoutId={session.id} selfId={me.id} />}
 
         <FormError message={restoreError ?? discardError ?? (remove.isError ? errorMessage(remove.error) : null)} />
         {session.status === 'sent' && (

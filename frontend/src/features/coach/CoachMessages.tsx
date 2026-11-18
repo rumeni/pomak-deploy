@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 
 import { Button, Card, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
@@ -7,6 +8,7 @@ import { getFormatLocale } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { useCoachMessages, useSendCoachMessage } from './api'
 import { mergeCoachMessagePages } from './messages'
+import { planDate } from './plans'
 import { chatScrollTop, nearChatBottom } from './chatScroll'
 
 /**
@@ -14,14 +16,23 @@ import { chatScrollTop, nearChatBottom } from './chatScroll'
  * read-only archive: no polling, no input); otherwise the active one with `clientId` (coach) or
  * the client's own.
  */
-export function CoachMessages({ selfId, clientId, connectionId, readOnly = false }: {
+export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekStart, readOnly = false, title, workoutLink, weekLink }: {
   selfId: string
   clientId?: string
   connectionId?: string
+  /** Only the comments on this workout; new messages are comments on it. */
+  workoutId?: string
+  /** Only the comments on this week (its Monday); new messages are comments on it. */
+  weekStart?: string
   readOnly?: boolean
+  title?: string
+  /** Where a comment's workout opens (the coach's review or the client's history); none: no link. */
+  workoutLink?: (workoutId: string) => string
+  /** Where a comment's week opens; none: no link. */
+  weekLink?: (weekStart: string) => string
 }) {
   const { t } = useTranslation()
-  const target = { clientId, connectionId }
+  const target = { clientId, connectionId, workoutId, weekStart }
   const messages = useCoachMessages(target, { live: !readOnly })
   const send = useSendCoachMessage(target)
   const [text, setText] = useState('')
@@ -34,7 +45,7 @@ export function CoachMessages({ selfId, clientId, connectionId, readOnly = false
   const previousCount = useRef(0)
   const previousNewestId = useRef<string | null>(null)
   const readerNearBottom = useRef(true)
-  const conversationKey = `${selfId}:${connectionId ?? clientId ?? 'own'}`
+  const conversationKey = `${selfId}:${connectionId ?? clientId ?? 'own'}:${workoutId ?? ''}:${weekStart ?? ''}`
   const lastConversation = useRef(conversationKey)
 
   // Initial load shows the newest chat message. Polling follows new messages
@@ -87,7 +98,7 @@ export function CoachMessages({ selfId, clientId, connectionId, readOnly = false
     })
   }
   return (
-    <Card title={t('coach.messages')}>
+    <Card title={title ?? t('coach.messages')}>
       <div
         ref={listRef}
         aria-live="polite"
@@ -107,6 +118,16 @@ export function CoachMessages({ selfId, clientId, connectionId, readOnly = false
         {messages.data && items.length === 0 && <p className="text-sm text-muted">{t('coach.noMessages')}</p>}
         {items.map((message) => (
           <div key={message.id} className={`max-w-[90%] rounded-xl px-3 py-2 ${message.sender_id === selfId ? 'self-end bg-brand-soft' : 'self-start bg-surface'}`}>
+            {message.workout && !workoutId && (
+              workoutLink
+                ? <Link to={workoutLink(message.workout.id)} className="mb-1 block text-xs font-semibold underline">{t('coachSpace.review.aboutWorkout', { name: message.workout.name })}</Link>
+                : <p className="mb-1 text-xs font-semibold">{t('coachSpace.review.aboutWorkout', { name: message.workout.name })}</p>
+            )}
+            {message.week_start && !weekStart && (
+              weekLink
+                ? <Link to={weekLink(message.week_start)} className="mb-1 block text-xs font-semibold underline">{t('coachSpace.week.aboutWeek', { date: planDate(message.week_start) })}</Link>
+                : <p className="mb-1 text-xs font-semibold">{t('coachSpace.week.aboutWeek', { date: planDate(message.week_start) })}</p>
+            )}
             <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
             <p className="mt-1 text-right text-xs text-muted">
               {new Date(message.created_at).toLocaleString(getFormatLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}

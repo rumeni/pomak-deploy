@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from nutrition.models import Food, MealEntry, NutritionDay, NutritionTarget, SavedMeal
 from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile
-from progress.models import Goal, Measurement
+from progress.models import Goal, Measurement, WeeklyCheckIn
 from training.models import Exercise, Routine, SessionExercise, WorkoutSession
 
 PROFILE_FIELDS = [
@@ -45,7 +45,8 @@ def collect(user) -> dict:
             'connections': [
                 {'coach': c.coach.profile.display_name or c.coach.email.split('@')[0], 'client': c.client.profile.display_name or c.client.email.split('@')[0],
                  'share_measurements': c.share_measurements, 'share_nutrition': c.share_nutrition,
-                 'share_readiness': c.share_readiness, 'connected_at': c.created_at,
+                 'share_readiness': c.share_readiness, 'coach_sets_nutrition': c.coach_sets_nutrition,
+                 'connected_at': c.created_at,
                  'ended_at': c.ended_at}
                 for c in connections
             ],
@@ -69,6 +70,9 @@ def collect(user) -> dict:
         },
         'account': {'email': user.email, 'date_joined': user.date_joined, 'profile': {f: getattr(profile, f) for f in PROFILE_FIELDS}},
         'measurements': list(Measurement.objects.filter(user=user).order_by('measured_on').values('kind', 'value', 'measured_on', 'note')),
+        'weekly_checkins': list(WeeklyCheckIn.objects.filter(user=user).order_by('week_start').values(
+            'week_start', 'energy', 'progress', 'nutrition', 'satisfaction', 'hardest', 'notes',
+        )),
         'goals': list(Goal.objects.filter(user=user).values(
             'kind', 'start_value', 'target_value', 'start_date', 'target_date', 'status', 'closed_on',
         )),

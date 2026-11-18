@@ -761,3 +761,78 @@ msgstr "Otvoreno"
 
 msgid "Done"
 msgstr "Završeno"
+
+msgid "A plan can change from today on; what already happened stays as it was."
+msgstr "Plan može da se menja od danas; ono što je već urađeno ostaje kako je bilo."
+
+msgid "Choose a date within a year."
+msgstr "Izaberi datum u narednih godinu dana."
+
+msgid "Invalid routine."
+msgstr "Neispravna rutina."
+
+msgid "Put a routine on at least one day."
+msgstr "Stavi rutinu bar na jedan dan."
+
+msgid "One routine per day."
+msgstr "Jedna rutina po danu."
+
+msgid "Choose one routine for the day."
+msgstr "Izaberi jednu rutinu za taj dan."
+
+msgid "Archive an old program before adding another one."
+msgstr "Arhiviraj neki stari program pre nego što dodaš novi."
+
+msgid "That routine is not part of this plan any more."
+msgstr "Ta rutina više nije deo ovog plana."
+
+msgid "Plan"
+msgstr "Plan"
+
+msgid "Select one of your active routines."
+msgstr "Izaberi neku od svojih aktivnih rutina."
+
+msgid "A routine must contain at least one exercise."
+msgstr "Rutina mora da ima bar jednu vežbu."
+
+msgid "This routine uses private exercises. Use shared exercises before assigning."
+msgstr "Ova rutina koristi tvoje privatne vežbe. Pre dodele zameni ih vežbama iz zajedničke biblioteke."
+
+msgid "That workout is not part of this collaboration."
+msgstr "Taj trening nije deo ove saradnje."
+
+msgid "Choose one of the offered periods."
+msgstr "Izaberi neki od ponuđenih perioda."
+
+msgid "A new target applies from today on; earlier days keep theirs."
+msgstr "Novi cilj važi od danas; raniji dani zadržavaju svoj."
+
+msgid "The client has not let you set the nutrition target."
+msgstr "Klijent ti nije dozvolio da postavljaš cilj ishrane."
+
+msgid "A check-in is for this week or one of the last eight."
+msgstr "Osvrt se piše za ovu ili neku od poslednjih osam nedelja."
+
+msgid "That week has not started yet."
+msgstr "Ta nedelja još nije počela."
+
+msgid "Weekly check-in"
+msgstr "Nedeljni osvrt"
+
+msgid "This request ID was already used for different content."
+msgstr "Ovaj ID zahteva je već iskorišćen za drugačiji sadržaj."
+
+msgid "Only workouts from this collaboration can be marked as reviewed."
+msgstr "Kao pregledan se označava samo trening iz ove saradnje."
+
+msgid "Assign a program"
+msgstr "Dodela programa"
+
+msgid "Change the plan"
+msgstr "Izmena plana"
+
+msgid "That workout no longer exists."
+msgstr "Taj trening više ne postoji."
+
+msgid "The collaboration changed. Reload and try again."
+msgstr "Saradnja se promenila. Osveži i pokušaj ponovo."

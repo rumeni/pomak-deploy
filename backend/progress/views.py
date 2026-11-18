@@ -3,7 +3,7 @@ import datetime
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -11,10 +11,10 @@ from rest_framework.views import APIView
 
 from core.views import IdempotentCreateMixin
 
-from . import overview
+from . import overview, weekly
 from accounts.models import User
 
-from .models import Goal, Measurement
+from .models import Goal, Measurement, WeeklyCheckIn
 from .serializers import GoalSerializer, GoalStatusSerializer, MeasurementSerializer
 
 
@@ -85,3 +85,81 @@ class WeekView(APIView):
         if monday > datetime.date.max - datetime.timedelta(days=6):
             raise ValidationError({'start': _('Invalid date.')})
         return Response(overview.week_overview(request.user, monday))
+
+
+def week_monday(value):
+    """Any day of a week (YYYY-MM-DD) -> its Monday."""
+    try:
+        day = datetime.date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise ValidationError({'week': _('Invalid date.')}) from None
+    monday = overview.monday_of(day)
+    if monday > datetime.date.max - datetime.timedelta(days=6):
+        raise ValidationError({'week': _('Invalid date.')})
+    return monday
+
+
+class WeeklyCheckInSerializer(serializers.Serializer):
+    energy = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
+    progress = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
+    nutrition = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
+    satisfaction = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
+    hardest = serializers.CharField(max_length=500, required=False, allow_blank=True, default='', trim_whitespace=True)
+    notes = serializers.CharField(max_length=1000, required=False, allow_blank=True, default='', trim_whitespace=True)
+    # Who it is for, as the athlete chose on the form: the collaboration shown, or null (private).
+    share_with = serializers.UUIDField(allow_null=True)
+
+
+class WeekReviewView(APIView):
+    """GET: the week in review. PUT: the athlete's check-in for that week (same request twice = same result)."""
+
+    def get(self, request, day):
+        return Response(weekly.week_review(request.user, week_monday(day)))
+
+    def put(self, request, day):
+        monday = week_monday(day)
+        if not weekly.can_check_in(monday):
+            raise ValidationError({'week': _('A check-in is for this week or one of the last eight.')})
+        serializer = WeeklyCheckInSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from coaching.errors import CollaborationChanged
+        from coaching.models import CoachConnection, CoachTask
+        from coaching.tasks import weekly_checkin_task
+
+        # Shared only with the collaboration the athlete chose on the form, and only if that very
+        # one is still active (locked while saving); never with one that replaced it meanwhile.
+        data = dict(serializer.validated_data)
+        share_with = data.pop('share_with')
+        with transaction.atomic():
+            # Always lock the active collaboration first, even for a private save.
+            # This is the same lock order as task actions and collaboration teardown.
+            active = CoachConnection.objects.select_for_update().filter(
+                client=request.user, ended_at__isnull=True,
+            ).first()
+            if share_with is not None and (active is None or active.pk != share_with):
+                raise CollaborationChanged()
+            checkin, _created = WeeklyCheckIn.objects.select_for_update().get_or_create(user=request.user, week_start=monday)
+            previous = checkin.shared_with_id
+            # A new collaboration may have appeared while a private save was waiting.
+            # Never change a live recipient without holding its lock; retry instead.
+            if previous and (active is None or previous != active.pk) and CoachConnection.objects.filter(
+                pk=previous, ended_at__isnull=True,
+            ).exists():
+                raise CollaborationChanged()
+            for field, value in data.items():
+                setattr(checkin, field, value)
+            checkin.shared_with_id = share_with
+            checkin.save()
+            if active is not None and previous != share_with:
+                # Version both sharing and withdrawal so delayed responses cannot reveal old answers.
+                active.access_version += 1
+                active.save(update_fields=['access_version', 'updated_at'])
+            if active is not None:
+                if share_with is None:
+                    CoachTask.objects.filter(
+                        connection=active, kind=CoachTask.Kind.WEEKLY_CHECKIN, key=monday.isoformat(),
+                    ).delete()
+                else:
+                    weekly_checkin_task(active.pk, monday)
+        return Response(weekly.week_review(request.user, monday))
+

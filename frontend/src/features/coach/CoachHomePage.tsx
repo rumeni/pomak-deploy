@@ -8,6 +8,7 @@ import { errorMessage } from '../../lib/api'
 import { accessRegistry, dashboardAccess, visibleTaskList } from './access'
 import { useCoachDashboard, useCoachTasks, useTaskAction } from './api'
 import { CoachHeader } from './SpaceSwitch'
+import { taskLink } from './taskLink'
 import { taskText } from './taskText'
 import { groupTasks, type CoachTask, type TaskState } from './tasks'
 import { initials } from './workspace'
@@ -90,6 +91,7 @@ function TaskItem({ task }: { task: CoachTask }) {
   const action = useTaskAction()
   const [snoozing, setSnoozing] = useState(false)
   const text = taskText(task, t, i18n.language === 'en', now)
+  const link = taskLink(task)
   const act = (body: Parameters<typeof action.mutate>[0]) => action.mutate(body, { onSuccess: () => setSnoozing(false) })
   return (
     <li className="app-card !p-4">
@@ -111,7 +113,9 @@ function TaskItem({ task }: { task: CoachTask }) {
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Link to={`/trener/klijenti/${task.client.id}`} className="app-button inline-flex min-h-10 items-center justify-center bg-brand-soft px-4 text-sm text-brand-dark">{t('coachSpace.openClient')}</Link>
+        <Link to={link.to} className="app-button inline-flex min-h-10 items-center justify-center bg-brand-soft px-4 text-sm text-brand-dark">
+          {link.kind === 'workout' ? t('coachSpace.review.open') : link.kind === 'week' ? t('coachSpace.week.open') : t('coachSpace.openClient')}
+        </Link>
         {task.state !== 'done' ? (
           <>
             <Button size="sm" disabled={action.isPending} onClick={() => act({ id: task.id, action: 'done' })}>{t('coachSpace.markDone')}</Button>

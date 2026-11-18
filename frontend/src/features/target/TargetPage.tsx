@@ -84,7 +84,10 @@ function TargetCard({ target, title, expanded = false }: { target: Target; title
       <p className="mt-2 text-sm text-muted">
         {t(`target.mode_${target.mode}`)} · {t('target.validFrom', { date: formatShortDate(target.valid_from) })}
       </p>
-      {target.inputs && target.explanation && (
+      {target.mode === 'coach' && (target.explanation as { coach_note?: string } | null)?.coach_note && (
+        <p className="mt-1 text-sm">{t('target.coachNote')}: „{(target.explanation as { coach_note?: string } | null)?.coach_note}“</p>
+      )}
+      {target.mode !== 'coach' && target.inputs && target.explanation && (
         <details className="mt-3" open={expanded}>
           <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-brand-dark">{t('target.howCalculated')}</summary>
           <TargetExplanation

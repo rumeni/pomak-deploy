@@ -297,3 +297,20 @@ def visible_tasks(coach, now=None) -> list:
         *rows.filter(is_open, snoozed_until__gt=now)[:MAX_OTHER_TASKS],
         *rows.filter(status=CoachTask.Status.DONE, auto_resolved=False, resolved_at__gte=now - timedelta(days=14))[:MAX_OTHER_TASKS],
     ]
+
+
+def weekly_checkin_task(connection_id, monday) -> None:
+    """Raise one task only while the check-in is still explicitly shared with this coach."""
+    from progress.models import WeeklyCheckIn
+
+    with transaction.atomic():
+        connection = lock_active(connection_id)
+        if connection is None or not WeeklyCheckIn.objects.filter(
+            user_id=connection.client_id, week_start=monday, shared_with_id=connection.pk,
+        ).exists():
+            return
+        CoachTask.objects.bulk_create([CoachTask(
+            connection=connection, kind=CoachTask.Kind.WEEKLY_CHECKIN, key=monday.isoformat(),
+            event_at=timezone.now(), data={'week_start': monday.isoformat()},
+        )], ignore_conflicts=True)
+

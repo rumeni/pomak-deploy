@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 
 import { Button, Card, FormError } from '../../components/ui'
+import { getFormatLocale } from '../../lib/format'
 import { useCoachDashboard, type ClientRow, type Connection } from './api'
 import { ClientDetail } from './ClientDetail'
 import { InviteSheet } from './InviteSheet'
@@ -176,7 +177,7 @@ function ArchivedRow({ connection }: { connection: Connection }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{connection.client.name}</span>
           <span className="block text-xs text-muted">
-            {t('coachSpace.clients.endedOn', { date: connection.ended_at ? new Date(connection.ended_at).toLocaleDateString() : '' })}
+            {t('coachSpace.clients.endedOn', { date: connection.ended_at ? new Date(connection.ended_at).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' }) : '' })}
           </span>
         </span>
       </Link>

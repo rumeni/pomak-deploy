@@ -53,6 +53,9 @@ class CoachConnection(TimeStampedModel):
     # The pre-workout check-in (sleep, stress, soreness...) and its score: subjective recovery
     # data, shared only with its own consent, never implied by sharing workouts.
     share_readiness = models.BooleanField(default=False)
+    # Lets the coach set the client's calorie/macro target (taking over nutrition guidance is
+    # confirmed separately from sharing the diary).
+    coach_sets_nutrition = models.BooleanField(default=False)
     # Server-made version of what the coach may see: +1 on every consent change and on the end.
     # Clients order access facts by it, never by when a response happened to arrive.
     access_version = models.PositiveIntegerField(default=1)
@@ -81,6 +84,11 @@ class CoachMessage(TimeStampedModel):
     connection = models.ForeignKey(CoachConnection, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='coaching_messages')
     text = models.CharField(max_length=800)
+    # A comment on a workout is a message about it: one record, shown in the conversation and
+    # with the workout. If the workout is deleted the message stays, without the link.
+    workout = models.ForeignKey('training.WorkoutSession', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    # A comment on a week (its Monday): seen in the conversation and on the week's review.
+    week_start = models.DateField(null=True, blank=True)
 
     class Meta:
         ordering = ['created_at', 'id']
@@ -142,6 +150,7 @@ class CoachTask(TimeStampedModel):
         INACTIVE = 'inactive', _('No workouts')
         LOW_READINESS = 'low_readiness', _('Low readiness')
         PERSONAL_RECORD = 'personal_record', _('Personal record')
+        WEEKLY_CHECKIN = 'weekly_checkin', _('Weekly check-in')
 
     class Status(models.TextChoices):
         OPEN = 'open', _('Open')
@@ -167,3 +176,95 @@ class CoachTask(TimeStampedModel):
             models.UniqueConstraint(fields=['connection', 'kind', 'key'], name='coach_task_once_per_event'),
         ]
         indexes = [models.Index(fields=['connection', 'status'], name='coach_task_status_idx')]
+
+
+class ProgramTemplate(TimeStampedModel):
+    """A coach's program: which of his routines on which weekday, for a number of weeks.
+
+    It stays the coach's. Assigning it gives each client a plan with his own copies of the
+    routines, so later changes to the template never change existing client plans.
+    """
+
+    coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='program_templates')
+    name = models.CharField(max_length=100)
+    notes = models.CharField(max_length=1000, blank=True)
+    # None: no end (until the coach changes the plan).
+    weeks = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MaxValueValidator(52)])
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+
+
+class ProgramTemplateDay(TimeStampedModel):
+    template = models.ForeignKey(ProgramTemplate, on_delete=models.CASCADE, related_name='days')
+    # 0 = Monday ... 6 = Sunday.
+    weekday = models.PositiveSmallIntegerField(validators=[MaxValueValidator(6)])
+    routine = models.ForeignKey('training.Routine', on_delete=models.CASCADE, related_name='+')
+
+    class Meta:
+        ordering = ['weekday']
+        constraints = [models.UniqueConstraint(fields=['template', 'weekday'], name='template_one_routine_per_day')]
+
+
+class ClientPlan(TimeStampedModel):
+    """The client's plan within one collaboration: a history of versions, each valid from a date."""
+
+    connection = models.OneToOneField(CoachConnection, on_delete=models.CASCADE, related_name='plan')
+
+
+class ClientPlanVersion(TimeStampedModel):
+    """The plan from `valid_from` on (until the next version, or for `weeks`).
+
+    Changes never touch what already happened: a new version starts today or later, and a
+    workout keeps the plan it was started with (its own snapshot).
+    """
+
+    plan = models.ForeignKey(ClientPlan, on_delete=models.CASCADE, related_name='versions')
+    valid_from = models.DateField()
+    weeks = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MaxValueValidator(52)])
+    name = models.CharField(max_length=100)
+    # Why the coach changed the plan; shown to the client with the change.
+    reason = models.CharField(max_length=300, blank=True)
+    template = models.ForeignKey(ProgramTemplate, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        ordering = ['valid_from', 'created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['plan', 'valid_from'], name='plan_one_version_per_date'),
+        ]
+
+
+class ClientPlanDay(TimeStampedModel):
+    version = models.ForeignKey(ClientPlanVersion, on_delete=models.CASCADE, related_name='days')
+    weekday = models.PositiveSmallIntegerField(validators=[MaxValueValidator(6)])
+    # The client's own routine to train with (a copy made for him, which he may edit); deleting
+    # it only empties that day for training.
+    routine = models.ForeignKey('training.Routine', null=True, on_delete=models.SET_NULL, related_name='+')
+    # What the coach prescribed, frozen when the version was made: the plan's history never
+    # changes when the client edits his copy.
+    prescription = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['weekday']
+        constraints = [models.UniqueConstraint(fields=['version', 'weekday'], name='plan_day_one_routine_per_day')]
+
+
+class PlanRequest(TimeStampedModel):
+    """A durable receipt of a plan request (assignment or change), per collaboration.
+
+    Kept apart from the versions it made, so replacing a version later never lets a delayed
+    retry of the old request run again; a retry with different content is refused.
+    """
+
+    class Operation(models.TextChoices):
+        ASSIGN = 'assign', _('Assign a program')
+        CHANGE = 'change', _('Change the plan')
+
+    connection = models.ForeignKey(CoachConnection, on_delete=models.CASCADE, related_name='plan_requests')
+    request_id = models.UUIDField()
+    operation = models.CharField(max_length=10, choices=Operation.choices)
+    payload_hash = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['connection', 'request_id'], name='plan_request_once')]

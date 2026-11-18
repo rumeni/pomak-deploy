@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import type { CoachClientDetails } from './api'
 import type { CoachTask } from './tasks'
+import type { WeekReview } from '../progress/weekApi'
 
 /**
  * What the coach may see is ordered by facts from the SERVER, never by when a response happened
@@ -21,7 +22,21 @@ import type { CoachTask } from './tasks'
 /** The server said this account may not see it. Unlike a network failure, nothing cached may stay. */
 export function isAccessRevoked(error: unknown): boolean {
   if (!axios.isAxiosError(error) || !error.response) return false
+  // One missing thing (a deleted workout) is not a lost collaboration.
+  if (isMissingResource(error)) return false
   return [401, 403, 404].includes(error.response.status)
+}
+
+/** The server says only this one item is gone (code "workout_not_found"); access is intact. */
+export function isMissingResource(error: unknown): boolean {
+  if (!axios.isAxiosError(error) || error.response?.status !== 404) return false
+  return (error.response.data as { code?: string } | undefined)?.code === 'workout_not_found'
+}
+
+/** A write meant for a collaboration that is no longer the active one (409 "collaboration_changed"). */
+export function isCollaborationChanged(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 409
+    && (error.response.data as { code?: string } | undefined)?.code === 'collaboration_changed'
 }
 
 /** A transient failure (offline, timeout): the last loaded view may stay, marked as such. */
@@ -36,8 +51,56 @@ export interface AccessFacts {
   share_measurements: boolean
   share_nutrition: boolean
   share_readiness?: boolean
+  coach_sets_nutrition?: boolean
   access_version?: number
   connected_at?: string
+}
+
+/** The access facts the server sends with every coach view of client data. */
+export interface ServerAccess {
+  connection_id: string
+  client_id: string
+  access_version: number
+  connected_at: string
+  share_measurements: boolean
+  share_nutrition: boolean
+  share_readiness: boolean
+  coach_sets_nutrition: boolean
+}
+
+export function factsOf(access: ServerAccess): AccessFacts {
+  return {
+    id: access.connection_id, client: { id: access.client_id }, access_version: access.access_version,
+    connected_at: access.connected_at, share_measurements: access.share_measurements, share_nutrition: access.share_nutrition,
+    share_readiness: access.share_readiness, coach_sets_nutrition: access.coach_sets_nutrition,
+  }
+}
+
+/**
+ * How a coach view of client data (plan, workout review, stats, target, week) may be shown,
+ * judged like the client screen: by server facts, against the highest version known anywhere.
+ * - 'revoked': nothing (the server said no, or the collaboration ended or was replaced);
+ * - 'stale': access changed since this data was read: show no consent category until refetched;
+ * - 'ok': as loaded (also offline before anything newer was seen).
+ */
+export function guardVerdict(
+  access: ServerAccess | undefined,
+  error: unknown,
+  dashboard: DashboardAccess | undefined,
+  registry: AccessRegistry,
+): { state: 'ok' | 'stale' | 'revoked' | 'none'; known?: AccessFacts } {
+  if (error && isAccessRevoked(error)) {
+    if (axios.isAxiosError(error) && error.response?.status !== 401) markRevoked(registry, access?.connection_id)
+    return { state: 'revoked' }
+  }
+  if (!access) return { state: 'none' }
+  if (!error) observe(registry, factsOf(access))
+  const { verdict, known } = judge(
+    { id: access.connection_id, client_id: access.client_id, access_version: access.access_version, connected_at: access.connected_at },
+    dashboard, registry,
+  )
+  if (verdict === 'revoked') return { state: 'revoked' }
+  return { state: verdict === 'stale' ? 'stale' : 'ok', known }
 }
 
 /** A collaboration as the dashboard lists it. */
@@ -176,6 +239,15 @@ export function redactCached(detail: CoachClientDetails, facts: AccessFacts): Co
   }
 }
 
+/** Drop all opt-in weekly data until a response at the current access version arrives. */
+export function redactWeek(review: WeekReview): WeekReview {
+  return {
+    ...review,
+    weight: null, nutrition: null, readiness: null, check_in: null,
+    shared: { measurements: false, nutrition: false, readiness: false },
+  }
+}
+
 /**
  * Tasks the coach may see now, each judged by its own collaboration and access version against
  * the highest version known from any source: none of a revoked collaboration; a readiness task
@@ -187,6 +259,8 @@ export function visibleTaskList(tasks: CoachTask[], dashboard: DashboardAccess |
     if (!c) return !dashboard || dashboard.rows.some((r) => r.client.id === task.client.id)
     const { verdict, known } = judge({ id: c.id, client_id: task.client.id, access_version: c.access_version, connected_at: c.connected_at }, dashboard, registry)
     if (verdict === 'revoked') return false
+    // A withdrawn check-in has no task at the new version, even if an old list arrives late.
+    if (task.kind === 'weekly_checkin') return verdict !== 'stale'
     if (task.kind !== 'low_readiness') return true
     if (verdict === 'stale') return false
     if (!known) return true
@@ -198,8 +272,10 @@ export function visibleTaskList(tasks: CoachTask[], dashboard: DashboardAccess |
 
 /** Forget everything cached about a client the coach lost access to, and refresh the lists. */
 export function purgeClient(qc: QueryClient, clientId: string): Promise<unknown> {
-  qc.removeQueries({ queryKey: ['coach-client', clientId] })
-  qc.removeQueries({ queryKey: ['coach-messages', clientId] })
+  for (const key of ['coach-client', 'coach-messages', 'coach-client-plan', 'coach-client-workout', 'coach-client-stats',
+    'coach-client-targets', 'coach-client-week']) {
+    qc.removeQueries({ queryKey: [key, clientId] })
+  }
   return refreshCoachLists(qc)
 }
 
