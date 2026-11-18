@@ -3,7 +3,7 @@ import datetime
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -11,10 +11,10 @@ from rest_framework.views import APIView
 
 from core.views import IdempotentCreateMixin
 
-from . import overview
+from . import overview, weekly
 from accounts.models import User
 
-from .models import Goal, Measurement
+from .models import Goal, Measurement, WeeklyCheckIn
 from .serializers import GoalSerializer, GoalStatusSerializer, MeasurementSerializer
 
 
@@ -85,3 +85,48 @@ class WeekView(APIView):
         if monday > datetime.date.max - datetime.timedelta(days=6):
             raise ValidationError({'start': _('Invalid date.')})
         return Response(overview.week_overview(request.user, monday))
+
+
+def week_monday(value):
+    """Any day of a week (YYYY-MM-DD) -> its Monday."""
+    try:
+        day = datetime.date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise ValidationError({'week': _('Invalid date.')}) from None
+    monday = overview.monday_of(day)
+    if monday > datetime.date.max - datetime.timedelta(days=6):
+        raise ValidationError({'week': _('Invalid date.')})
+    return monday
+
+
+class WeeklyCheckInSerializer(serializers.Serializer):
+    energy = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
+    progress = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
+    nutrition = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
+    satisfaction = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
+    hardest = serializers.CharField(max_length=500, required=False, allow_blank=True, default='', trim_whitespace=True)
+    notes = serializers.CharField(max_length=1000, required=False, allow_blank=True, default='', trim_whitespace=True)
+
+
+class WeekReviewView(APIView):
+    """GET: the week in review. PUT: the athlete's check-in for that week (same request twice = same result)."""
+
+    def get(self, request, day):
+        return Response(weekly.week_review(request.user, week_monday(day)))
+
+    def put(self, request, day):
+        monday = week_monday(day)
+        if not weekly.can_check_in(monday):
+            raise ValidationError({'week': _('A check-in is for this week or one of the last eight.')})
+        serializer = WeeklyCheckInSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            checkin, _created = WeeklyCheckIn.objects.select_for_update().get_or_create(user=request.user, week_start=monday)
+            for field, value in serializer.validated_data.items():
+                setattr(checkin, field, value)
+            checkin.save()
+        # The coach, if there is one, gets it on the overview (once per week).
+        from coaching.tasks import weekly_checkin_task
+        weekly_checkin_task(request.user, monday)
+        return Response(weekly.week_review(request.user, monday))
+

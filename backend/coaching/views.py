@@ -173,6 +173,8 @@ def message_summary(item):
         'created_at': item.created_at,
         # The workout it is about (a comment), or null; never a link to something deleted.
         'workout': {'id': str(workout.id), 'name': workout.name, 'started_at': workout.started_at} if workout else None,
+        # A comment on a week's review (its Monday), or null.
+        'week_start': item.week_start,
     }
 
 
@@ -244,8 +246,17 @@ class AssignSerializer(serializers.Serializer):
 class MessageSerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False)
     text = serializers.CharField(max_length=800, trim_whitespace=True, allow_blank=False)
-    # A comment on one of the client's workouts.
+    # A comment on one of the client's workouts, or on a week's review (any day of the week).
     workout_id = serializers.UUIDField(required=False, allow_null=True)
+    week = serializers.DateField(required=False, allow_null=True)
+
+    def validate_week(self, value):
+        if value is None:
+            return None
+        monday = value - timedelta(days=value.weekday())
+        if monday > timezone.localdate():
+            raise serializers.ValidationError(_('That week has not started yet.'))
+        return monday
 
 
 class NoteSerializer(serializers.Serializer):
@@ -659,6 +670,9 @@ class MessagesView(APIView):
         if params.get('workout_id'):
             # The comments on one workout: the same messages, seen from the workout.
             rows = rows.filter(workout_id=parse_uuid(params['workout_id'], 'workout_id'))
+        if params.get('week'):
+            week = serializers.DateField().to_internal_value(params['week'])
+            rows = rows.filter(week_start=week - timedelta(days=week.weekday()))
         if 'before' in params or 'before_id' in params:
             raw_date, raw_id = params.get('before', ''), params.get('before_id', '')
             try:
@@ -707,6 +721,7 @@ class MessagesView(APIView):
         message = CoachMessage.objects.create(
             **({'id': message_id} if message_id else {}),
             connection=connection, sender=request.user, text=text, workout=workout,
+            week_start=serializer.validated_data.get('week'),
         )
         return Response(message_summary(message), status=status.HTTP_201_CREATED)
 

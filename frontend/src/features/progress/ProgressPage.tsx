@@ -37,6 +37,13 @@ export function ProgressPage() {
           </p>
         )}
         <WeekCard />
+        <Link to="/napredak/nedelja" className="flex items-center gap-3 rounded-2xl bg-card px-4 py-4 ring-1 ring-line active:bg-brand-soft">
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-xl">{t('week.open')}</span>
+            <span className="block text-sm text-muted">{t('week.openHint')}</span>
+          </span>
+          <span aria-hidden className="text-2xl text-accent">›</span>
+        </Link>
         <Link
           to="/napredak/statistika"
           className="flex items-center gap-3 rounded-2xl bg-ink px-4 py-4 text-white shadow-sm active:opacity-90"

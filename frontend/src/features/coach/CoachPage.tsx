@@ -154,7 +154,7 @@ function Collaboration({ connection, coach, notes, assignments }: {
         ))}
         <p className="mt-2 text-xs text-muted">{t('coach.routinesInTraining')}</p>
       </Card>
-      <CoachMessages key={connection.id} selfId={connection.client.id} workoutLink={(w) => `/trening/istorija/${w}`} />
+      <CoachMessages key={connection.id} selfId={connection.client.id} workoutLink={(w) => `/trening/istorija/${w}`} weekLink={(w) => `/napredak/nedelja?od=${w}`} />
       <Card title={t('coach.sharingTitle')}>
         <ConnectedSharingSettings
           key={`${connection.id}:${connection.access_version ?? 0}:${connection.share_measurements}:${connection.share_nutrition}:${connection.share_readiness}:${connection.coach_sets_nutrition}`}

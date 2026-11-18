@@ -10,3 +10,10 @@ export function WorkoutCoachComments({ workoutId, selfId }: { workoutId: string;
   if (dashboard.data?.role !== 'client' || !dashboard.data.connection) return null
   return <CoachMessages selfId={selfId} workoutId={workoutId} title={t('coachSpace.review.coachComments')} />
 }
+
+/** On the client's week review: the coach's comments about that week, and a reply. */
+export function WeekCoachComments({ weekStart, selfId }: { weekStart: string; selfId: string }) {
+  const { t } = useTranslation()
+  return <CoachMessages selfId={selfId} weekStart={weekStart} title={t('coachSpace.review.coachComments')} />
+}
+

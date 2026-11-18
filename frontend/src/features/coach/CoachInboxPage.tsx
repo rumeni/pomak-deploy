@@ -110,6 +110,7 @@ function ConversationView({ conversation, selfId }: { conversation: Conversation
       <CoachMessages
         selfId={selfId} connectionId={conversation.id} readOnly={ended}
         workoutLink={ended ? undefined : isCoach ? (w) => `/trener/klijenti/${conversation.client.id}/trening/${w}` : (w) => `/trening/istorija/${w}`}
+        weekLink={ended ? undefined : isCoach ? (w) => `/trener/klijenti/${conversation.client.id}/nedelja?od=${w}` : (w) => `/napredak/nedelja?od=${w}`}
       />
     </section>
   )

@@ -216,4 +216,7 @@ SR = {
     'Choose one of the offered periods.': 'Izaberi neki od ponuđenih perioda.',
     'A new target applies from today on; earlier days keep theirs.': 'Novi cilj važi od danas; raniji dani zadržavaju svoj.',
     'The client has not let you set the nutrition target.': 'Klijent ti nije dozvolio da postavljaš cilj ishrane.',
+    'A check-in is for this week or one of the last eight.': 'Osvrt se piše za ovu ili neku od poslednjih osam nedelja.',
+    'That week has not started yet.': 'Ta nedelja još nije počela.',
+    'Weekly check-in': 'Nedeljni osvrt',
 }

@@ -87,6 +87,8 @@ class CoachMessage(TimeStampedModel):
     # A comment on a workout is a message about it: one record, shown in the conversation and
     # with the workout. If the workout is deleted the message stays, without the link.
     workout = models.ForeignKey('training.WorkoutSession', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    # A comment on a week (its Monday): seen in the conversation and on the week's review.
+    week_start = models.DateField(null=True, blank=True)
 
     class Meta:
         ordering = ['created_at', 'id']
@@ -148,6 +150,7 @@ class CoachTask(TimeStampedModel):
         INACTIVE = 'inactive', _('No workouts')
         LOW_READINESS = 'low_readiness', _('Low readiness')
         PERSONAL_RECORD = 'personal_record', _('Personal record')
+        WEEKLY_CHECKIN = 'weekly_checkin', _('Weekly check-in')
 
     class Status(models.TextChoices):
         OPEN = 'open', _('Open')

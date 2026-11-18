@@ -297,3 +297,19 @@ def visible_tasks(coach, now=None) -> list:
         *rows.filter(is_open, snoozed_until__gt=now)[:MAX_OTHER_TASKS],
         *rows.filter(status=CoachTask.Status.DONE, auto_resolved=False, resolved_at__gte=now - timedelta(days=14))[:MAX_OTHER_TASKS],
     ]
+
+
+def weekly_checkin_task(client, monday) -> None:
+    """The client wrote his week's check-in: one task for his coach (never repeated for the week)."""
+    connection_id = CoachConnection.objects.filter(client=client, ended_at__isnull=True).values_list('id', flat=True).first()
+    if connection_id is None:
+        return
+    with transaction.atomic():
+        connection = lock_active(connection_id)
+        if connection is None:
+            return
+        CoachTask.objects.bulk_create([CoachTask(
+            connection=connection, kind=CoachTask.Kind.WEEKLY_CHECKIN, key=monday.isoformat(),
+            event_at=timezone.now(), data={'week_start': monday.isoformat()},
+        )], ignore_conflicts=True)
+

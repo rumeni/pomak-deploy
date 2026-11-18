@@ -138,6 +138,8 @@ export interface CoachMessage {
   created_at: string
   /** A comment on a workout (null for a plain message, or once the workout is deleted). */
   workout?: { id: string; name: string; started_at: string } | null
+  /** A comment on a week's review: its Monday. */
+  week_start?: string | null
 }
 
 const DASHBOARD = ['coach-dashboard']
@@ -164,13 +166,14 @@ const CHAT_PAGE_SIZE = 80
 type MessageCursor = { before: string; before_id: string } | null
 
 /** Which conversation: the coach's with a client, the client's own, or any one (also archived) by ID. */
-export type ChatTarget = { clientId?: string; connectionId?: string; workoutId?: string }
+export type ChatTarget = { clientId?: string; connectionId?: string; workoutId?: string; weekStart?: string }
 
-const chatKey = ({ clientId, connectionId, workoutId }: ChatTarget) =>
-  `${connectionId ? `c:${connectionId}` : clientId ?? 'own'}${workoutId ? `:w:${workoutId}` : ''}`
-const chatParams = ({ clientId, connectionId, workoutId }: ChatTarget) => ({
+const chatKey = ({ clientId, connectionId, workoutId, weekStart }: ChatTarget) =>
+  `${connectionId ? `c:${connectionId}` : clientId ?? 'own'}${workoutId ? `:w:${workoutId}` : ''}${weekStart ? `:k:${weekStart}` : ''}`
+const chatParams = ({ clientId, connectionId, workoutId, weekStart }: ChatTarget) => ({
   ...(connectionId ? { connection_id: connectionId } : clientId ? { client_id: clientId } : {}),
   ...(workoutId ? { workout_id: workoutId } : {}),
+  ...(weekStart ? { week: weekStart } : {}),
 })
 
 export function useCoachMessages(target: ChatTarget = {}, { live = true }: { live?: boolean } = {}) {

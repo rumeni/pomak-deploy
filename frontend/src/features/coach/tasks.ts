@@ -1,6 +1,6 @@
 /** Coach overview tasks: grouping for the list and the facts each one shows. */
 
-export type TaskKind = 'workout_review' | 'inactive' | 'low_readiness' | 'personal_record'
+export type TaskKind = 'workout_review' | 'inactive' | 'low_readiness' | 'personal_record' | 'weekly_checkin'
 export type TaskState = 'open' | 'snoozed' | 'done'
 
 export interface CoachTask {
@@ -18,6 +18,7 @@ export interface CoachTask {
     records?: { exercise_id: string; exercise: string; exercise_en: string; e1rm: string }[]
     since?: string
     last_workout_at?: string | null
+    week_start?: string
   }
   client: { id: string; name: string }
   /** The collaboration and access version it was read under (older servers did not send it). */

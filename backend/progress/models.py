@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -69,3 +70,25 @@ class Goal(TimeStampedModel):
         constraints = [
             models.UniqueConstraint(fields=['user', 'kind'], condition=models.Q(status='active'), name='one_active_goal_per_kind'),
         ]
+
+
+class WeeklyCheckIn(TimeStampedModel):
+    """The athlete's own look back at a week (Monday = week_start). Every answer is optional.
+
+    Scales run 1-5 (higher = better). With a coach, the coach sees it with the week; without one
+    it is just the athlete's note to self.
+    """
+
+    SCALE = [MinValueValidator(1), MaxValueValidator(5)]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='weekly_checkins')
+    week_start = models.DateField()
+    energy = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE)
+    progress = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE)
+    nutrition = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE)
+    satisfaction = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE)
+    hardest = models.CharField(max_length=500, blank=True)
+    notes = models.CharField(max_length=1000, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user', 'week_start'], name='one_checkin_per_week')]

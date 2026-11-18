@@ -809,3 +809,12 @@ msgstr "Novi cilj važi od danas; raniji dani zadržavaju svoj."
 
 msgid "The client has not let you set the nutrition target."
 msgstr "Klijent ti nije dozvolio da postavljaš cilj ishrane."
+
+msgid "A check-in is for this week or one of the last eight."
+msgstr "Osvrt se piše za ovu ili neku od poslednjih osam nedelja."
+
+msgid "That week has not started yet."
+msgstr "Ta nedelja još nije počela."
+
+msgid "Weekly check-in"
+msgstr "Nedeljni osvrt"

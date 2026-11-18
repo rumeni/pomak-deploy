@@ -12,6 +12,7 @@ import {
   useAssignCoachRoutine, useClientStatus, useCoachClient, useCoachDashboard, useCoachNotes, useCoachTasks, useCreateCoachNote,
   useDeleteCoachNote, useDisconnectCoach, useUpdateCoachNote, type CoachClientDetails, type CoachNote,
 } from './api'
+import { taskLink } from './taskLink'
 import { taskText } from './taskText'
 import { Avatar } from './Avatar'
 import { CoachNutritionDays } from './CoachNutritionDays'
@@ -173,7 +174,7 @@ function OverviewTab({ data }: { data: CoachClientDetails }) {
               const body = <><span className="font-semibold">{text.title}</span>{text.detail && <span className="text-muted"> · {text.detail}</span>}</>
               return (
                 <li key={task.id} className="text-sm">
-                  {task.data.workout_id ? <Link to={`/trener/klijenti/${task.client.id}/trening/${task.data.workout_id}`} className="underline-offset-2 hover:underline">{body}</Link> : body}
+                  {taskLink(task).kind !== 'client' ? <Link to={taskLink(task).to} className="underline-offset-2 hover:underline">{body}</Link> : body}
                 </li>
               )
             })}
@@ -199,6 +200,13 @@ function OverviewTab({ data }: { data: CoachClientDetails }) {
             field === 'sleep_hours' ? t('readiness.sleepValue', { value }) : `${t(`readiness.${field}`)} ${value}/5`).join(' · ')}
         </p>
       )}
+      <Link to={`/trener/klijenti/${data.connection.client.id}/nedelja`} className="app-card flex items-center justify-between !p-4">
+        <span>
+          <span className="block font-semibold">{t('coachSpace.week.open')}</span>
+          <span className="block text-xs text-muted">{t('coachSpace.week.openHint')}</span>
+        </span>
+        <span className="text-muted" aria-hidden>›</span>
+      </Link>
       <Card title={t('coachSpace.client.lastWorkoutTitle')}>
         {last ? <WorkoutSummary workout={last} /> : <p className="text-muted">{t('coach.noWorkouts')}</p>}
       </Card>

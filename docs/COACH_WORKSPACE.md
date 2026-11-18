@@ -229,3 +229,26 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
   kalorijski cilj i makroe“), odvojena od deljenja dnevnika.
   - Cilj važi od danas ili kasnije, jedan cilj po datumu; raniji dani zadržavaju svoj.
   - Klijent ga vidi kao „Postavio trener“, uz napomenu, i može da ga promeni.
+
+## T2c: Nedelja
+
+- **„Nedelja“ (Napredak → Nedeljni osvrt)** je jedan ekran za nedeljni izveštaj i check-in.
+  Dostupna je i korisnicima bez trenera.
+- **Brojevi nedelje:**
+  - treninzi (sa ciljem i, uz plan od trenera, brojem planiranih);
+  - obim, radne serije i prosečan RPE;
+  - težina i promena;
+  - prosečne kalorije iz kompletnih dana, uz cilj;
+  - prosečna spremnost.
+- **Osvrt korisnika:** energija, napredak, ishrana i (uz trenera) zadovoljstvo programom, na skali
+  1–5, plus „šta je bilo najteže“ i napomena. Sve je opciono.
+  - Piše se za ovu ili neku od poslednjih osam nedelja; ponovno čuvanje menja isti osvrt.
+  - Sa trenerom piše da trener vidi osvrt uz nedelju.
+- **Trener:**
+  - kad klijent sačuva osvrt, trener dobija zadatak „Popunio/la nedeljni osvrt“ (jednom po
+    nedelji), koji otvara nedelju klijenta;
+  - vidi brojeve samo uz dozvole (težina uz merenja, kalorije uz ishranu, spremnost uz spremnost;
+    inače „nije podeljeno“) i osvrt klijenta;
+  - može da ostavi komentar.
+- **Komentar na nedelju je poruka vezana za tu nedelju** (isti model kao komentar uz trening).
+  Vidi se u razgovoru, sa linkom na nedelju, i na ekranu nedelje kod oba korisnika.

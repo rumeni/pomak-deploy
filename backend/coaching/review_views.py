@@ -174,3 +174,18 @@ class ClientNutritionTargetView(APIView):
         except IntegrityError:
             NutritionTarget.objects.filter(owner=connection.client, valid_from=data['valid_from']).update(**values)
         return Response({'allowed': True, 'can_set': True, **client_targets(connection)}, status=status.HTTP_201_CREATED)
+
+
+class ClientWeekView(APIView):
+    """A client's week in review, with only what he shares; his check-in is written for the coach."""
+
+    def get(self, request, client_id, day):
+        from progress.views import week_monday
+        from progress.weekly import week_review
+
+        connection = active_connection_for(request, client_id)
+        return Response(week_review(
+            connection.client, week_monday(day), measurements=connection.share_measurements,
+            nutrition=connection.share_nutrition, readiness=connection.share_readiness,
+        ))
+
