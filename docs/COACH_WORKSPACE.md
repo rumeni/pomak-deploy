@@ -440,16 +440,19 @@ klijenta iz T1.
     produkcioni deployment da bi ključ bio dostupan kodu.
 - **Android push (Firebase projekat `pomak-rs`):**
   1. Firebase Android aplikacija ima package ID `rs.pomak.app`.
-  2. Za ovaj testni projekat Android klijentska konfiguracija
-     `frontend/android/app/google-services.json` je dodatа direktno na granu T3,
-     uz izričitu dozvolu vlasnika. **To nije servisni nalog**; Firebase Android konfiguracija
-     sadrži javni API ključ. Ključ ograničiti na potrebne Firebase API-je i odgovarajuću
-     Android aplikaciju u Google Cloud podešavanjima, naročito pre javne distribucije.
-     Nikad ne commitovati servisni nalog ili njegov privatni ključ.
-  3. Android CI proverava `project_id=pomak-rs` i `package_name=rs.pomak.app`
-     iz datoteke i automatski postavlja `VITE_FCM_ENABLED=1` i za PR i za
-     `main` build. Poseban GitHub Actions secret za ovaj testni klijentski fajl
-     više nije potreban. Ako datoteke nema, FCM ostaje isključen.
+  2. **Android klijentska konfiguracija nije u Git repozitorijumu.**
+     `frontend/android/app/google-services.json` je u `.gitignore`. U GitHub
+     Settings → Secrets and variables → Actions sačuvati **`ANDROID_GOOGLE_SERVICES_JSON`**
+     kao repository secret, čija je vrednost kompletan tekst izvornog JSON-a za
+     Firebase projekat `pomak-rs`. **To nije servisni nalog.**
+  3. Android CI učitava secret **isključivo pri `push` na `main`**, posle
+     pregleda i merge-a koda, proverava `project_id=pomak-rs` i
+     `package_name=rs.pomak.app`, pa postavlja `VITE_FCM_ENABLED=1`.
+     CI za PR ne dobija secret, tako da build bez FCM-a može da se testira
+     bez izlaganja vrednosti neproverenom PR kodu. Ako secret izostane,
+     Android se gradi bez push-a; proveriti log pre izdavanja APK-a.
+     Za lokalni Android build, kopirati JSON u `frontend/android/app/`
+     i postaviti `VITE_FCM_ENABLED=1` pre `npm run build`.
   4. U Firebase Console → Project settings → Service accounts → Generate new private key
      preuzeti serverski servisni nalog. Ceo njegov JSON uneti **direktno u Vercel**
      `pomak-api` Production kao šifrovanu osetljivu promenljivu `FCM_SERVICE_ACCOUNT`.
