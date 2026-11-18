@@ -88,8 +88,8 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
   const scannedVersion = useRef(0)
   const markEdited = () => { editVersion.current += 1 }
   const fingerprint = JSON.stringify([name, state, values, portions, barcode, shared, sourceRef])
-  const initialFingerprint = useRef(fingerprint)
-  const confirmLeave = useUnsavedWarning(fingerprint !== initialFingerprint.current)
+  const [initialFingerprint] = useState(() => fingerprint)
+  const confirmLeave = useUnsavedWarning(fingerprint !== initialFingerprint)
 
   const applyScan = (result: ScanResult) => {
     if (editVersion.current !== scannedVersion.current) return

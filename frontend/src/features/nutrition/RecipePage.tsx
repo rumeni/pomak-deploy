@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -61,8 +61,8 @@ function RecipeForm({ recipe }: { recipe?: Recipe }) {
   const [picking, setPicking] = useState(!recipe)
   const [error, setError] = useState<string | null>(null)
   const fingerprint = JSON.stringify([name, rows, mass, servings])
-  const initialFingerprint = useRef(fingerprint)
-  const confirmLeave = useUnsavedWarning(fingerprint !== initialFingerprint.current)
+  const [initialFingerprint] = useState(() => fingerprint)
+  const confirmLeave = useUnsavedWarning(fingerprint !== initialFingerprint)
 
   const parsedMass = mass.trim() ? parseDecimal(mass) : null
   const parsedServings = Number.parseInt(servings, 10)

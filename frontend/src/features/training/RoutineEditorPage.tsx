@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -42,8 +42,8 @@ function Editor({ initial }: { initial: RoutineDraft }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [draft, setDraft] = useState(initial)
-  const initialFingerprint = useRef(JSON.stringify(initial))
-  const confirmLeave = useUnsavedWarning(JSON.stringify(draft) !== initialFingerprint.current)
+  const [initialFingerprint] = useState(() => JSON.stringify(initial))
+  const confirmLeave = useUnsavedWarning(JSON.stringify(draft) !== initialFingerprint)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const save = useSaveRoutine()
