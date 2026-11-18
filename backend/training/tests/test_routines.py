@@ -54,7 +54,7 @@ class RoutineTests(APITestCase):
         self.assertEqual(self.create(body).status_code, 201)
         stored = Routine.objects.get(pk=body['id'])
         # A second request saw no row before the first insert committed.
-        with mock.patch.object(RoutineViewSet, 'find_existing', side_effect=[None, stored]):
+        with mock.patch.object(RoutineViewSet, 'find_existing', side_effect=[None, stored, stored]):
             retry = self.create(body)
         self.assertEqual(retry.status_code, 200, retry.data)
         self.assertEqual(Routine.objects.count(), 1)
