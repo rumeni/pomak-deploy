@@ -707,3 +707,57 @@ msgstr "%(name)s (kopija)"
 #: accounts/views.py:57
 msgid "Too many sign-in attempts. Complete verification to try again."
 msgstr "Previše pokušaja prijave. Završite bezbednosnu proveru i pokušajte ponovo."
+
+msgid "This collaboration has ended. The conversation can be read, but not continued."
+msgstr "Ova saradnja je završena. Razgovor možeš da čitaš, ali ne i da nastaviš."
+
+msgid "Choose for how long."
+msgstr "Izaberi na koliko dugo."
+
+msgid "Tell clients how long you have been coaching."
+msgstr "Napiši koliko dugo radiš kao trener."
+
+msgid "Choose at least one area you work in."
+msgstr "Izaberi bar jednu oblast kojom se baviš."
+
+msgid "Choose how you work with clients."
+msgstr "Izaberi kako radiš sa klijentima."
+
+msgid "Enter the city where you train clients."
+msgstr "Upiši grad u kom treniraš klijente."
+
+msgid "Delete an old note before adding another one."
+msgstr "Obriši neku staru belešku pre nego što dodaš novu."
+
+msgid "Coach"
+msgstr "Trener"
+
+msgid "Client"
+msgstr "Klijent"
+
+msgid "In person"
+msgstr "Uživo"
+
+msgid "Online"
+msgstr "Online"
+
+msgid "In person and online"
+msgstr "Uživo i online"
+
+msgid "Finished workout"
+msgstr "Završen trening"
+
+msgid "No workouts"
+msgstr "Nema treninga"
+
+msgid "Low readiness"
+msgstr "Niska spremnost"
+
+msgid "Personal record"
+msgstr "Lični rekord"
+
+msgid "Open"
+msgstr "Otvoreno"
+
+msgid "Done"
+msgstr "Završeno"

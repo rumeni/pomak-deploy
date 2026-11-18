@@ -242,7 +242,8 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual(len(self.client.get('/api/coach/dashboard/').data['assignments']), 1)
         self.assertEqual(self.client.delete('/api/coach/connection/').status_code, 204)
         self.assertTrue(Routine.objects.filter(pk=clone.pk, owner=self.client_user).exists())
-        self.assertEqual(CoachAssignment.objects.count(), 0)
+        # The routine stays the client's; the attribution belongs to the archive, not the new state.
+        self.assertEqual(self.client.get('/api/coach/dashboard/').data['assignments'], [])
 
     def test_private_coach_exercise_cannot_be_assigned(self):
         self.connect()
@@ -258,7 +259,7 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual(res.status_code, 400, res.data)
         self.assertEqual(Routine.objects.filter(owner=self.client_user).count(), 0)
 
-    def test_messages_are_private_and_disappears_on_disconnect(self):
+    def test_messages_are_private_and_archived_read_only_on_disconnect(self):
         self.connect()
         self.as_user(self.coach)
         url = '/api/coach/messages/'
@@ -270,11 +271,21 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual(response.data[0]['text'], 'Hello')
         self.assertEqual(self.client.post(url, {'text': 'Ready'}, format='json').status_code, 201)
         self.assertEqual(CoachMessage.objects.count(), 2)
+        connection = CoachConnection.objects.get(client=self.client_user)
         self.assertEqual(self.client.delete('/api/coach/connection/').status_code, 204)
-        self.assertEqual(CoachMessage.objects.count(), 0)
+        # Kept as a read-only archive: nothing is deleted, nobody can write.
+        self.assertEqual(CoachMessage.objects.count(), 2)
         self.assertEqual(self.client.get(url).status_code, 404)
+        archive = self.client.get(url, {'connection_id': str(connection.pk)})
+        self.assertEqual([m['text'] for m in archive.data], ['Hello', 'Ready'])
+        self.assertEqual(self.client.post(url, {'text': 'Still there?', 'connection_id': str(connection.pk)}, format='json').status_code, 409)
         self.as_user(self.coach)
         self.assertEqual(self.client.get(url, {'client_id': str(self.client_user.pk)}).status_code, 404)
+        self.assertEqual(self.client.get(url, {'connection_id': str(connection.pk)}).status_code, 200)
+        self.assertEqual(self.client.get(f'/api/coach/clients/{self.client_user.pk}/').status_code, 404)
+        # A stranger cannot read the archive.
+        self.as_user(self.other_client)
+        self.assertEqual(self.client.get(url, {'connection_id': str(connection.pk)}).status_code, 404)
 
     def test_retried_message_with_same_client_id_is_not_sent_twice(self):
         self.connect()

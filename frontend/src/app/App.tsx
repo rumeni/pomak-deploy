@@ -4,8 +4,13 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
-import { CoachPage } from '../features/coach/CoachPage'
-import { CoachClientPage } from '../features/coach/CoachClientPage'
+import { CoachClientsPage } from '../features/coach/CoachClientsPage'
+import { ArchivePage, CoachInboxPage } from '../features/coach/CoachInboxPage'
+import { CoachProfilePage } from '../features/coach/CoachProfilePage'
+import { CoachProgramsPage } from '../features/coach/CoachProgramsPage'
+import { CoachOnly, CoachRoot, InviteLinkLoggedOut, InviteLinkPage } from '../features/coach/CoachRoutes'
+import { usePendingInviteRedirect } from '../features/coach/pendingInvite'
+import { lastSpace } from '../features/coach/workspace'
 import { LoginPage } from '../features/auth/LoginPage'
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage, EmailVerificationPendingPage } from '../features/auth/AccountEmailPages'
 import { ChangePasswordPage } from '../features/auth/ChangePasswordPage'
@@ -46,6 +51,8 @@ export function App() {
   const location = useLocation()
   const { t } = useTranslation()
   useOutboxSync(me?.id)
+  // A client who opened an invite link before logging in continues to it once inside.
+  usePendingInviteRedirect(!!me && !me.profile.is_coach && !!me.profile.onboarding_completed_at)
 
   if (loading) {
     return <div className="flex h-full items-center justify-center text-muted">{t('common.loading')}</div>
@@ -67,6 +74,7 @@ export function App() {
         <Route path="/prijava" element={<LoginPage />} />
         <Route path="/registracija" element={<RegisterPage />} />
         <Route path="/lozinka/zaboravljena" element={<ForgotPasswordPage />} />
+        <Route path="/povezi/:code" element={<InviteLinkLoggedOut />} />
         <Route path="*" element={<Navigate to="/prijava" replace />} />
       </Routes>
     )
@@ -89,9 +97,17 @@ export function App() {
         <Route path="/trening" element={<TrainingPage />} />
         <Route path="/ishrana" element={<DiaryPage />} />
         <Route path="/napredak" element={<ProgressPage />} />
-        <Route path="/trener" element={<CoachPage />} />
+        <Route path="/trener" element={<CoachRoot />} />
+        <Route path="/trener/klijenti" element={<CoachOnly><CoachClientsPage /></CoachOnly>} />
+        <Route path="/trener/klijenti/:id" element={<CoachOnly><CoachClientsPage /></CoachOnly>} />
+        <Route path="/trener/programi" element={<CoachOnly><CoachProgramsPage /></CoachOnly>} />
+        <Route path="/trener/poruke" element={<CoachOnly><CoachInboxPage /></CoachOnly>} />
+        <Route path="/trener/poruke/:id" element={<CoachOnly><CoachInboxPage /></CoachOnly>} />
+        <Route path="/trener/arhiva/:connectionId" element={<ArchivePage />} />
+        <Route path="/povezi/:code" element={<InviteLinkPage />} />
       </Route>
-      <Route path="/trener/klijenti/:id" element={<CoachClientPage />} />
+      <Route path="/trener/pocetak" element={me.profile.is_coach ? <CoachProfilePage onboarding /> : <Navigate to="/trener" replace />} />
+      <Route path="/trener/profil" element={me.profile.is_coach ? <CoachProfilePage /> : <Navigate to="/trener" replace />} />
       <Route path="/trening/aktivan" element={<ActiveWorkoutPage />} />
       <Route path="/trening/istorija/:id" element={<SessionDetailPage />} />
       <Route path="/trening/istorija/:id/izmena" element={<SessionEditPage />} />
@@ -116,7 +132,7 @@ export function App() {
       <Route path="/ishrana/recepti/:id" element={<RecipePage />} />
       <Route path="/trening/rutine/nova" element={<RoutineEditorPage />} />
       <Route path="/trening/rutine/:id" element={<RoutineEditorPage />} />
-      <Route path="*" element={<Navigate to="/danas" replace />} />
+      <Route path="*" element={<Navigate to={me.profile.is_coach && lastSpace(me.id) === 'coach' ? '/trener' : '/danas'} replace />} />
     </Routes>
   )
 }

@@ -13,7 +13,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from nutrition.models import Food, MealEntry, NutritionDay, NutritionTarget, SavedMeal
-from coaching.models import CoachConnection, CoachMessage, CoachAssignment
+from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile
 from progress.models import Goal, Measurement
 from training.models import Exercise, Routine, SessionExercise, WorkoutSession
 
@@ -44,9 +44,22 @@ def collect(user) -> dict:
         'coaching': {
             'connections': [
                 {'coach': c.coach.profile.display_name or c.coach.email.split('@')[0], 'client': c.client.profile.display_name or c.client.email.split('@')[0],
-                 'share_measurements': c.share_measurements, 'share_nutrition': c.share_nutrition, 'connected_at': c.created_at}
+                 'share_measurements': c.share_measurements, 'share_nutrition': c.share_nutrition,
+                 'share_readiness': c.share_readiness, 'connected_at': c.created_at,
+                 'ended_at': c.ended_at}
                 for c in connections
             ],
+            # A coach exports all of his notes; a client only the ones the coach shared with him.
+            'notes': [
+                {'client': n.connection.client.profile.display_name or n.connection.client.email.split('@')[0],
+                 'text': n.text, 'visible_to_client': n.visible_to_client, 'created_at': n.created_at}
+                for n in CoachNote.objects.filter(
+                    Q(connection__coach=user) | Q(connection__client=user, visible_to_client=True),
+                ).select_related('connection__client__profile').order_by('created_at')
+            ],
+            'coach_profile': CoachProfile.objects.filter(user=user).values(
+                'years_experience', 'specialties', 'qualifications', 'bio', 'work_mode', 'gym_name', 'city', 'address',
+            ).first(),
             'messages': [
                 {'sender_role': 'coach' if m.sender_id == m.connection.coach_id else 'client',
                  'text': m.text, 'created_at': m.created_at}
