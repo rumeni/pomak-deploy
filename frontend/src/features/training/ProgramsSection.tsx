@@ -11,7 +11,7 @@ import { tokens } from '../../lib/tokens'
 import { uuid } from '../../lib/uuid'
 import { useAuth } from '../../lib/auth'
 import type { Routine, RoutinePayload } from './api'
-import { describePrescription, importProgram, isImportingProgram, loadPendingProgram, programAlreadyAdded, programToRoutines, withProgramImportLock, type PendingProgram, type Program } from './programs'
+import { describePrescription, firstImportRoutines, importProgram, isImportingProgram, loadPendingProgram, programAlreadyAdded, programToRoutines, withProgramImportLock, type PendingProgram, type Program } from './programs'
 
 function usePrograms() {
   return useQuery({
@@ -113,8 +113,11 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
           pending.current = { ownerId: me.id, record: previous ?? pending.current?.record ?? { batch: [], done: [] } }
         } else {
           const fresh = (await api.get<Routine[]>('/training/routines/')).data
-          if (programAlreadyAdded(program, fresh) && !window.confirm(t('programs.addAgainConfirm'))) return
-          pending.current = { ownerId: me.id, record: { batch: programToRoutines(program, uuid), done: [] } }
+          const alreadyThere = programAlreadyAdded(program, fresh)
+          if (alreadyThere && !window.confirm(t('programs.addAgainConfirm'))) return
+          const batch = alreadyThere ? programToRoutines(program, uuid) : await firstImportRoutines(program, me.id)
+          if (!scopeIsCurrent(scope)) return
+          pending.current = { ownerId: me.id, record: { batch, done: [] } }
         }
         await add.mutateAsync({ scope, programKey: program.key, record: pending.current.record })
         pending.current = null

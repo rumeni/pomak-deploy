@@ -30,6 +30,27 @@ export function programToRoutines(program: Program, newId: () => string): Routin
   }))
 }
 
+/** First imports share deterministic UUIDs across browsers/devices. Two devices
+ * importing before either sees the other's first row therefore hit the SAME
+ * create-only primary key, not two different routines. Deliberate re-imports
+ * after confirmation continue to use fresh random UUIDs.
+ */
+export async function firstImportRoutines(program: Program, ownerId: string): Promise<RoutinePayload[]> {
+  const ids = await Promise.all(program.routines.map(async (_routine, index) => {
+    const digest = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(`pomak:first-import:${ownerId}:${program.key}:${index}`),
+    )
+    const bytes = new Uint8Array(digest).slice(0, 16)
+    bytes[6] = (bytes[6] & 0x0f) | 0x50
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }))
+  let index = 0
+  return programToRoutines(program, () => ids[index++])
+}
+
 /** Stable identity survives language switches and user edits; older imports use a name fallback. */
 export function programAlreadyAdded(program: Program, routines: readonly Pick<Routine, 'name' | 'notes' | 'program_key'>[] | undefined): boolean {
   const names = new Set(program.routines.map((r) => r.name))
