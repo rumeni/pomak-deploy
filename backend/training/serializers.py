@@ -8,7 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from core.i18n import localized_name
-from core.views import AlreadySavedConflict
+from core.views import AlreadySavedConflict, _matches_saved_payload
 from core.text import EXERCISE_PREMIGRATION_KEY_LIMIT, search_key_fits
 
 from .models import READINESS_FIELDS, Exercise, Routine, RoutineExercise, RoutineSet, SessionExercise, SetLog, WorkoutSession
@@ -153,6 +153,12 @@ class RoutineSerializer(serializers.ModelSerializer):
     def update(self, routine, validated_data):
         revision = validated_data.pop('revision', None)
         if revision is not None and revision != routine.updated_at:
+            # A lost PUT response may be retried with the original revision.
+            # Identical content is a read-only success, not a false conflict.
+            incoming = {key: value for key, value in self.initial_data.items()
+                        if key not in ('id', 'revision')}
+            if _matches_saved_payload(incoming, self.to_representation(routine)):
+                return routine
             raise AlreadySavedConflict()
         exercises = validated_data.pop('exercises', None)
         validated_data.pop('id', None)

@@ -85,6 +85,14 @@ class RoutineTests(APITestCase):
         )
         self.assertEqual(stale.status_code, 409, stale.data)
         self.assertEqual(Routine.objects.get(pk=rid).name, 'First device')
+        # A timeout after the first PUT must not replace nested set rows again.
+        set_ids = set(RoutineSet.objects.values_list('pk', flat=True))
+        repeated = self.client.put(
+            f'/api/training/routines/{rid}/',
+            self.payload(name='First device', revision=revision), format='json',
+        )
+        self.assertEqual(repeated.status_code, 200, repeated.data)
+        self.assertEqual(set(RoutineSet.objects.values_list('pk', flat=True)), set_ids)
         latest = self.client.put(
             f'/api/training/routines/{rid}/',
             self.payload(name='Refreshed', revision=changed.data['updated_at']), format='json',
