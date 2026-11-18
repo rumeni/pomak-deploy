@@ -91,6 +91,8 @@ class Routine(TimeStampedModel):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='routines')
     name = models.CharField(max_length=100)
     notes = models.TextField(blank=True)
+    # Stable provenance for an imported suggested program; not shown in the editor.
+    program_key = models.CharField(max_length=80, blank=True, db_index=True)
     archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

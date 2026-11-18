@@ -123,7 +123,7 @@ class RoutineSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Routine
-        fields = ['id', 'name', 'notes', 'exercises', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'notes', 'program_key', 'exercises', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
     def validate_name(self, value):
@@ -150,6 +150,7 @@ class RoutineSerializer(serializers.ModelSerializer):
     def update(self, routine, validated_data):
         exercises = validated_data.pop('exercises', None)
         validated_data.pop('id', None)
+        validated_data.pop('program_key', None)  # Provenance cannot change when editing a routine.
         for field, value in validated_data.items():
             setattr(routine, field, value)
         routine.save()

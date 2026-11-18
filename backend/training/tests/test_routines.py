@@ -5,6 +5,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from training.models import Exercise, Routine, RoutineSet
+from training.views import RoutineViewSet
 
 
 class RoutineTests(APITestCase):
@@ -47,6 +48,27 @@ class RoutineTests(APITestCase):
         self.assertEqual(self.create(body).status_code, 201)
         self.assertEqual(self.create(body).status_code, 200)
         self.assertEqual(Routine.objects.count(), 1)
+
+    def test_concurrent_create_collision_retries_instead_of_server_error(self):
+        body = self.payload(id=str(uuid.uuid4()))
+        self.assertEqual(self.create(body).status_code, 201)
+        stored = Routine.objects.get(pk=body['id'])
+        # A second request saw no row before the first insert committed.
+        with mock.patch.object(RoutineViewSet, 'find_existing', side_effect=[None, stored]):
+            retry = self.create(body)
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertEqual(Routine.objects.count(), 1)
+
+    def test_program_key_is_stable_after_editing_the_routine(self):
+        res = self.create(self.payload(program_key='full-body-beginner'))
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data['program_key'], 'full-body-beginner')
+        updated = self.client.put(
+            f"/api/training/routines/{res.data['id']}/",
+            self.payload(name='My custom routine', program_key='other-key'), format='json',
+        )
+        self.assertEqual(updated.status_code, 200, updated.data)
+        self.assertEqual(updated.data['program_key'], 'full-body-beginner')
 
     def test_retry_changed_post_updates_owned_routine_instead_of_silently_dropping_changes(self):
         body = self.payload(id=str(uuid.uuid4()), name='Prva')
