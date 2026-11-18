@@ -1,16 +1,25 @@
 /**
  * Push notifications on this device: Web Push in the browser (service worker), FCM in the
- * Android app. The user turns them on per device; signing out turns them off locally (the
- * subscription is dropped, so nothing reaches the device even if the server still lists it).
+ * Android app. The user turns them on per device, for his own account.
+ *
+ * - Every enable/disable runs one at a time, bound to the session that started it: a permission
+ *   prompt answered after sign-out (or after another account signed in) registers nothing.
+ * - What this device registered is remembered with its owner; another account on the same
+ *   device sees push as "off" until it turns it on for itself.
+ * - Signing out drops the subscription on the device at once, clears shown notifications and
+ *   removes the registration on the server through the (retried) sign-out request.
  *
  * The Android app only uses FCM when it was built with Firebase (`google-services.json` and
  * VITE_FCM_ENABLED=1): registering without Firebase would crash the app.
  */
 import { Capacitor } from '@capacitor/core'
 
-import { api } from './api'
+import { api, scopeIsCurrent, type AuthScope, type ScopedRequestConfig } from './api'
+import { getCurrentUserId } from './currentUser'
+import { pendingPushRemoval, setPendingPushRemoval } from './pushPending'
+import { tokens } from './tokens'
 
-const STORAGE = 'pomak.push.token'
+const STORAGE = 'pomak.push.device'
 const nativeEnabled = import.meta.env.VITE_FCM_ENABLED === '1'
 
 export interface PushConfig {
@@ -21,24 +30,57 @@ export interface PushConfig {
 /** unsupported: this device cannot; unavailable: the server has no push configured. */
 export type PushStatus = 'unsupported' | 'unavailable' | 'denied' | 'off' | 'on'
 
-function savedToken(): string | null {
+interface Registration { ownerId: string; token: string }
+
+function read(key: string): string | null {
   try {
-    return localStorage.getItem(STORAGE)
+    return localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
-function saveToken(value: string | null) {
+function write(key: string, value: string | null) {
   try {
-    if (value) localStorage.setItem(STORAGE, value)
-    else localStorage.removeItem(STORAGE)
+    if (value) localStorage.setItem(key, value)
+    else localStorage.removeItem(key)
   } catch {
-    // Private mode: the toggle shows "off" next time; harmless.
+    // Private mode: nothing is remembered; the toggle simply shows "off" next time.
+  }
+}
+
+function registration(): Registration | null {
+  try {
+    const value = JSON.parse(read(STORAGE) ?? 'null') as Registration | null
+    return value && typeof value.ownerId === 'string' && typeof value.token === 'string' ? value : null
+  } catch {
+    return null
   }
 }
 
 const native = () => Capacitor.isNativePlatform()
+
+/** The current session, to bind an operation (and its requests) to it. */
+export function currentScope(): AuthScope | null {
+  const ownerId = getCurrentUserId()
+  return ownerId ? { ownerId, session: tokens.session() } : null
+}
+
+// One operation at a time; sign-out bumps the epoch so a running one stops at its next step.
+let queue: Promise<unknown> = Promise.resolve()
+let epoch = 0
+
+function serial<T>(operation: () => Promise<T>): Promise<T> {
+  const run = queue.then(operation, operation)
+  queue = run.catch(() => undefined)
+  return run
+}
+
+export class PushAborted extends Error {}
+
+function guard(scope: AuthScope, started: number) {
+  if (started !== epoch || !scopeIsCurrent(scope)) throw new PushAborted('The session changed.')
+}
 
 export function pushSupported(): boolean {
   if (native()) return nativeEnabled
@@ -54,27 +96,31 @@ export function applicationServerKey(base64url: string): Uint8Array<ArrayBuffer>
   return bytes
 }
 
-export async function pushStatus(config: PushConfig): Promise<PushStatus> {
+async function webSubscription(): Promise<PushSubscription | null> {
+  const reg = await navigator.serviceWorker.getRegistration()
+  return (await reg?.pushManager.getSubscription()) ?? null
+}
+
+export async function pushStatus(config: PushConfig, ownerId: string): Promise<PushStatus> {
   if (!pushSupported()) return 'unsupported'
+  const mine = registration()?.ownerId === ownerId ? registration() : null
   if (native()) {
     if (!config.fcm) return 'unavailable'
     const { PushNotifications } = await import('@capacitor/push-notifications')
-    const permission = await PushNotifications.checkPermissions()
-    if (permission.receive === 'denied') return 'denied'
-    return savedToken() ? 'on' : 'off'
+    if ((await PushNotifications.checkPermissions()).receive === 'denied') return 'denied'
+    return mine ? 'on' : 'off'
   }
   if (!config.web_public_key) return 'unavailable'
   if (Notification.permission === 'denied') return 'denied'
-  const registration = await navigator.serviceWorker.getRegistration()
-  const subscription = await registration?.pushManager.getSubscription()
-  // Subscribed in this browser AND registered for this account.
-  return subscription && savedToken() === subscription.endpoint ? 'on' : 'off'
+  const subscription = await webSubscription()
+  return subscription && mine?.token === subscription.endpoint ? 'on' : 'off'
 }
 
-async function nativeToken(): Promise<string | null> {
+async function nativeToken(check: () => void): Promise<string | null> {
   const { PushNotifications } = await import('@capacitor/push-notifications')
   let permission = await PushNotifications.checkPermissions()
   if (permission.receive !== 'granted') permission = await PushNotifications.requestPermissions()
+  check()
   if (permission.receive !== 'granted') return null
   const handles: { remove: () => Promise<void> }[] = []
   try {
@@ -89,45 +135,133 @@ async function nativeToken(): Promise<string | null> {
   }
 }
 
-export async function enablePush(config: PushConfig): Promise<PushStatus> {
-  if (native()) {
-    const token = await nativeToken()
-    if (!token) return 'denied'
-    await api.post('/push/devices/', { kind: 'fcm', token })
-    saveToken(token)
-    return 'on'
+async function register(scope: AuthScope, body: Record<string, unknown>, token: string, check: () => void) {
+  const config: ScopedRequestConfig = { __pomakScope: scope }
+  await api.post('/push/devices/', body, config)
+  check() // signed out while the request was on its way: the sign-out removal covers it
+  const previous = registration()
+  write(STORAGE, JSON.stringify({ ownerId: scope.ownerId, token } satisfies Registration))
+  // A rotated token: the old one must not keep a registration.
+  if (previous && previous.ownerId === scope.ownerId && previous.token !== token) {
+    await api.post('/push/devices/remove/', { token: previous.token }, config).catch(() => undefined)
   }
-  if (!config.web_public_key) return 'unavailable'
-  const permission = await Notification.requestPermission()
-  if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off'
-  const registration = await navigator.serviceWorker.ready
-  const subscription = await registration.pushManager.getSubscription()
-    ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(config.web_public_key) })
-  const keys = subscription.toJSON().keys ?? {}
-  await api.post('/push/devices/', { kind: 'web', token: subscription.endpoint, p256dh: keys.p256dh, auth: keys.auth })
-  saveToken(subscription.endpoint)
-  return 'on'
 }
 
-/** Turn push off on this device (also on sign-out): local unsubscribe first, then the server. */
-export async function disablePush(): Promise<void> {
-  const token = savedToken()
-  saveToken(null)
-  const removal = token ? api.post('/push/devices/remove/', { token }).catch(() => undefined) : Promise.resolve()
+export function enablePush(config: PushConfig): Promise<PushStatus> {
+  const scope = currentScope()
+  const started = epoch
+  return serial(async () => {
+    if (!scope) throw new PushAborted('Not signed in.')
+    const check = () => guard(scope, started)
+    check()
+    if (native()) {
+      const token = await nativeToken(check)
+      if (!token) return 'denied'
+      check()
+      await register(scope, { kind: 'fcm', token }, token, check)
+      return 'on'
+    }
+    if (!config.web_public_key) return 'unavailable'
+    const permission = await Notification.requestPermission()
+    check()
+    if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off'
+    const reg = await navigator.serviceWorker.ready
+    const subscription = await reg.pushManager.getSubscription()
+      ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(config.web_public_key) })
+    check()
+    const keys = subscription.toJSON().keys ?? {}
+    await register(scope, { kind: 'web', token: subscription.endpoint, p256dh: keys.p256dh, auth: keys.auth }, subscription.endpoint, check)
+    return 'on'
+  })
+}
+
+/**
+ * Turn push off on this device for the signed-in account: the server registration first (so a
+ * failure leaves it visibly on), then the local subscription.
+ */
+export function disablePush(): Promise<PushStatus> {
+  const scope = currentScope()
+  const started = epoch
+  return serial(async () => {
+    if (!scope) throw new PushAborted('Not signed in.')
+    guard(scope, started)
+    const mine = registration()
+    if (mine && mine.ownerId === scope.ownerId) {
+      const config: ScopedRequestConfig = { __pomakScope: scope }
+      await api.post('/push/devices/remove/', { token: mine.token }, config)
+    }
+    write(STORAGE, null)
+    await unsubscribeLocally()
+    return 'off' as PushStatus
+  })
+}
+
+async function unsubscribeLocally() {
   try {
     if (native()) {
-      if (nativeEnabled) {
-        const { PushNotifications } = await import('@capacitor/push-notifications')
-        await PushNotifications.unregister()
-      }
+      if (!nativeEnabled) return
+      const { PushNotifications } = await import('@capacitor/push-notifications')
+      await PushNotifications.unregister()
+      await PushNotifications.removeAllDeliveredNotifications()
     } else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.getRegistration()
-      await (await registration?.pushManager.getSubscription())?.unsubscribe()
+      const reg = await navigator.serviceWorker.getRegistration()
+      await (await reg?.pushManager.getSubscription())?.unsubscribe()
+      for (const shown of (await reg?.getNotifications()) ?? []) shown.close()
     }
   } catch {
-    // Nothing more to do locally.
+    // The push service will report the subscription as gone; the server then removes it.
   }
-  await removal
+}
+
+/**
+ * Sign-out: stop any running enable, drop the subscription on the device right away, and
+ * return the token the sign-out request should remove on the server (remembered until it did).
+ * Notifications already handed to the system before this may still appear.
+ */
+export function pushSignOut(): string | null {
+  epoch += 1
+  const mine = registration()
+  write(STORAGE, null)
+  if (mine) setPendingPushRemoval(mine.token)
+  void serial(unsubscribeLocally)
+  return mine?.token ?? pendingPushRemoval()
+}
+
+/**
+ * After sign-in: keep this account's registration current (a browser can renew its subscription,
+ * FCM can rotate its token), or forget it if the device no longer has it.
+ */
+export function syncPush(config: PushConfig): Promise<void> {
+  const scope = currentScope()
+  const started = epoch
+  return serial(async () => {
+    const mine = registration()
+    if (!scope || !mine || mine.ownerId !== scope.ownerId || !pushSupported()) return
+    const check = () => guard(scope, started)
+    if (native()) {
+      if (!config.fcm) return
+      const { PushNotifications } = await import('@capacitor/push-notifications')
+      if ((await PushNotifications.checkPermissions()).receive !== 'granted') return
+      const token = await nativeToken(check)
+      if (token && token !== mine.token) await register(scope, { kind: 'fcm', token }, token, check)
+      return
+    }
+    const subscription = await webSubscription()
+    check()
+    if (!subscription) {
+      write(STORAGE, null)
+      return
+    }
+    if (subscription.endpoint !== mine.token) {
+      const keys = subscription.toJSON().keys ?? {}
+      await register(scope, { kind: 'web', token: subscription.endpoint, p256dh: keys.p256dh, auth: keys.auth }, subscription.endpoint, check)
+    }
+  }).catch(() => undefined)
+}
+
+/** Whether this device registered push for that account (cheap, local). */
+export function pushRegisteredFor(ownerId: string): boolean {
+  return pushSupported() && registration()?.ownerId === ownerId
 }
 
 /** Android: a tapped notification opens its screen. */

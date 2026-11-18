@@ -57,13 +57,26 @@ export function useSaveInstruction(clientId: string) {
   })
 }
 
-/** The athlete's instructions from the coach he has now, by exercise. */
-export function useMyInstructions(enabled: boolean) {
+/**
+ * The athlete's instructions from the coach he has now, by exercise. Refreshed while training;
+ * shown only for the collaboration the app currently knows (none after an end or a change).
+ */
+export function useMyInstructions(ownerId: string | null, currentConnectionId: string | null | undefined) {
   return useQuery({
-    queryKey: ['coach-my-instructions'],
-    queryFn: async () => (await api.get<ExerciseInstruction[]>('/coach/instructions/')).data,
-    enabled,
-    staleTime: 5 * 60_000,
-    select: (rows) => new Map(rows.map((r) => [r.exercise_id, r.text])),
+    queryKey: ['coach-my-instructions', ownerId],
+    queryFn: async () => (await api.get<{ connection_id: string | null; results: ExerciseInstruction[] }>('/coach/instructions/')).data,
+    enabled: !!ownerId,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    select: (data) => instructionsFor(data, currentConnectionId),
   })
+}
+
+/** By exercise; nothing when the app knows a different collaboration (ended or replaced). */
+export function instructionsFor(
+  data: { connection_id: string | null; results: ExerciseInstruction[] },
+  currentConnectionId: string | null | undefined,
+): Map<string, string> {
+  if (currentConnectionId !== undefined && data.connection_id !== currentConnectionId) return new Map()
+  return new Map(data.results.map((r) => [r.exercise_id, r.text]))
 }

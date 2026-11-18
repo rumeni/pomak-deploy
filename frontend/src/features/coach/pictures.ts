@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 
 import { api } from '../../lib/api'
+import { getCurrentUserId } from '../../lib/currentUser'
 
 const MAX_BYTES = 4 * 1024 * 1024
 
@@ -55,7 +56,7 @@ export function useUploadPicture(address: { connection_id?: string; client_id?: 
 /** A picture behind authentication, as an object URL the page can show. */
 export function usePicture(path: string | null) {
   return useQuery({
-    queryKey: ['coach-picture', path],
+    queryKey: ['coach-picture', getCurrentUserId(), path],
     queryFn: async () => (await api.get<Blob>(path!, { responseType: 'blob' })).data,
     enabled: !!path,
     staleTime: Infinity,

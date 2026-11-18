@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import i18n, { changeLanguage, fromServerLanguage, toServerLanguage } from '../i18n'
-import { disablePush } from './push'
+import { pushSignOut } from './push'
+import { completePushRemoval } from './pushPending'
 import { api, revokePendingWebLogout, webHeaders, withAuthLock, type AuthScope, type ScopedRequestConfig } from './api'
 import { performLogin } from './login'
 import { performRegistration } from './registration'
@@ -116,6 +117,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
+    // Push off on this device first: the subscription is dropped here at once, and the sign-out
+    // request removes the registration on the server.
+    const pushToken = pushSignOut()
+    const pushBody = pushToken ? { push_token: pushToken } : {}
     const pendingRefresh = tokens.refresh()
     const access = tokens.access()
     const isWeb = Object.keys(webHeaders()).length > 0
@@ -126,18 +131,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isWeb) {
         await revokePendingWebLogout(refresh)
       } else if (access && refresh) {
-        await axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh }, {
+        await axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh, ...pushBody }, {
           headers: { Authorization: `Bearer ${access}` }, timeout: 5000,
         })
+        completePushRemoval(pushToken)
       } else if (refresh) {
         const { data } = await axios.post(`${api.defaults.baseURL}/auth/refresh/`, { refresh }, { timeout: 5000 })
-        await axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh: data.refresh ?? refresh }, {
+        await axios.post(`${api.defaults.baseURL}/auth/logout/`, { refresh: data.refresh ?? refresh, ...pushBody }, {
           headers: { Authorization: `Bearer ${data.access}` }, timeout: 5000,
         })
+        completePushRemoval(pushToken)
       }
     })
-    // Drop this device's push subscription first (locally at once, on the server best effort).
-    void disablePush()
     void tokens.clear() // Offline local logout never awaits the network.
     setHasToken(false)
     queryClient.clear()

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { useUnreadTotal } from '../features/coach/inboxApi'
+import { usePushSync } from '../lib/usePushSync'
 import { isCoachSpacePath } from '../features/coach/workspace'
 import { useAuth } from '../lib/auth'
 
@@ -39,6 +40,7 @@ export function TabBar() {
   const { me } = useAuth()
   const { tabs, coachSpace } = useTabs()
   const unread = useUnreadTotal(!!me).data?.total ?? 0
+  usePushSync(me?.id ?? null)
   // Where conversations live: the coach space's messages, or the client's coach tab.
   const inboxTab = coachSpace ? '/trener/poruke' : me?.profile.is_coach ? null : '/trener'
   return (

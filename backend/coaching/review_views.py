@@ -280,7 +280,7 @@ class ClientInstructionsView(APIView):
         if data['text']:
             ExerciseInstruction.objects.update_or_create(connection=connection, exercise=exercise, defaults={'text': data['text']})
             notify(connection.client, title='POMAK', tag=f'instruction-{connection.id}', url='/trening',
-                   body=lambda: _('Your coach added an instruction for %(exercise)s.') % {'exercise': exercise.name})
+                   body=_('Your coach added a new exercise instruction.'))
         else:
             ExerciseInstruction.objects.filter(connection=connection, exercise=exercise).delete()
         return Response(self.listing(connection))

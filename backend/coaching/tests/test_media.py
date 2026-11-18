@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 from io import BytesIO
+from unittest import mock
 from uuid import uuid4
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -87,7 +88,7 @@ class MessagePictureTests(MediaTestCase):
         self.as_user(self.coach)
         got = self.client.get(url)
         self.assertEqual(got['Content-Type'], 'image/jpeg')
-        self.assertIn('private', got['Cache-Control'])
+        self.assertEqual(got['Cache-Control'], 'no-store')
         # The archive keeps it readable for both.
         CoachConnection.objects.filter(pk=self.connection.pk).update(ended_at=timezone.now())
         self.assertEqual(self.client.get(url).status_code, 200)
@@ -136,3 +137,35 @@ class CoachPhotoTests(MediaTestCase):
         self.as_user(self.coach)
         self.client.delete('/api/coach/profile/photo/')
         self.assertFalse(CoachPhoto.objects.exists())
+
+
+class PictureRaceTests(MediaTestCase):
+    def test_an_end_during_processing_stores_nothing(self):
+        from coaching import views
+
+        real = views.process_image
+
+        def end_meanwhile(upload, side):
+            result = real(upload, side)
+            CoachConnection.objects.filter(pk=self.connection.pk).update(ended_at=timezone.now())
+            return result
+
+        with mock.patch('coaching.views.process_image', end_meanwhile):
+            self.assertEqual(self.upload(self.ana).status_code, 409)
+        self.assertFalse(MessageImage.objects.exists())
+
+    def test_a_picture_sent_late_is_not_cleaned_up(self):
+        image_id = self.upload(self.ana).data['id']
+        MessageImage.objects.filter(pk=image_id).update(created_at=timezone.now() - timedelta(days=2))
+        # Sent just before the cleanup runs (the cleanup re-checks under the same lock).
+        self.client.post('/api/coach/messages/', {'text': '', 'image_id': image_id}, format='json')
+        self.assertEqual(delete_orphan_images(), 0)
+        self.assertTrue(MessageImage.objects.filter(pk=image_id).exists())
+
+    def test_a_daily_byte_quota(self):
+        from coaching import views
+
+        with mock.patch.object(views, 'MAX_DAILY_IMAGE_BYTES', 1):
+            self.assertEqual(self.upload(self.ana).status_code, 400)
+        self.assertFalse(MessageImage.objects.exists())
+

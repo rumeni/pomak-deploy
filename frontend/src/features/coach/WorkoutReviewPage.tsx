@@ -26,6 +26,10 @@ export function WorkoutReviewPage() {
   })
   const reviewed = useMarkReviewed(id, workoutId)
   const instructions = useClientInstructions(id)
+  const instructionGuard = useClientGuard(id, instructions)
+  // Instructions of this very collaboration only (a late answer about an older one is ignored).
+  const usableInstructions = instructionGuard.state === 'ok' && instructions.data
+    && instructions.data.access.connection_id === workout.data?.access.connection_id ? instructions.data.results : undefined
   const back = () => navigate(`/trener/klijenti/${id}?tab=progress`)
 
   if (workout.isLoading) return <LoadingScreen />
@@ -72,7 +76,7 @@ export function WorkoutReviewPage() {
             <FormError message={reviewed.error ? errorMessage(reviewed.error) : null} />
           </div>
         </Card>
-        <PlannedVsDone workout={data} clientId={id} instructions={instructions.data?.results} />
+        <PlannedVsDone workout={data} clientId={id} instructions={usableInstructions} />
         {me && (
           <CoachMessages selfId={me.id} clientId={id} workoutId={workoutId} title={t('coachSpace.review.comments')} />
         )}
@@ -114,7 +118,7 @@ function PlannedVsDone({ workout, clientId, instructions }: { workout: ClientWor
               {exercise.notes && <p className="text-xs text-muted">„{exercise.notes}“</p>}
               {instructions && (
                 <InstructionEditor
-                  key={`${exercise.exercise_id}:${current(exercise.exercise_id)}`} clientId={clientId}
+                  key={`${workout.access.connection_id}:${exercise.exercise_id}:${current(exercise.exercise_id)}`} clientId={clientId}
                   connectionId={workout.access.connection_id} exerciseId={exercise.exercise_id} current={current(exercise.exercise_id)}
                 />
               )}

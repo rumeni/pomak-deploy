@@ -332,7 +332,13 @@ klijenta iz T1.
   Upis nosi ID saradnje, kao i ostali upisi iz T2 (409 `collaboration_changed` za staru saradnju).
 - **Koje vežbe.** Samo vežbe iz zajedničke biblioteke ili klijentove lične vežbe, nikad tuđe.
 - **Šta klijent vidi.** Uputstvo stoji na kartici te vežbe tokom treninga („Trener: …“), i to
-  samo od trenutnog trenera. Posle prekida saradnje se ne prikazuje.
+  samo od trenutnog trenera.
+  - Server navodi saradnju kojoj uputstva pripadaju.
+  - Ako aplikacija zna za drugu saradnju ili za prekid, stara uputstva se sakrivaju.
+  - Tokom treninga se osvežavaju svakog minuta.
+- **Trener vidi uputstva pod istom kontrolom pristupa kao ostale podatke klijenta.** Kad izgubi
+  pristup, brišu se iz keša. Pregled treninga prikazuje samo uputstva iste saradnje.
+- **Prvo uputstvo iz taba Plan.** Može se dodati i za vežbu iz trenutnog ili sledećeg plana.
 - **Izvoz podataka.** Uputstva su u izvozu i klijenta i trenera.
 - **Bez interneta.** Uputstva se učitavaju na početku treninga i ostaju dok je aplikacija
   otvorena. Ako se aplikacija pokrene bez interneta, trening radi normalno, samo bez uputstava.
@@ -345,20 +351,49 @@ klijenta iz T1.
 
 ### Push obaveštenja
 
-- **Uključuju se po uređaju.** U Profilu je stavka „Obaveštenja na ovom uređaju“. Odjava sa
-  uređaja odmah poništava pretplatu na tom uređaju, pa obaveštenja tamo više ne stižu, a server
-  briše uređaj (i sam, čim servis za push javi da pretplata ne postoji).
+- **Uključuju se po uređaju, za svoj nalog.** U Profilu je stavka „Obaveštenja na ovom
+  uređaju“.
+  - Uključivanje je vezano za sesiju koja ga je pokrenulo. Ako dozvola stigne posle odjave ili
+    posle prijave drugog naloga, ništa se ne registruje.
+  - Uključivanje i isključivanje se nikad ne preklapaju.
+  - Uređaj pamti kom nalogu je registrovan; drugi nalog na istom uređaju vidi obaveštenja kao
+    isključena.
+- **Odjava.**
+  - Pretplata na uređaju se odmah poništava, a već prikazana obaveštenja se brišu.
+  - Server briše registraciju kroz sam zahtev za odjavu. Na webu se taj zahtev ponavlja dok ne
+    uspe.
+  - Obaveštenje koje je sistem već primio pre odjave i dalje može da se pojavi.
+- **Nova pretplata ili token.** Posle prijave aplikacija osvežava registraciju ako je pregledač
+  obnovio pretplatu ili je Firebase promenio token.
 - **Kanali.**
   - u pregledaču: Web Push (VAPID), preko service worker-a (`public/push-sw.js`);
   - u Android aplikaciji: Firebase Cloud Messaging (FCM HTTP v1).
 - **Šta šaljemo.**
   - nova poruka (i komentar na trening ili nedelju) drugoj strani;
-  - izmena plana i novo uputstvo klijentu;
+  - izmena plana i novo uputstvo klijentu (bez naziva vežbe);
   - podeljen nedeljni osvrt treneru.
 - **Sadržaj obaveštenja.** Samo ko je šta uradio i koji ekran otvara, nikad tekst poruke ili
   zdravstveni podatak. Jezik je jezik primaoca.
-- **Kada se šalje.** Posle potvrde upisa u bazu, sa kratkim rokom čekanja. Greška u slanju nikad
-  ne obara zahtev, samo se zapiše u log.
+- **Kako se šalje.** Preko reda za slanje u bazi (`PushMessage`).
+  - Obaveštenje se upisuje u istoj transakciji kao događaj; ako se događaj poništi, nema ni
+    obaveštenja.
+  - Posle upisa jedan QStash poziv pokreće worker (`/api/internal/push-deliver/`, samo sa
+    potpisom za `PUSH_WORKER_URL`). Worker isprazni red u vremenskom okviru od 7 sekundi, a ako
+    ostane posla, pokreće se ponovo.
+  - Bez QStash-a red se prazni kratko (do 3 s) posle upisa. Ostatak odlazi uz sledeće
+    osvežavanje broja nepročitanih poruka, ili najkasnije uz dnevni cron.
+  - Svi uređaji primaoca dobijaju obaveštenje istovremeno, sa rokom čekanja od 4 s.
+  - Obaveštenje starije od sat vremena se odbacuje.
+  - Uređaj koji servis prijavi kao nepostojeći briše se samo ako u međuvremenu nije ponovo
+    registrovan.
+  - Dodela programa za 50 klijenata pokreće jedno pražnjenje reda, ne 50.
+  - Greška u slanju nikad ne obara zahtev.
+- **Samo pravi push servisi.** Web pretplata se prihvata samo za push servise pregledača:
+  Google (FCM), Mozilla, Apple i Microsoft.
+  - Adresa mora biti na `https`, na podrazumevanom portu i bez korisničkog imena i lozinke.
+  - Ključevi pretplate moraju biti ispravni.
+  - Preusmeravanja se ne prate.
+  - Provera se ponavlja i pri slanju, pa server nikad ne šalje zahtev na druge adrese.
 - **Bez podešavanja servera ništa se ne šalje.** Aplikacija tada ne nudi uključivanje
   obaveštenja.
 
@@ -376,15 +411,27 @@ klijenta iz T1.
     sliku vidi samo onaj ko ju je postavio.
   - **Slika trenera** je deo njegove kartice, pa je vidi svaki prijavljen korisnik koji zna ID
     trenera.
+- **Bez keširanja.** Slike se šalju sa `Cache-Control: no-store`, a aplikacija ih čuva u
+  memoriji odvojeno po nalogu i briše pri odjavi. Drugi nalog na istom uređaju ih ne dobija.
+- **Zaključavanje.** Slika se obrađuje van zaključavanja, a upisuje pod zaključanom saradnjom. Ako
+  se saradnja u međuvremenu završi, slika se ne čuva.
 - **Neposlate slike.** Slika postavljena za poruku koja nije poslata briše se posle jednog dana
-  (dnevni cron). Najviše 20 neposlatih slika dnevno po korisniku.
+  (dnevni cron). Brisanje ide pod istim zaključavanjem kao slanje poruke, pa se slika koja se
+  upravo šalje nikad ne obriše.
+- **Ograničenja po korisniku.** Najviše 20 neposlatih slika, a dnevno najviše 60 slika i 20 MB.
+- **Izvoz podataka.** Izvoz za sada samo označava da je poruka imala sliku. Kako korisnik može da
+  preuzme svoje slike, treba odlučiti pre šireg puštanja.
 - **Poruka sa slikom.** Tekst može da bude prazan. Ponovljeno slanje proverava i sliku, pa isti ID
   sa drugom slikom ne prolazi. Slika iz druge saradnje ili od druge osobe se odbija.
 
 ### Uvođenje na produkciju
 
-- **Migracije:** `coaching.0006_coach_photos_images` i `notifications.0001_initial`.
+- **Migracije:** `coaching.0006_coach_photos_images` i `notifications.0001_initial`
+  (`PushDevice`, `PushMessage`).
 - **Nove biblioteke:** `requirements.txt` dobija `cryptography` i `Pillow`.
+- **Isporuka preko QStash-a.** Postavi `PUSH_WORKER_URL` na
+  `https://<api>/api/internal/push-deliver/`; QStash ključevi su isti kao za mejlove. Bez toga
+  isporuka radi u ograničenom režimu opisanom gore.
 - **Web push (VAPID)**, na Vercel projektu `pomak-api`, Production:
   - `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` i `WEB_PUSH_CONTACT`.
   - Ključevi su već postavljeni u Vercel Production 18.11.2026. Ne generisati novi par

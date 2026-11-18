@@ -82,15 +82,15 @@ class InstructionTests(ReviewTestCase):
         self.put('Pauza na grudima.')  # one per exercise: replaced, not added
         self.assertEqual(ExerciseInstruction.objects.count(), 1)
         self.as_user(self.ana)
-        mine = self.client.get('/api/coach/instructions/').data
+        mine = self.client.get('/api/coach/instructions/').data['results']
         self.assertEqual([(x['exercise_id'], x['text']) for x in mine], [(str(self.bench.pk), 'Pauza na grudima.')])
         # Another client never sees it.
         self.as_user(self.other)
-        self.assertEqual(self.client.get('/api/coach/instructions/').data, [])
+        self.assertEqual(self.client.get('/api/coach/instructions/').data['results'], [])
         # After the end, nothing is shown to the client and the coach can no longer write.
         CoachConnection.objects.filter(pk=self.connection.pk).update(ended_at=timezone.now())
         self.as_user(self.ana)
-        self.assertEqual(self.client.get('/api/coach/instructions/').data, [])
+        self.assertEqual(self.client.get('/api/coach/instructions/').data['results'], [])
         self.assertEqual(self.put('Novo').status_code, 409)
 
     def test_empty_text_removes_it(self):

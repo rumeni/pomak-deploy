@@ -37,6 +37,8 @@ import {
 import { loadPrevious } from './previous'
 import { cancelRestEnd, restEndedFeedback, restNotificationAction, scheduleRestEnd } from './restNotification'
 import { usePersistentWorkout } from './store'
+import { useQueryClient } from '@tanstack/react-query'
+import type { CoachDashboard } from '../coach/api'
 import { useMyInstructions } from '../coach/inboxApi'
 import { useAuth } from '../../lib/auth'
 import { ExerciseHeading } from '../training/ExerciseHeading'
@@ -312,7 +314,11 @@ function WorkoutExerciseCard({
   }
 
   const { me } = useAuth()
-  const instruction = useMyInstructions(!!me && !me.profile.is_coach).data?.get(exercise.id)
+  const athlete = !!me && !me.profile.is_coach
+  // The collaboration the app knows (from the cached dashboard, if loaded): undefined = unknown.
+  const dashboard = useQueryClient().getQueryData<CoachDashboard>(['coach-dashboard'])
+  const knownConnection = dashboard?.role === 'client' ? (dashboard.connection?.id ?? null) : undefined
+  const instruction = useMyInstructions(athlete ? me.id : null, knownConnection).data?.get(exercise.id)
 
   const planText = plan && [
     plan.warmups ? `${plan.warmups} ${warmup}` : null,

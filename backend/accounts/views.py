@@ -99,6 +99,14 @@ class RefreshView(TokenRefreshView):
         return output_tokens(request, super().post(request, *args, **kwargs))
 
 
+def forget_push_device(user_id, token):
+    """Signing out on a device turns its notifications off for that account."""
+    from notifications.models import PushDevice
+
+    if user_id and isinstance(token, str) and 0 < len(token) <= 2000:
+        PushDevice.objects.filter(user_id=user_id, token=token).delete()
+
+
 class LogoutView(APIView):
     # Cookie-only web logout works even after a reload cleared the access token.
     # Legacy clients without the explicit web header still require Bearer auth.
@@ -119,6 +127,7 @@ class LogoutView(APIView):
             if request.user.is_authenticated and str(refresh.get('user_id')) != str(request.user.pk):
                 raise ValidationError({'refresh': _('Invalid refresh token.')})
             refresh.blacklist()
+            forget_push_device(refresh.get('user_id'), request.data.get('push_token'))
         except TokenError:
             # Missing/revoked cookie is already logged out; always clear it.
             if web_request(request) and not request.data.get('refresh'):

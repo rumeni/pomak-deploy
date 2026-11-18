@@ -36,7 +36,8 @@ from .models import (
     CoachAssignment, CoachConnection, CoachInvitation, CoachMessage, CoachNote, CoachProfile, CoachTask,
 )
 from .plans import assignable_routine, copy_routine
-from notifications.push import notify
+from notifications.models import PushMessage
+from notifications.push import drain, notify, push_enabled, queue_configured
 
 from .inbox import mark_read, unread_counts
 from .media import MESSAGE_SIDE, PHOTO_SIDE, process_image
@@ -777,7 +778,8 @@ class MessagesView(APIView):
         image = None
         if serializer.validated_data.get('image_id'):
             # The sender's own upload to this conversation, not yet in any message.
-            image = MessageImage.objects.defer('data').filter(
+            # Locked after the collaboration (as the daily cleanup does): never attached and deleted at once.
+            image = MessageImage.objects.select_for_update(of=('self',)).defer('data').filter(
                 pk=serializer.validated_data['image_id'], connection=connection, uploader=request.user, message__isnull=True,
             ).first()
             if image is None:
@@ -955,6 +957,9 @@ class UnreadView(APIView):
 
     def get(self, request):
         counts = unread_counts(request.user)
+        # Without the QStash worker, pushes left over by a busy request go out with the next poll.
+        if push_enabled() and not queue_configured() and PushMessage.objects.exists():
+            drain(1.5)
         return Response({'total': sum(counts.values()), 'by_connection': {str(k): v for k, v in counts.items()}})
 
 
@@ -970,16 +975,21 @@ class MyInstructionsView(APIView):
 
     def get(self, request):
         if request.user.profile.is_coach:
-            return Response([])
-        rows = ExerciseInstruction.objects.filter(
-            connection__client=request.user, connection__ended_at__isnull=True,
-        ).select_related('exercise')
-        return Response([instruction_summary(x) for x in rows])
+            return Response({'connection_id': None, 'results': []})
+        connection = active_connections().filter(client=request.user).first()
+        rows = ExerciseInstruction.objects.filter(connection=connection).select_related('exercise') if connection else []
+        # Which collaboration these belong to: the app shows them only for its current one.
+        return Response({'connection_id': str(connection.id) if connection else None,
+                         'results': [instruction_summary(x) for x in rows]})
 
 
-IMAGE_HEADERS = {'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff',
+# Never stored by the browser or a proxy: after sign-out, nobody else on the device gets it back.
+IMAGE_HEADERS = {'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
                  'Content-Security-Policy': "default-src 'none'", 'Cross-Origin-Resource-Policy': 'same-site'}
 MAX_PENDING_IMAGES = 20
+# Per person and day: protects the database (pictures live there) and the decoding work.
+MAX_DAILY_IMAGES = 60
+MAX_DAILY_IMAGE_BYTES = 20 * 1024 * 1024
 
 
 def image_response(data):
@@ -998,12 +1008,28 @@ class MessageImagesView(APIView):
         relation = connection_for_messages(request)
         if relation.ended_at is not None:
             raise CollaborationEnded()
-        recent = timezone.now() - timedelta(days=1)
-        if MessageImage.objects.filter(uploader=request.user, message__isnull=True, created_at__gte=recent).count() >= MAX_PENDING_IMAGES:
-            raise ValidationError({'file': _('Too many unsent pictures. Send or wait a day.')})
+        self.check_quota(request.user)
+        # The slow part (decoding) runs before taking any lock.
         data, width, height = process_image(request.FILES.get('file'), MESSAGE_SIDE)
-        image = MessageImage.objects.create(connection=relation, uploader=request.user, data=data, width=width, height=height)
+        with transaction.atomic():
+            # Re-checked under the collaboration lock: an end that committed meanwhile wins.
+            connection = CoachConnection.objects.select_for_update().filter(pk=relation.pk).first()
+            if connection is None or connection.ended_at is not None:
+                raise CollaborationEnded()
+            self.check_quota(request.user, len(data))
+            image = MessageImage.objects.create(
+                connection=connection, uploader=request.user, data=data, width=width, height=height, size=len(data),
+            )
         return Response({'id': str(image.id), 'width': width, 'height': height}, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def check_quota(user, adding=0):
+        recent = MessageImage.objects.filter(uploader=user, created_at__gte=timezone.now() - timedelta(days=1))
+        if recent.filter(message__isnull=True).count() >= MAX_PENDING_IMAGES:
+            raise ValidationError({'file': _('Too many unsent pictures. Send or wait a day.')})
+        totals = recent.aggregate(n=Count('id'), size=Sum('size'))
+        if totals['n'] >= MAX_DAILY_IMAGES or (totals['size'] or 0) + adding > MAX_DAILY_IMAGE_BYTES:
+            raise ValidationError({'file': _('You have sent many pictures today. Try again tomorrow.')})
 
 
 class MessageImageView(APIView):

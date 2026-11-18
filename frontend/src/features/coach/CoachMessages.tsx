@@ -65,6 +65,7 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
       pendingMessage.current = null
       setText('')
       setPicture(null)
+      setPictureError(null)
       previousCount.current = 0
       previousNewestId.current = null
       readerNearBottom.current = true
@@ -90,22 +91,39 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
   // The whole conversation is on screen (not only a workout's or a week's comments): what the
   // other side wrote up to the newest message is read, once the app is actually visible.
   const markRead = useMarkRead()
-  const markedId = useRef<string | null>(null)
+  // Confirmed by the server, and in flight: a failed request is tried again with the next
+  // refresh of the conversation (at most once per refresh), never lost until a new message.
+  const readDone = useRef<string | null>(null)
+  const readInFlight = useRef<string | null>(null)
   const newestFromOther = items.length > 0 && items.some((m) => m.sender_id !== selfId)
   const fullConversation = !workoutId && !weekStart
+  const refreshedAt = messages.dataUpdatedAt
+  useEffect(() => {
+    readDone.current = null
+    readInFlight.current = null
+  }, [conversationKey])
   useEffect(() => {
     if (!fullConversation || !newestId || !newestFromOther) return
     const mark = () => {
-      if (document.visibilityState !== 'visible' || markedId.current === newestId) return
-      markedId.current = newestId
-      markRead.mutate(newestId)
+      if (document.visibilityState !== 'visible' || readDone.current === newestId || readInFlight.current === newestId) return
+      const target = newestId
+      const forConversation = conversationKey
+      readInFlight.current = target
+      markRead.mutate(target, {
+        onSuccess: () => { if (lastConversation.current === forConversation) readDone.current = target },
+        onSettled: () => { if (readInFlight.current === target) readInFlight.current = null },
+      })
     }
     mark()
     document.addEventListener('visibilitychange', mark)
-    return () => document.removeEventListener('visibilitychange', mark)
-    // markRead is a stable mutation object; only the newest message matters.
+    window.addEventListener('online', mark)
+    return () => {
+      document.removeEventListener('visibilitychange', mark)
+      window.removeEventListener('online', mark)
+    }
+    // markRead is a stable mutation object; the newest message and each refresh matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newestId, fullConversation, newestFromOther])
+  }, [newestId, fullConversation, newestFromOther, refreshedAt, conversationKey])
 
   const loadOlder = () => {
     const box = listRef.current
@@ -116,18 +134,28 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
   const pickPicture = async (file: File | undefined) => {
     if (!file) return
     setPictureError(null)
+    // A picture belongs to the conversation it was picked in: a late upload after navigating
+    // elsewhere is dropped, never shown in the next conversation's draft.
+    const forConversation = conversationKey
     try {
       const blob = await shrinkPicture(file)
       const stored = await upload.mutateAsync(blob)
-      setPicture({ id: stored.id, preview: URL.createObjectURL(blob) })
+      if (lastConversation.current !== forConversation) return
+      setPicture((old) => {
+        if (old) URL.revokeObjectURL(old.preview)
+        return { id: stored.id, preview: URL.createObjectURL(blob) }
+      })
     } catch (e) {
-      setPictureError(e instanceof PictureError ? t(e.message) : errorMessage(e))
+      if (lastConversation.current === forConversation) setPictureError(e instanceof PictureError ? t(e.message) : errorMessage(e))
     }
   }
   const dropPicture = () => {
     if (picture) URL.revokeObjectURL(picture.preview)
     setPicture(null)
   }
+  // The preview's object URL is released when the draft goes away.
+  const previewUrl = picture?.preview
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
   const submit = (event: FormEvent) => {
     event.preventDefault()

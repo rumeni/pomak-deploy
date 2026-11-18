@@ -843,7 +843,8 @@ export const sr = {
     instructions: {
       title: 'Uputstva za vežbe',
       explanation: 'Klijent ih vidi na toj vežbi tokom svakog treninga, dok traje saradnja.',
-      empty: 'Još nema uputstava. Dodaješ ih iz pregleda treninga, uz svaku vežbu.',
+      empty: 'Još nema uputstava. Dodaj ih ovde za vežbe iz plana ili iz pregleda treninga.',
+      forExercise: 'Novo uputstvo za vežbu iz plana', choose: 'Izaberi vežbu',
       label: 'Uputstvo',
       add: 'Dodaj uputstvo za ovu vežbu', edit: 'Izmeni uputstvo', remove: 'Ukloni', cancel: 'Otkaži',
       placeholder: 'Npr. lopatice skupljene, spuštaj polako 3 sekunde.',

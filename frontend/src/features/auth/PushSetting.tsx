@@ -4,22 +4,25 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Card, FormError } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
-import { disablePush, enablePush, pushStatus, pushSupported, type PushConfig, type PushStatus } from '../../lib/push'
+import { useAuth } from '../../lib/auth'
+import { disablePush, enablePush, PushAborted, pushStatus, pushSupported, type PushConfig, type PushStatus } from '../../lib/push'
 
 /** Notifications on this device: new messages, plan changes, the coach's instructions. */
 export function PushSetting() {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const supported = pushSupported()
+  const { me } = useAuth()
+  const supported = pushSupported() && !!me
   const config = useQuery({
     queryKey: ['push-config'],
     queryFn: async () => (await api.get<PushConfig & { devices: number }>('/push/config/')).data,
     enabled: supported,
   })
+  const statusKey = ['push-status', me?.id ?? '', config.data?.web_public_key ?? null, config.data?.fcm ?? false]
   const status = useQuery({
-    queryKey: ['push-status', config.data?.web_public_key ?? null, config.data?.fcm ?? false],
-    queryFn: () => pushStatus(config.data!),
-    enabled: !!config.data,
+    queryKey: statusKey,
+    queryFn: () => pushStatus(config.data!, me!.id),
+    enabled: !!config.data && !!me,
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,10 +34,11 @@ export function PushSetting() {
     setBusy(true)
     setError(null)
     try {
-      const next = state === 'on' ? (await disablePush(), 'off') : await enablePush(config.data!)
-      qc.setQueryData(['push-status', config.data?.web_public_key ?? null, config.data?.fcm ?? false], next)
+      const next = state === 'on' ? await disablePush() : await enablePush(config.data!)
+      qc.setQueryData(statusKey, next)
     } catch (e) {
-      setError(errorMessage(e))
+      if (!(e instanceof PushAborted)) setError(errorMessage(e))
+      void status.refetch()
     } finally {
       setBusy(false)
     }

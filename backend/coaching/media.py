@@ -8,6 +8,7 @@ keeps each stored image small (they live in the database, served only to who may
 from datetime import timedelta
 from io import BytesIO
 
+from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -51,9 +52,21 @@ def process_image(upload, max_side):
 
 
 def delete_orphan_images(now=None):
-    """Pictures uploaded but never sent within a day are removed (daily maintenance)."""
-    from .models import MessageImage
+    """Pictures uploaded but never sent within a day are removed (daily maintenance).
+
+    Per collaboration, under its lock (the same lock a message takes before attaching a picture),
+    and re-checked under it: a picture being sent right now is never deleted.
+    """
+    from .models import CoachConnection, MessageImage
 
     cutoff = (now or timezone.now()) - timedelta(days=1)
-    deleted, _rows = MessageImage.objects.filter(message__isnull=True, created_at__lt=cutoff).delete()
+    stale = MessageImage.objects.filter(message__isnull=True, created_at__lt=cutoff)
+    deleted = 0
+    for connection_id in set(stale.values_list('connection_id', flat=True)):
+        with transaction.atomic():
+            CoachConnection.objects.select_for_update().filter(pk=connection_id).first()
+            count, _rows = MessageImage.objects.filter(
+                connection_id=connection_id, message__isnull=True, created_at__lt=cutoff,
+            ).delete()
+            deleted += count
     return deleted

@@ -95,6 +95,7 @@ class MessageImage(TimeStampedModel):
     data = models.BinaryField()
     width = models.PositiveIntegerField()
     height = models.PositiveIntegerField()
+    size = models.PositiveIntegerField(default=0)
 
     class Meta:
         indexes = [models.Index(fields=['uploader', 'created_at'], name='coach_img_uploader_idx')]

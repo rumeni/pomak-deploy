@@ -879,3 +879,9 @@ msgstr "Trener je dodao uputstvo za vežbu %(exercise)s."
 
 msgid "Shared the weekly review."
 msgstr "Poslao/la je nedeljni osvrt."
+
+msgid "You have sent many pictures today. Try again tomorrow."
+msgstr "Danas si poslao/la mnogo slika. Pokušaj ponovo sutra."
+
+msgid "Your coach added a new exercise instruction."
+msgstr "Trener je dodao novo uputstvo za vežbu."

@@ -1,12 +1,16 @@
 from django.db import transaction
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.recovery_views import valid_qstash_signature
 from core.views import require_object_body
 
 from .models import PushDevice
-from .push import fcm_enabled, vapid_public_key, web_push_enabled
+from .push import WORKER_BUDGET, allowed_endpoint, drain, fcm_enabled, publish_drain, valid_keys, vapid_public_key, web_push_enabled, worker_url
 
 MAX_DEVICES = 10
 
@@ -30,10 +34,13 @@ class DeviceSerializer(serializers.Serializer):
 
     def validate(self, data):
         if data['kind'] == PushDevice.Kind.WEB:
-            if not data['token'].startswith('https://'):
-                raise serializers.ValidationError({'token': 'A web push endpoint must be an https URL.'})
-            if not data['p256dh'] or not data['auth']:
-                raise serializers.ValidationError({'p256dh': 'A web push subscription needs its keys.'})
+            # Only the push services of real browsers: the server never calls anywhere else.
+            if not allowed_endpoint(data['token']):
+                raise serializers.ValidationError({'token': 'Not a browser push service endpoint.'})
+            if not valid_keys(data['p256dh'], data['auth']):
+                raise serializers.ValidationError({'p256dh': 'Invalid subscription keys.'})
+        elif len(data['token']) > 512 or not data['token'].isprintable() or ' ' in data['token']:
+            raise serializers.ValidationError({'token': 'Invalid device token.'})
         return data
 
 
@@ -63,3 +70,15 @@ class DeviceRemoveView(APIView):
         serializer.is_valid(raise_exception=True)
         PushDevice.objects.filter(user=request.user, token=serializer.validated_data['token']).delete()
         return Response({'ok': True})
+
+
+@csrf_exempt
+@require_POST
+def push_worker(request):
+    """Drain the push outbox. Reachable only with a QStash signature for PUSH_WORKER_URL."""
+    if not worker_url() or not valid_qstash_signature(request.headers.get('Upstash-Signature', ''), request.body, subject=worker_url()):
+        return HttpResponse(status=403)
+    if drain(WORKER_BUDGET):
+        publish_drain()  # more left: continue in a fresh invocation
+    return HttpResponse(status=204)
+

@@ -239,4 +239,6 @@ SR = {
     'Your coach updated your plan.': 'Trener je izmenio tvoj plan.',
     'Your coach added an instruction for %(exercise)s.': 'Trener je dodao uputstvo za vežbu %(exercise)s.',
     'Shared the weekly review.': 'Poslao/la je nedeljni osvrt.',
+    'You have sent many pictures today. Try again tomorrow.': 'Danas si poslao/la mnogo slika. Pokušaj ponovo sutra.',
+    'Your coach added a new exercise instruction.': 'Trener je dodao novo uputstvo za vežbu.',
 }

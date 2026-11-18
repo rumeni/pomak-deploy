@@ -25,3 +25,17 @@ class PushDevice(TimeStampedModel):
 
     class Meta:
         ordering = ['-updated_at']
+
+
+class PushMessage(TimeStampedModel):
+    """A notification waiting to be delivered (the outbox). Written in the same transaction as
+    the event that caused it; removed once delivered, after a few attempts, or after an hour."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    payload = models.JSONField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    # A worker is delivering it until then (a crashed worker's claim simply expires).
+    claimed_until = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['created_at'], name='push_msg_created_idx')]

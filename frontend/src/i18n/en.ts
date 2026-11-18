@@ -823,7 +823,8 @@ export const en = {
     instructions: {
       title: 'Exercise instructions',
       explanation: 'The client sees them on that exercise in every workout while you work together.',
-      empty: 'No instructions yet. Add them from a workout review, next to each exercise.',
+      empty: 'No instructions yet. Add them here for exercises of the plan, or from a workout review.',
+      forExercise: 'New instruction for an exercise of the plan', choose: 'Choose an exercise',
       label: 'Instruction',
       add: 'Add an instruction for this exercise', edit: 'Edit instruction', remove: 'Remove', cancel: 'Cancel',
       placeholder: 'E.g. shoulder blades back, lower slowly for 3 seconds.',

@@ -86,7 +86,14 @@ def _publish_reset_request(email):
 
 
 def _valid_qstash_signature(signature, raw_body):
-    if not signature or len(signature) > 4096 or not _queue_configured():
+    return valid_qstash_signature(signature, raw_body) if _queue_configured() else False
+
+
+def valid_qstash_signature(signature, raw_body, subject=None):
+    """A QStash-signed callback for `subject` (the worker URL; the e-mail worker by default)."""
+    subject = subject or settings.ACCOUNT_EMAIL_WORKER_URL
+    if (not signature or len(signature) > 4096 or not subject or not settings.QSTASH_TOKEN
+            or not settings.QSTASH_CURRENT_SIGNING_KEY or not settings.QSTASH_NEXT_SIGNING_KEY):
         return False
     for key in (settings.QSTASH_CURRENT_SIGNING_KEY, settings.QSTASH_NEXT_SIGNING_KEY):
         try:
@@ -96,7 +103,7 @@ def _valid_qstash_signature(signature, raw_body):
             )
             expected = base64.urlsafe_b64encode(hashlib.sha256(raw_body).digest()).decode('ascii').rstrip('=')
             actual = payload.get('body', '')
-            if (payload.get('sub') == settings.ACCOUNT_EMAIL_WORKER_URL
+            if (payload.get('sub') == subject
                     and isinstance(actual, str) and hmac.compare_digest(expected, actual.rstrip('='))):
                 return True
         except jwt.InvalidTokenError:
