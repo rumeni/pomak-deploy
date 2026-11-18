@@ -761,3 +761,39 @@ msgstr "Otvoreno"
 
 msgid "Done"
 msgstr "Završeno"
+
+msgid "A plan can change from today on; what already happened stays as it was."
+msgstr "Plan može da se menja od danas; ono što je već urađeno ostaje kako je bilo."
+
+msgid "Choose a date within a year."
+msgstr "Izaberi datum u narednih godinu dana."
+
+msgid "Invalid routine."
+msgstr "Neispravna rutina."
+
+msgid "Put a routine on at least one day."
+msgstr "Stavi rutinu bar na jedan dan."
+
+msgid "One routine per day."
+msgstr "Jedna rutina po danu."
+
+msgid "Choose one routine for the day."
+msgstr "Izaberi jednu rutinu za taj dan."
+
+msgid "Archive an old program before adding another one."
+msgstr "Arhiviraj neki stari program pre nego što dodaš novi."
+
+msgid "That routine is not part of this plan any more."
+msgstr "Ta rutina više nije deo ovog plana."
+
+msgid "Plan"
+msgstr "Plan"
+
+msgid "Select one of your active routines."
+msgstr "Izaberi neku od svojih aktivnih rutina."
+
+msgid "A routine must contain at least one exercise."
+msgstr "Rutina mora da ima bar jednu vežbu."
+
+msgid "This routine uses private exercises. Use shared exercises before assigning."
+msgstr "Ova rutina koristi tvoje privatne vežbe. Pre dodele zameni ih vežbama iz zajedničke biblioteke."

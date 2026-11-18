@@ -16,6 +16,7 @@ import { taskText } from './taskText'
 import { Avatar } from './Avatar'
 import { CoachNutritionDays } from './CoachNutritionDays'
 import { formatCoachSet } from './formatCoach'
+import { PlanPanel } from './PlanPanel'
 import { readinessReasons } from './workspace'
 
 const TABS = ['overview', 'plan', 'progress', 'nutrition', 'notes'] as const
@@ -118,7 +119,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
       </div>
 
       {tab === 'overview' && <OverviewTab data={data} />}
-      {tab === 'plan' && <PlanTab clientId={clientId} data={data} />}
+      {tab === 'plan' && <><PlanPanel clientId={clientId} /><PlanTab clientId={clientId} data={data} /></>}
       {tab === 'progress' && <ProgressTab data={data} />}
       {tab === 'nutrition' && (
         <Card title={t('coach.nutrition')}>
@@ -257,7 +258,7 @@ function PlanTab({ clientId, data }: { clientId: string; data: CoachClientDetail
     routine.exercises.length > 0 && routine.exercises.every((item) => !item.exercise.is_custom),
   )
   return (
-    <Card title={t('coach.assignRoutine')}>
+    <Card title={t('coachSpace.plan.singleRoutine')}>
       <p className="mb-3 text-sm text-muted">{t('coach.assignExplanation')}</p>
       {routines.isError && <FormError message={t('errors.loadFailed')} />}
       <label className="mb-1 block text-sm font-medium" htmlFor="coach-routine-select">{t('coach.selectRoutine')}</label>

@@ -67,6 +67,7 @@ vi.mock('../coach/api', () => ({
   useUpdateCoachSharing: () => ({ mutate: vi.fn(), isPending: false, error: null }),
 }))
 vi.mock('../coach/CoachMessages', () => ({ CoachMessages: () => null }))
+vi.mock('../coach/MyPlanCard', () => ({ MyPlanCard: () => null }))
 
 import { DiaryPage } from './DiaryPage'
 import { AddEntryPage } from './AddEntryPage'

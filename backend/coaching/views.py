@@ -23,13 +23,14 @@ from rest_framework.views import APIView
 from accounts.models import User
 from nutrition.models import MealEntry
 from progress.models import Goal, Measurement
-from training.models import Routine, RoutineExercise, RoutineSet, WorkoutSession
+from training.models import WorkoutSession
 from training.readiness import readiness_answers, readiness_score
 from core.views import require_object_body
 
 from .models import (
     CoachAssignment, CoachConnection, CoachInvitation, CoachMessage, CoachNote, CoachProfile, CoachTask,
 )
+from .plans import assignable_routine, copy_routine
 from .tasks import lock_active, sync_tasks, visible_tasks
 
 
@@ -636,29 +637,7 @@ class AssignRoutineView(APIView):
             raise NotFound()
         serializer = AssignSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        source = Routine.objects.filter(
-            pk=serializer.validated_data['routine_id'], owner=request.user, archived_at__isnull=True,
-        ).prefetch_related('exercises__sets', 'exercises__exercise').first()
-        if source is None:
-            raise ValidationError({'routine_id': 'Select one of your active routines.'})
-        rows = list(source.exercises.all())
-        if not rows:
-            raise ValidationError({'routine_id': 'A routine must contain at least one exercise.'})
-        if any(x.exercise.owner_id is not None for x in rows):
-            raise ValidationError({'routine_id': 'This routine uses private exercises. Use shared exercises before assigning.'})
-        clone = Routine.objects.create(owner=connection.client, name=source.name, notes=source.notes)
-        for item in rows:
-            exercise = RoutineExercise.objects.create(
-                routine=clone, exercise=item.exercise, position=item.position,
-                rest_seconds=item.rest_seconds, notes=item.notes,
-            )
-            RoutineSet.objects.bulk_create([
-                RoutineSet(
-                    routine_exercise=exercise, position=s.position, set_type=s.set_type,
-                    reps_min=s.reps_min, reps_max=s.reps_max, weight_kg=s.weight_kg,
-                    duration_seconds=s.duration_seconds, distance_m=s.distance_m, rpe=s.rpe,
-                ) for s in item.sets.all()
-            ])
+        clone = copy_routine(assignable_routine(request.user, serializer.validated_data['routine_id']), connection.client)
         assignment = CoachAssignment.objects.create(connection=connection, routine=clone)
         return Response(assignment_summary(assignment), status=status.HTTP_201_CREATED)
 

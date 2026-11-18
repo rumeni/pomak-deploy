@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import plan_views, views
 
 urlpatterns = [
     path('dashboard/', views.DashboardView.as_view(), name='coach-dashboard'),
@@ -18,4 +18,10 @@ urlpatterns = [
     path('tasks/<uuid:pk>/', views.TaskView.as_view(), name='coach-task'),
     path('conversations/', views.ConversationsView.as_view(), name='coach-conversations'),
     path('messages/', views.MessagesView.as_view(), name='coach-messages'),
+    path('templates/', plan_views.TemplatesView.as_view(), name='coach-templates'),
+    path('templates/<uuid:pk>/', plan_views.TemplateView.as_view(), name='coach-template'),
+    path('templates/<uuid:pk>/assign/', plan_views.AssignTemplateView.as_view(), name='coach-template-assign'),
+    path('clients/<uuid:client_id>/plan/', plan_views.ClientPlanView.as_view(), name='coach-client-plan'),
+    path('clients/<uuid:client_id>/plan/versions/', plan_views.ClientPlanVersionsView.as_view(), name='coach-client-plan-versions'),
+    path('plan/', plan_views.MyPlanView.as_view(), name='coach-my-plan'),
 ]

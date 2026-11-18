@@ -167,3 +167,74 @@ class CoachTask(TimeStampedModel):
             models.UniqueConstraint(fields=['connection', 'kind', 'key'], name='coach_task_once_per_event'),
         ]
         indexes = [models.Index(fields=['connection', 'status'], name='coach_task_status_idx')]
+
+
+class ProgramTemplate(TimeStampedModel):
+    """A coach's program: which of his routines on which weekday, for a number of weeks.
+
+    It stays the coach's. Assigning it gives each client a plan with his own copies of the
+    routines, so later changes to the template never change existing client plans.
+    """
+
+    coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='program_templates')
+    name = models.CharField(max_length=100)
+    notes = models.CharField(max_length=1000, blank=True)
+    # None: no end (until the coach changes the plan).
+    weeks = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MaxValueValidator(52)])
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+
+
+class ProgramTemplateDay(TimeStampedModel):
+    template = models.ForeignKey(ProgramTemplate, on_delete=models.CASCADE, related_name='days')
+    # 0 = Monday ... 6 = Sunday.
+    weekday = models.PositiveSmallIntegerField(validators=[MaxValueValidator(6)])
+    routine = models.ForeignKey('training.Routine', on_delete=models.CASCADE, related_name='+')
+
+    class Meta:
+        ordering = ['weekday']
+        constraints = [models.UniqueConstraint(fields=['template', 'weekday'], name='template_one_routine_per_day')]
+
+
+class ClientPlan(TimeStampedModel):
+    """The client's plan within one collaboration: a history of versions, each valid from a date."""
+
+    connection = models.OneToOneField(CoachConnection, on_delete=models.CASCADE, related_name='plan')
+
+
+class ClientPlanVersion(TimeStampedModel):
+    """The plan from `valid_from` on (until the next version, or for `weeks`).
+
+    Changes never touch what already happened: a new version starts today or later, and a
+    workout keeps the plan it was started with (its own snapshot).
+    """
+
+    plan = models.ForeignKey(ClientPlan, on_delete=models.CASCADE, related_name='versions')
+    valid_from = models.DateField()
+    weeks = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MaxValueValidator(52)])
+    name = models.CharField(max_length=100)
+    # Why the coach changed the plan; shown to the client with the change.
+    reason = models.CharField(max_length=300, blank=True)
+    template = models.ForeignKey(ProgramTemplate, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    # Client-made ID of the request, so a retried assignment does not create a second version.
+    request_id = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['valid_from', 'created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['plan', 'valid_from'], name='plan_one_version_per_date'),
+            models.UniqueConstraint(fields=['plan', 'request_id'], name='plan_version_request_once'),
+        ]
+
+
+class ClientPlanDay(TimeStampedModel):
+    version = models.ForeignKey(ClientPlanVersion, on_delete=models.CASCADE, related_name='days')
+    weekday = models.PositiveSmallIntegerField(validators=[MaxValueValidator(6)])
+    # The client's own routine (a copy made for him); deleting it only empties that day.
+    routine = models.ForeignKey('training.Routine', null=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        ordering = ['weekday']
+        constraints = [models.UniqueConstraint(fields=['version', 'weekday'], name='plan_day_one_routine_per_day')]
