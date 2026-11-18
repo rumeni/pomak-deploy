@@ -106,6 +106,8 @@ class WeeklyCheckInSerializer(serializers.Serializer):
     satisfaction = serializers.IntegerField(min_value=1, max_value=5, required=False, allow_null=True, default=None)
     hardest = serializers.CharField(max_length=500, required=False, allow_blank=True, default='', trim_whitespace=True)
     notes = serializers.CharField(max_length=1000, required=False, allow_blank=True, default='', trim_whitespace=True)
+    # Who it is for, as the athlete chose on the form: the collaboration shown, or null (private).
+    share_with = serializers.UUIDField(allow_null=True)
 
 
 class WeekReviewView(APIView):
@@ -120,15 +122,21 @@ class WeekReviewView(APIView):
             raise ValidationError({'week': _('A check-in is for this week or one of the last eight.')})
         serializer = WeeklyCheckInSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        from coaching.models import CoachConnection
-        from coaching.tasks import weekly_checkin_task
+        from coaching.errors import CollaborationChanged
+        from coaching.tasks import lock_active, weekly_checkin_task
 
-        # Written for the coach the athlete has now (the form says the coach sees it), or private
-        # without one; a later coach never gets check-ins that were not written for him.
-        coach = CoachConnection.objects.filter(client=request.user, ended_at__isnull=True).first()
+        # Shared only with the collaboration the athlete chose on the form, and only if that very
+        # one is still active (locked while saving); never with one that replaced it meanwhile.
+        data = dict(serializer.validated_data)
+        share_with = data.pop('share_with')
         with transaction.atomic():
+            coach = None
+            if share_with is not None:
+                coach = lock_active(share_with)
+                if coach is None or coach.client_id != request.user.id:
+                    raise CollaborationChanged()
             checkin, _created = WeeklyCheckIn.objects.select_for_update().get_or_create(user=request.user, week_start=monday)
-            for field, value in serializer.validated_data.items():
+            for field, value in data.items():
                 setattr(checkin, field, value)
             checkin.shared_with = coach
             checkin.save()

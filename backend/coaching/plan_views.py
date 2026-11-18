@@ -16,6 +16,7 @@ from .plans import (
     assignable_routine, attribute, check_valid_from, copy_routine, kept_prescription, payload_hash, plan_routine_ids,
     plan_summary, prescription_of, prior_request, record_request, save_version, tailored_routine,
 )
+from .errors import CollaborationChanged, collaboration_not_found
 from .tasks import lock_active
 from .views import access_facts, coach_only, display_name
 
@@ -64,6 +65,8 @@ class PlanVersionSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=300, trim_whitespace=True, required=False, allow_blank=True, default='')
     # Client-made ID; its receipt makes a retry return what the first request did.
     request_id = serializers.UUIDField()
+    # The collaboration the editor was opened for.
+    connection_id = serializers.UUIDField()
     # Empty: no plan from that date (a pause or the end of the plan).
     days = PlanDaySerializer(many=True)
 
@@ -76,7 +79,8 @@ class PlanVersionSerializer(serializers.Serializer):
 
 
 class AssignTemplateSerializer(serializers.Serializer):
-    client_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=MAX_ASSIGN_CLIENTS)
+    # The collaborations chosen in the wizard (not clients): a retry never lands in a newer one.
+    connection_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=MAX_ASSIGN_CLIENTS)
     start_date = serializers.DateField()
     reason = serializers.CharField(max_length=300, trim_whitespace=True, required=False, allow_blank=True, default='')
     request_id = serializers.UUIDField()
@@ -165,24 +169,23 @@ class AssignTemplateView(APIView):
         serializer = AssignTemplateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        client_ids = list(dict.fromkeys(data['client_ids']))
-        digest = payload_hash({'template': str(template.pk), 'client_ids': sorted(map(str, client_ids)),
+        connection_ids = list(dict.fromkeys(data['connection_ids']))
+        digest = payload_hash({'template': str(template.pk), 'connection_ids': sorted(map(str, connection_ids)),
                                'start_date': data['start_date'], 'reason': data['reason']})
-        connections = dict(CoachConnection.objects.filter(
-            coach=request.user, client_id__in=client_ids, ended_at__isnull=True,
-        ).values_list('client_id', 'id'))
-        done = set(PlanRequest.objects.filter(connection_id__in=connections.values(), request_id=data['request_id'])
+        mine = set(CoachConnection.objects.filter(coach=request.user, id__in=connection_ids).values_list('id', flat=True))
+        done = set(PlanRequest.objects.filter(connection_id__in=mine, request_id=data['request_id'])
                    .values_list('connection_id', flat=True))
-        if any(cid not in done for cid in connections.values()):
+        if any(cid not in done for cid in mine):
             check_valid_from(data['start_date'])  # only new work needs a date from today on
         days = list(template.days.all())
         sources = None
         results = []
-        for client_id in client_ids:
+        for connection_id in connection_ids:
             with transaction.atomic():
-                connection = lock_active(connections[client_id]) if client_id in connections else None
+                connection = lock_active(connection_id) if connection_id in mine else None
                 if connection is None:
-                    results.append({'client_id': str(client_id), 'ok': False, 'error': 'not_a_client'})
+                    # Ended (or never this coach's): nothing goes to whatever is active now.
+                    results.append({'connection_id': str(connection_id), 'ok': False, 'error': 'collaboration_changed'})
                     continue
                 if not prior_request(connection, data['request_id'], PlanRequest.Operation.ASSIGN, digest):
                     if sources is None:
@@ -197,17 +200,25 @@ class AssignTemplateView(APIView):
                         days=[(d.weekday, copies[d.routine_id], prescription_of(sources[d.routine_id])) for d in days],
                     )
                     record_request(connection, data['request_id'], PlanRequest.Operation.ASSIGN, digest)
-                results.append({'client_id': str(client_id), 'name': display_name(connection.client), 'ok': True})
+                results.append({'connection_id': str(connection_id), 'client_id': str(connection.client_id),
+                                'name': display_name(connection.client), 'ok': True})
         return Response({'results': results})
 
 
-def active_connection_for(request, client_id, *, lock=False):
+def active_connection_for(request, client_id, *, lock=False, expected=None):
+    """The coach's active collaboration with this client. A write names the collaboration it is
+    meant for (`expected`): if another one is active now (ended and reconnected since), nothing
+    is written, so a delayed request can never land in a newer collaboration."""
     coach_only(request)
     query = CoachConnection.objects.filter(coach=request.user, client_id=client_id, ended_at__isnull=True)
     connection_id = query.values_list('id', flat=True).first()
     connection = (lock_active(connection_id) if lock else query.select_related('client__profile').first()) if connection_id else None
     if connection is None:
-        raise NotFound()
+        if expected is not None:
+            raise CollaborationChanged()
+        raise collaboration_not_found()
+    if expected is not None and connection.id != expected:
+        raise CollaborationChanged()
     return connection
 
 
@@ -231,7 +242,7 @@ class ClientPlanVersionsView(APIView):
         serializer = PlanVersionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        connection = active_connection_for(request, client_id, lock=True)
+        connection = active_connection_for(request, client_id, lock=True, expected=data['connection_id'])
         digest = payload_hash({k: v for k, v in request.data.items() if k != 'request_id'})
         if prior_request(connection, data['request_id'], PlanRequest.Operation.CHANGE, digest):
             return Response(plan_response(connection))

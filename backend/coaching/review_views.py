@@ -19,6 +19,7 @@ from training.stats import PERIODS, training_stats
 
 from .models import CoachMessage, CoachTask
 from .plan_views import active_connection_for
+from .errors import workout_not_found
 from .views import access_facts, message_summary, readiness_summary
 
 
@@ -27,8 +28,52 @@ def _workout(connection, workout_id):
         'exercises__exercise', 'exercises__sets',
     ).first()
     if workout is None:
-        raise NotFound()
+        raise workout_not_found()
     return workout
+
+
+def _int(value, low=0, high=100_000):
+    return value if isinstance(value, int) and not isinstance(value, bool) and low <= value <= high else None
+
+
+def _text(value, limit=100):
+    return value[:limit] if isinstance(value, str) else None
+
+
+def _decimal_text(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return str(value) if 0 <= number <= 100_000 else None
+
+
+def clean_plan(snapshot):
+    """The plan a workout started with, as the app sent it: keep only well-formed parts.
+
+    Old or malformed snapshots ({"exercises": {}}, null entries, names that are objects...) must
+    never break the review: a broken plan is simply unavailable, the done sets stay readable.
+    """
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get('exercises'), list):
+        return None
+    exercises = []
+    for item in snapshot['exercises'][:60]:
+        if not isinstance(item, dict):
+            continue
+        exercise = item.get('exercise') if isinstance(item.get('exercise'), dict) else {}
+        sets = []
+        for s in item.get('sets') if isinstance(item.get('sets'), list) else []:
+            if not isinstance(s, dict):
+                continue
+            sets.append({
+                'set_type': 'warmup' if s.get('set_type') == 'warmup' else 'working',
+                'reps_min': _int(s.get('reps_min')), 'reps_max': _int(s.get('reps_max')),
+                'weight_kg': _decimal_text(s.get('weight_kg')), 'rpe': _decimal_text(s.get('rpe')),
+                'duration_seconds': _int(s.get('duration_seconds'), high=86_400),
+                'distance_m': _int(s.get('distance_m'), high=1_000_000),
+            })
+        exercises.append({'exercise': {'id': _text(exercise.get('id'), 40), 'name': _text(exercise.get('name'))}, 'sets': sets[:30]})
+    return {'name': _text(snapshot.get('name')), 'exercises': exercises}
 
 
 def _decimal(value):
@@ -53,7 +98,7 @@ class ClientWorkoutView(APIView):
             'finished_at': workout.finished_at, 'feeling': workout.feeling, 'notes': workout.notes,
             'edited_at': workout.edited_at,
             # Client data, sent by the app when the workout started; shown as text only.
-            'plan': workout.plan_snapshot if isinstance(workout.plan_snapshot, dict) else None,
+            'plan': clean_plan(workout.plan_snapshot),
             'exercises': [
                 {
                     'exercise_id': str(item.exercise_id), 'name': item.exercise.name,
@@ -80,7 +125,9 @@ class WorkoutReviewedView(APIView):
 
     @transaction.atomic
     def post(self, request, client_id, workout_id):
-        connection = active_connection_for(request, client_id, lock=True)
+        body = BoundSerializer(data=require_object_body(request))
+        body.is_valid(raise_exception=True)
+        connection = active_connection_for(request, client_id, lock=True, expected=body.validated_data['connection_id'])
         workout = _workout(connection, workout_id)
         if workout.finished_at < connection.created_at:
             raise ValidationError({'detail': _('Only workouts from this collaboration can be marked as reviewed.')})
@@ -109,7 +156,13 @@ class ClientStatsView(APIView):
         return Response({**stats, 'access': access_facts(connection)})
 
 
-class CoachTargetSerializer(serializers.Serializer):
+class BoundSerializer(serializers.Serializer):
+    """A write names the collaboration it is meant for."""
+
+    connection_id = serializers.UUIDField()
+
+
+class CoachTargetSerializer(BoundSerializer):
     valid_from = serializers.DateField()
     kcal = serializers.IntegerField(min_value=800, max_value=8000)
     protein_g = serializers.IntegerField(min_value=0, max_value=600, required=False, allow_null=True, default=None)
@@ -162,11 +215,11 @@ class ClientNutritionTargetView(APIView):
     @transaction.atomic
     def post(self, request, client_id):
         require_object_body(request)
-        connection = active_connection_for(request, client_id, lock=True)
-        if not connection.coach_sets_nutrition:
-            raise ValidationError({'detail': _('The client has not let you set the nutrition target.')})
         serializer = CoachTargetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        connection = active_connection_for(request, client_id, lock=True, expected=serializer.validated_data['connection_id'])
+        if not connection.coach_sets_nutrition:
+            raise ValidationError({'detail': _('The client has not let you set the nutrition target.')})
         data = serializer.validated_data
         values = {
             'mode': NutritionTarget.Mode.COACH, 'kcal': data['kcal'], 'protein_g': data['protein_g'],

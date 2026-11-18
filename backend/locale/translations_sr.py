@@ -223,4 +223,6 @@ SR = {
     'Only workouts from this collaboration can be marked as reviewed.': 'Kao pregledan se označava samo trening iz ove saradnje.',
     'Assign a program': 'Dodela programa',
     'Change the plan': 'Izmena plana',
+    'That workout no longer exists.': 'Taj trening više ne postoji.',
+    'The collaboration changed. Reload and try again.': 'Saradnja se promenila. Osveži i pokušaj ponovo.',
 }

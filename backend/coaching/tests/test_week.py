@@ -36,9 +36,12 @@ class WeekTestCase(APITestCase):
     def own(self, day=None):
         return f'/api/progress/weeks/{(day or self.today).isoformat()}/review/'
 
-    def checkin(self, user, day=None, **body):
+    def checkin(self, user, day=None, share=True, **body):
+        """Saved as the form does: shared with the coach it shows (if any, and `share`), else private."""
         self.as_user(user)
-        return self.client.put(self.own(day), {'energy': 4, 'hardest': 'Malo sna', **body}, format='json')
+        coach = CoachConnection.objects.filter(client=user, ended_at__isnull=True).first()
+        share_with = str(coach.pk) if coach and share else None
+        return self.client.put(self.own(day), {'energy': 4, 'hardest': 'Malo sna', 'share_with': share_with, **body}, format='json')
 
 
 class OwnWeekTests(WeekTestCase):
@@ -159,4 +162,28 @@ class CheckInSharingTests(WeekTestCase):
         CoachConnection.objects.create(coach=self.other_coach, client=self.ana)
         self.as_user(self.other_coach)
         self.assertIsNone(self.client.get(f'/api/coach/clients/{self.ana.pk}/weeks/{self.today.isoformat()}/').data['check_in'])
+
+
+class CheckInRecipientTests(WeekTestCase):
+    def test_a_private_note_stays_private_even_with_a_coach(self):
+        CoachConnection.objects.create(coach=self.coach, client=self.ana)
+        self.checkin(self.ana, share=False)
+        self.assertIsNone(WeeklyCheckIn.objects.get(user=self.ana).shared_with)
+        self.assertFalse(CoachTask.objects.exists())
+
+    def test_a_coach_change_between_loading_and_saving_shares_with_nobody(self):
+        a = CoachConnection.objects.create(coach=self.coach, client=self.ana)
+        # The form showed coach A; meanwhile A ended and B connected (another tab or device).
+        CoachConnection.objects.filter(pk=a.pk).update(ended_at=timezone.now())
+        CoachConnection.objects.create(coach=self.other_coach, client=self.ana)
+        self.as_user(self.ana)
+        response = self.client.put(self.own(), {'energy': 3, 'share_with': str(a.pk)}, format='json')
+        self.assertEqual((response.status_code, response.data['code']), (409, 'collaboration_changed'))
+        self.assertFalse(WeeklyCheckIn.objects.exists())
+        self.assertFalse(CoachTask.objects.exists())
+        # Someone else's collaboration is refused the same way.
+        other = CoachConnection.objects.create(coach=self.coach, client=self.solo)
+        self.assertEqual(self.client.put(self.own(), {'share_with': str(other.pk)}, format='json').status_code, 409)
+        # Without saying who it is for, nothing is saved.
+        self.assertEqual(self.client.put(self.own(), {'energy': 3}, format='json').status_code, 400)
 

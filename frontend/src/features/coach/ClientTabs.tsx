@@ -9,6 +9,7 @@ import { StatsSections } from '../progress/StatsPage'
 import { StatsLinksContext } from '../progress/statsLinks'
 import { STATS_PERIODS, type StatsPeriod } from '../progress/stats'
 import { planDate } from './plans'
+import { isCollaborationChanged } from './access'
 import { useClientGuard } from './guard'
 import { useClientStats, useClientTargets, useSetClientTarget, type CoachTarget } from './reviewApi'
 
@@ -17,7 +18,9 @@ export function ClientStats({ clientId }: { clientId: string }) {
   const { t } = useTranslation()
   const [period, setPeriod] = useState<StatsPeriod>('30')
   const stats = useClientStats(clientId, period)
-  const guard = useClientGuard(clientId, stats)
+  const guard = useClientGuard(clientId, stats, {
+    key: ['coach-client-stats', clientId, period], redact: (d) => ({ ...d, readiness: [] }),
+  })
   const links = { exercise: () => null, session: (id: string) => `/trener/klijenti/${clientId}/trening/${id}` }
   return (
     <section className="flex flex-col gap-3" aria-label={t('stats.title')}>
@@ -89,7 +92,9 @@ const intOrNull = (text: string) => {
 export function ClientTargetPanel({ clientId }: { clientId: string }) {
   const { t } = useTranslation()
   const targets = useClientTargets(clientId)
-  const guard = useClientGuard(clientId, targets)
+  const guard = useClientGuard(clientId, targets, {
+    key: ['coach-client-targets', clientId], redact: (d) => ({ ...d, current: null, next: null }),
+  })
   const save = useSetClientTarget(clientId)
   const [form, setForm] = useState({ kcal: '', protein: '', carbs: '', fat: '', validFrom: toISODate(new Date()), note: '' })
   const [error, setError] = useState<string | null>(null)
@@ -103,7 +108,7 @@ export function ClientTargetPanel({ clientId }: { clientId: string }) {
     const macros = [intOrNull(form.protein), intOrNull(form.carbs), intOrNull(form.fat)]
     if (kcal === null || Number.isNaN(kcal) || macros.some((m) => Number.isNaN(m))) return setError(t('coachSpace.target.invalid'))
     save.mutate(
-      { valid_from: form.validFrom, kcal, protein_g: macros[0], carbs_g: macros[1], fat_g: macros[2], note: form.note.trim() },
+      { connection_id: data!.access.connection_id, valid_from: form.validFrom, kcal, protein_g: macros[0], carbs_g: macros[1], fat_g: macros[2], note: form.note.trim() },
       { onSuccess: () => setForm((f) => ({ ...f, kcal: '', protein: '', carbs: '', fat: '', note: '' })) },
     )
   }
@@ -130,7 +135,7 @@ export function ClientTargetPanel({ clientId }: { clientId: string }) {
               <Field label={t('coachSpace.plan.validFrom')} name="target-from" type="date" min={today} value={form.validFrom} onChange={(e) => setForm({ ...form, validFrom: e.target.value })} />
               <Field label={`${t('coachSpace.target.note')} (${t('common.optional')})`} name="target-note" maxLength={300} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
               <p className="text-xs text-muted">{t('coachSpace.target.hint')}</p>
-              <FormError message={error ?? (save.error ? errorMessage(save.error) : null)} />
+              <FormError message={error ?? (isCollaborationChanged(save.error) ? t('coachSpace.collaborationChanged') : save.error ? errorMessage(save.error) : null)} />
               <Button disabled={save.isPending || !form.kcal.trim()}>{save.isPending ? t('common.saving') : t('coachSpace.target.save')}</Button>
               {save.isSuccess && <p role="status" className="text-sm text-brand-dark">{t('coachSpace.target.saved')}</p>}
             </form>

@@ -22,7 +22,9 @@ export function AssignTemplatePage() {
   const assign = useAssignTemplate()
   const preselectedClient = params.get('klijent')
   const [templateId, setTemplateId] = useState(params.get('sablon') ?? '')
-  const [clientIds, setClientIds] = useState<string[]>(preselectedClient ? [preselectedClient] : [])
+  // The collaborations chosen (not clients): a retry never goes to a collaboration made later.
+  const [selected, setSelected] = useState<string[]>([])
+  const [preselected, setPreselected] = useState(false)
   const [step, setStep] = useState<Step>(params.get('sablon') ? 'clients' : 'template')
   const [startDate, setStartDate] = useState(() => nextMonday(new Date()))
   const [reason, setReason] = useState('')
@@ -30,6 +32,11 @@ export function AssignTemplatePage() {
   const [requestId] = useState(() => uuid())
   const [done, setDone] = useState<AssignResult | null>(null)
   const clients = dashboard.data?.role === 'coach' ? dashboard.data.clients : []
+  if (!preselected && preselectedClient && clients.length) {
+    const row = clients.find((c) => c.client.id === preselectedClient)
+    setPreselected(true)
+    if (row) setSelected([row.id])
+  }
   const template = templates.data?.find((x) => x.id === templateId)
   const today = toISODate(new Date())
   const back = () => (preselectedClient ? navigate(`/trener/klijenti/${preselectedClient}?tab=plan`) : navigate('/trener/programi'))
@@ -42,7 +49,7 @@ export function AssignTemplatePage() {
           <Card title={t('coachSpace.assign.doneTitle')}>
             <ul className="flex flex-col gap-1 text-sm">
               {done.results.map((r) => (
-                <li key={r.client_id}>{r.ok ? '✓' : '✕'} {r.name ?? clients.find((c) => c.client.id === r.client_id)?.client.name ?? r.client_id}
+                <li key={r.connection_id}>{r.ok ? '✓' : '✕'} {r.name ?? clients.find((c) => c.id === r.connection_id)?.client.name ?? '?'}
                   {!r.ok && <span className="text-danger"> · {t('coachSpace.assign.notAssigned')}</span>}</li>
               ))}
             </ul>
@@ -95,8 +102,8 @@ export function AssignTemplatePage() {
               {clients.map((c) => (
                 <label key={c.client.id} className="flex min-h-12 items-center gap-3 rounded-2xl border border-line bg-card px-3">
                   <input
-                    type="checkbox" className="size-5 accent-brand" checked={clientIds.includes(c.client.id)}
-                    onChange={(e) => setClientIds((ids) => (e.target.checked ? [...ids, c.client.id] : ids.filter((x) => x !== c.client.id)))}
+                    type="checkbox" className="size-5 accent-brand" checked={selected.includes(c.id)}
+                    onChange={(e) => setSelected((ids) => (e.target.checked ? [...ids, c.id] : ids.filter((x) => x !== c.id)))}
                   />
                   <span className="flex-1 font-semibold">{c.client.name}</span>
                   {c.status === 'paused' && <span className="text-xs text-muted">{t('coachSpace.status.paused')}</span>}
@@ -105,7 +112,7 @@ export function AssignTemplatePage() {
             </div>
             <div className="mt-3 flex gap-2">
               <Button variant="secondary" onClick={() => setStep('template')}>{t('common.back')}</Button>
-              <Button className="flex-1" disabled={!clientIds.length} onClick={() => setStep('date')}>{t('common.continue')}</Button>
+              <Button className="flex-1" disabled={!selected.length} onClick={() => setStep('date')}>{t('common.continue')}</Button>
             </div>
           </Card>
         )}
@@ -116,14 +123,14 @@ export function AssignTemplatePage() {
               <Field label={t('coachSpace.assign.startDate')} name="start-date" type="date" min={today} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
               <Field label={`${t('coachSpace.plan.reason')} (${t('common.optional')})`} name="assign-reason" maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} />
               <p className="text-sm text-muted">
-                {t('coachSpace.assign.summary', { template: template?.name ?? '', count: clientIds.length })}
+                {t('coachSpace.assign.summary', { template: template?.name ?? '', count: selected.length })}
               </p>
               <p className="text-xs text-muted">{t('coachSpace.assign.replaceHint')}</p>
               <FormError message={assign.error ? errorMessage(assign.error) : null} />
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={() => setStep('clients')}>{t('common.back')}</Button>
                 <Button className="flex-1" disabled={assign.isPending || !startDate || startDate < today} onClick={() => assign.mutate(
-                  { templateId, client_ids: clientIds, start_date: startDate, reason: reason.trim(), request_id: requestId },
+                  { templateId, connection_ids: selected, start_date: startDate, reason: reason.trim(), request_id: requestId },
                   { onSuccess: setDone },
                 )}>{assign.isPending ? t('common.saving') : t('coachSpace.assign.confirm')}</Button>
               </div>

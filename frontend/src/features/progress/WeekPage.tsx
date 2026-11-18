@@ -6,6 +6,7 @@ import { Button, Card, FormError, LoadingScreen, ScreenHeader } from '../../comp
 import { errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { WeekCoachComments } from '../coach/WorkoutCoachComments'
+import { isCollaborationChanged } from '../coach/access'
 import { useCoachDashboard } from '../coach/api'
 import { WeekReport } from './WeekReport'
 import { useSaveCheckIn, useWeekReview, type WeekCheckIn } from './weekApi'
@@ -21,7 +22,8 @@ export function WeekPage() {
   const current = thisMonday(new Date())
   const review = useWeekReview(monday)
   const dashboard = useCoachDashboard()
-  const hasCoach = dashboard.data?.role === 'client' && !!dashboard.data.connection
+  const coach = dashboard.data?.role === 'client' ? dashboard.data.connection : null
+  const hasCoach = !!coach
   const go = (week: string) => setParams(week === current ? {} : { od: week }, { replace: true })
 
   return (
@@ -39,7 +41,9 @@ export function WeekPage() {
           <>
             <WeekReport review={review.data} />
             {canCheckIn(monday, current)
-              ? <CheckInForm key={monday} monday={monday} initial={review.data.check_in} hasCoach={hasCoach} />
+              ? <CheckInForm key={`${monday}:${coach?.id ?? ''}`} monday={monday} initial={review.data.check_in}
+                  coach={coach ? { id: coach.id, name: coach.coach.name } : null} coachKnown={!!dashboard.data}
+                  onCoachChanged={() => void dashboard.refetch()} />
               : <p className="text-sm text-muted">{t('week.tooOld')}</p>}
             {hasCoach && me && <WeekCoachComments weekStart={monday} selfId={me.id} />}
           </>
@@ -51,14 +55,27 @@ export function WeekPage() {
 
 const EMPTY: WeekCheckIn = { energy: null, progress: null, nutrition: null, satisfaction: null, hardest: '', notes: '' }
 
-function CheckInForm({ monday, initial, hasCoach }: { monday: string; initial: WeekCheckIn | null; hasCoach: boolean }) {
+function CheckInForm({ monday, initial, coach, coachKnown, onCoachChanged }: {
+  monday: string
+  initial: WeekCheckIn | null
+  /** The coach shown on this form (from the dashboard); the athlete decides whether he sees it. */
+  coach: { id: string; name: string } | null
+  coachKnown: boolean
+  onCoachChanged: () => void
+}) {
   const { t } = useTranslation()
   const save = useSaveCheckIn(monday)
+  const hasCoach = !!coach
   const [answers, setAnswers] = useState<WeekCheckIn>(initial ?? EMPTY)
+  const [share, setShare] = useState(() => (initial ? initial.shared_with_coach !== false : true))
   const scales = CHECKIN_SCALES.filter((f) => f !== 'satisfaction' || hasCoach)
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    save.mutate({ ...answers, hardest: answers.hardest.trim(), notes: answers.notes.trim() })
+    const { energy, progress, nutrition, satisfaction } = answers
+    save.mutate(
+      { energy, progress, nutrition, satisfaction, hardest: answers.hardest.trim(), notes: answers.notes.trim(), share_with: coach && share ? coach.id : null },
+      { onError: (error) => { if (isCollaborationChanged(error)) onCoachChanged() } },
+    )
   }
   return (
     <Card title={t('week.checkInTitle')}>
@@ -88,8 +105,14 @@ function CheckInForm({ monday, initial, hasCoach }: { monday: string; initial: W
               className="w-full rounded-2xl border border-line bg-card p-3 outline-none focus:border-brand" />
           </div>
         ))}
-        <FormError message={save.error ? errorMessage(save.error) : null} />
-        <Button disabled={save.isPending}>{save.isPending ? t('common.saving') : t('week.save')}</Button>
+        {coach && (
+          <label className="flex items-center gap-3 text-sm">
+            <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} className="size-5 accent-brand" />
+            {t('week.shareWith', { name: coach.name })}
+          </label>
+        )}
+        <FormError message={isCollaborationChanged(save.error) ? t('week.coachChanged') : save.error ? errorMessage(save.error) : null} />
+        <Button disabled={save.isPending || !coachKnown}>{save.isPending ? t('common.saving') : t('week.save')}</Button>
         {save.isSuccess && <p role="status" className="text-sm text-brand-dark">{t('week.saved')}</p>}
       </form>
     </Card>

@@ -19,7 +19,10 @@ export function ClientWeekPage() {
   const monday = mondayFromParam(params.get('od'), new Date())
   const current = thisMonday(new Date())
   const week = useClientWeek(id, monday)
-  const guard = useClientGuard(id, week)
+  const guard = useClientGuard(id, week, {
+    key: ['coach-client-week', id, monday],
+    redact: (d) => ({ ...d, weight: null, nutrition: null, readiness: null }),
+  })
   // Access changed since: no weight, nutrition or readiness until read again.
   const review = week.data && guard.state === 'stale'
     ? { ...week.data, weight: null, nutrition: null, readiness: null, shared: { measurements: false, nutrition: false, readiness: false } }

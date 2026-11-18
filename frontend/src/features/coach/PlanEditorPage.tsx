@@ -8,6 +8,7 @@ import { toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { DraftError } from '../training/draft'
 import { useRoutines, type Routine } from '../training/api'
+import { isCollaborationChanged } from './access'
 import { useClientGuard } from './guard'
 import { planDate, tailorDraft, tailoredRoutine, type TailorDraft } from './plans'
 import { useClientPlan, useSavePlanVersion, WEEKDAYS, type ClientPlan, type PlanDayInput, type PlanRoutine, type Weekday } from './plansApi'
@@ -39,10 +40,11 @@ export function PlanEditorPage() {
   const guard = useClientGuard(id ?? '', plan)
   if (plan.isLoading) return <LoadingScreen />
   if (plan.isError || !id || !plan.data || guard.state === 'revoked') return <p className="p-6 text-center text-danger">{t('coach.clientNotFound')}</p>
-  return <Editor clientId={id} plan={plan.data.plan} />
+  // Keyed by the collaboration: a reconnect opens a fresh editor, never a stale one.
+  return <Editor key={plan.data.access.connection_id} clientId={id} connectionId={plan.data.access.connection_id} plan={plan.data.plan} />
 }
 
-function Editor({ clientId, plan }: { clientId: string; plan: ClientPlan | null }) {
+function Editor({ clientId, connectionId, plan }: { clientId: string; connectionId: string; plan: ClientPlan | null }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const routines = useRoutines()
@@ -103,7 +105,7 @@ function Editor({ clientId, plan }: { clientId: string; plan: ClientPlan | null 
     }
     if (!input.length && !window.confirm(t('coachSpace.plan.pauseConfirm'))) return
     save.mutate(
-      { valid_from: validFrom, weeks: weekCount, name: name.trim(), reason: reason.trim(), request_id: requestId, days: input },
+      { connection_id: connectionId, valid_from: validFrom, weeks: weekCount, name: name.trim(), reason: reason.trim(), request_id: requestId, days: input },
       { onSuccess: () => navigate(`/trener/klijenti/${clientId}?tab=plan`, { replace: true }) },
     )
   }
@@ -180,7 +182,7 @@ function Editor({ clientId, plan }: { clientId: string; plan: ClientPlan | null 
           </div>
         </Card>
         <p className="text-xs text-muted">{t('coachSpace.plan.futureOnly')}</p>
-        <FormError message={error ?? (save.error ? errorMessage(save.error) : null)} />
+        <FormError message={error ?? (isCollaborationChanged(save.error) ? t('coachSpace.collaborationChanged') : save.error ? errorMessage(save.error) : null)} />
         <Button disabled={save.isPending}>{save.isPending ? t('common.saving') : t('coachSpace.plan.save')}</Button>
       </form>
     </div>

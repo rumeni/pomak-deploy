@@ -6,7 +6,7 @@ import { errorMessage } from '../../lib/api'
 import { formatDecimal, getFormatLocale } from '../../lib/format'
 import { useAuth } from '../../lib/auth'
 import { CoachMessages } from './CoachMessages'
-import { isAccessRevoked } from './access'
+import { isAccessRevoked, isMissingResource } from './access'
 import { useClientGuard } from './guard'
 import { useClientWorkout, useMarkReviewed, type ClientWorkout, type ReviewSet } from './reviewApi'
 import { describePlannedSets } from './review'
@@ -19,16 +19,19 @@ export function WorkoutReviewPage() {
   const { id = '', workoutId = '' } = useParams()
   const { me } = useAuth()
   const workout = useClientWorkout(id, workoutId)
-  const guard = useClientGuard(id, workout)
+  const guard = useClientGuard(id, workout, {
+    key: ['coach-client-workout', id, workoutId], redact: (d) => ({ ...d, readiness: null }),
+  })
   const reviewed = useMarkReviewed(id, workoutId)
   const back = () => navigate(`/trener/klijenti/${id}?tab=progress`)
 
   if (workout.isLoading) return <LoadingScreen />
-  if (!workout.data || guard.state === 'revoked' || (workout.isError && isAccessRevoked(workout.error))) {
+  const missing = workout.isError && isMissingResource(workout.error)
+  if (!workout.data || missing || guard.state === 'revoked' || (workout.isError && isAccessRevoked(workout.error))) {
     return (
       <div className="min-h-full">
         <ScreenHeader title={t('coachSpace.review.title')} onBack={back} />
-        <p className="p-6 text-center text-danger">{t('coachSpace.review.notFound')}</p>
+        <p className="p-6 text-center text-danger">{missing ? t('coachSpace.review.deleted') : t('coachSpace.review.notFound')}</p>
       </div>
     )
   }
@@ -61,7 +64,7 @@ export function WorkoutReviewPage() {
             ) : !data.reviewable ? (
               <p className="text-xs text-muted">{t('coachSpace.review.beforeCollaboration')}</p>
             ) : (
-              <Button size="sm" disabled={reviewed.isPending} onClick={() => reviewed.mutate()}>{t('coachSpace.review.markReviewed')}</Button>
+              <Button size="sm" disabled={reviewed.isPending} onClick={() => reviewed.mutate(data.access.connection_id)}>{t('coachSpace.review.markReviewed')}</Button>
             )}
             <FormError message={reviewed.error ? errorMessage(reviewed.error) : null} />
           </div>

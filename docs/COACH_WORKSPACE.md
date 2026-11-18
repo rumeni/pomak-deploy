@@ -203,6 +203,10 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
       datuma početka.
     - Zakasneli ponovljeni zahtev ne vraća verziju koja je u međuvremenu zamenjena.
     - Isti ID sa drugačijim sadržajem se odbija (409).
+  - **Upisi su vezani za saradnju.** Dodela, izmena plana, cilj ishrane i „pregledano“ nose ID
+    saradnje za koju su napravljeni. Ako je ona završena (i, recimo, ponovo uspostavljena), ništa
+    se ne upisuje u novu saradnju (409 `collaboration_changed`). Editor plana je vezan za saradnju
+    za koju je otvoren.
 - **Plan klijenta je niz verzija.** Izmena je nova verzija koja važi od danas ili kasnije, uz
   opcioni razlog koji klijent vidi.
   - Za svaki dan trener bira jedno od tri: zadržava rutinu iz plana, kopira svoju rutinu ili
@@ -230,6 +234,11 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Pregled treninga:** trener otvara trening klijenta (iz zadatka ili sa kartice Napredak) i vidi
   planirano (plan sa kojim je trening počeo) i urađeno po vežbi, uključujući preskočene vežbe.
   - Spremnost se prikazuje samo uz dozvolu.
+  - Plan iz aplikacije (snimak na početku treninga) server pre prikaza sređuje. Neispravni
+    delovi otpadaju, a pokvaren plan se prikazuje kao „nema plana“; urađene serije i komentari
+    ostaju dostupni.
+  - Obrisan trening vraća 404 sa kodom `workout_not_found`, što nije gubitak pristupa klijentu.
+    Gubitak pristupa ima kod `collaboration_not_found`.
   - „Označi kao pregledano“ zatvara zadatak tog treninga. Važi samo za treninge završene tokom
     saradnje; stariji treninzi su istorija.
 - **Komentar na trening je poruka** vezana za taj trening (jedan zapis):
@@ -256,8 +265,10 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Osvrt korisnika:** energija, napredak, ishrana i (uz trenera) zadovoljstvo programom, na skali
   1–5, plus „šta je bilo najteže“ i napomena. Sve je opciono.
   - Piše se za ovu ili neku od poslednjih osam nedelja; ponovno čuvanje menja isti osvrt.
-  - **Vezan je za saradnju u trenutku čuvanja.** Sa trenerom forma kaže da ga trener vidi, i on ga
-    vidi; bez trenera je privatan.
+  - **Korisnik bira primaoca.** Sa trenerom forma nudi „Neka ovaj osvrt vidi i trener {ime}“ i
+    šalje tačno tu saradnju; bez kvačice ili bez trenera osvrt je privatan.
+  - Server deli osvrt samo ako je baš ta saradnja i dalje aktivna. Ako se trener u međuvremenu
+    promenio (drugi tab ili uređaj), ništa se ne čuva i korisnik bira ponovo (409).
   - Kasniji (novi) trener ne nasleđuje ranije osvrte. Privatan osvrt trener vidi tek kad ga
     korisnik ponovo sačuva uz trenera.
 - **Trener:**
@@ -269,6 +280,8 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Planirani treninzi u prošlim nedeljama** računaju se po danu, iz plana saradnje koja je tog
   dana važila (i kad je saradnja završena). Prekid ili nova saradnja ne menjaju prošlost. Daje se
   samo broj, nikad tuđi plan.
+  - Dogovor je po danu: dan pripada saradnji ako je počela tog ili ranijeg dana, a završena je
+    posle njega. Dan prekida pripada novoj saradnji, ako postoji.
 - **Komentar na nedelju je poruka vezana za tu nedelju** (isti model kao komentar uz trening).
   Vidi se u razgovoru, sa linkom na nedelju, i na ekranu nedelje kod oba korisnika.
 

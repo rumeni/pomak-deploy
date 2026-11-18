@@ -830,3 +830,9 @@ msgstr "Dodela programa"
 
 msgid "Change the plan"
 msgstr "Izmena plana"
+
+msgid "That workout no longer exists."
+msgstr "Taj trening više ne postoji."
+
+msgid "The collaboration changed. Reload and try again."
+msgstr "Saradnja se promenila. Osveži i pokušaj ponovo."

@@ -52,7 +52,8 @@ export function useMarkReviewed(clientId: string, workoutId: string) {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async () => (await api.post<{ reviewed_at: string }>(`/coach/clients/${clientId}/workouts/${workoutId}/reviewed/`, {})).data,
+    mutationFn: async (connectionId: string) =>
+      (await api.post<{ reviewed_at: string }>(`/coach/clients/${clientId}/workouts/${workoutId}/reviewed/`, { connection_id: connectionId })).data,
     onSuccess: () => Promise.all([
       qc.invalidateQueries({ queryKey: ['coach-client-workout', clientId, workoutId] }),
       qc.invalidateQueries({ queryKey: ['coach-tasks'] }),
@@ -99,6 +100,7 @@ export function useClientTargets(clientId: string) {
 }
 
 export interface TargetInput {
+  connection_id: string
   valid_from: string
   kcal: number
   protein_g: number | null

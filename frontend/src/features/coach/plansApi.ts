@@ -87,6 +87,8 @@ export interface TailoredRoutine {
 }
 
 export interface PlanVersionInput {
+  /** The collaboration the editor was opened for. */
+  connection_id: string
   valid_from: string
   weeks: number | null
   name: string
@@ -126,14 +128,14 @@ export function useArchiveTemplate() {
 }
 
 export interface AssignResult {
-  results: { client_id: string; name?: string; ok: boolean; error?: string; version_id?: string }[]
+  results: { connection_id: string; client_id?: string; name?: string; ok: boolean; error?: string }[]
 }
 
 export function useAssignTemplate() {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async ({ templateId, ...body }: { templateId: string; client_ids: string[]; start_date: string; reason: string; request_id: string }) =>
+    mutationFn: async ({ templateId, ...body }: { templateId: string; connection_ids: string[]; start_date: string; reason: string; request_id: string }) =>
       (await api.post<AssignResult>(`/coach/templates/${templateId}/assign/`, body)).data,
     onSuccess: () => Promise.all([
       qc.invalidateQueries({ queryKey: ['coach-client-plan'] }),

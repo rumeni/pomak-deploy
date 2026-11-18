@@ -61,9 +61,14 @@ class PlanTestCase(APITestCase):
     def assign(self, template_id, clients, start, request_id=None):
         self.as_user(self.coach)
         return self.client.post(f'/api/coach/templates/{template_id}/assign/', {
-            'client_ids': [str(c.pk) for c in clients], 'start_date': start.isoformat(),
+            'connection_ids': [self.connection_id(c) for c in clients], 'start_date': start.isoformat(),
             'request_id': request_id or str(uuid.uuid4()),
         }, format='json')
+
+    def connection_id(self, client):
+        """The collaboration the wizard shows for this client (any, or a made-up one for a stranger)."""
+        connection = CoachConnection.objects.filter(client=client, ended_at__isnull=True).first()
+        return str(connection.pk) if connection else str(uuid.uuid4())
 
     def plan_of(self, client):
         self.as_user(self.coach)
@@ -117,7 +122,7 @@ class AssignTests(PlanTestCase):
         self.assertEqual([r['ok'] for r in first.data['results']], [True])
         # Retry of the whole request, with one more client that the first attempt never reached.
         self.as_user(self.coach)
-        body = {'client_ids': [str(self.ana.pk)], 'start_date': self.today.isoformat(), 'request_id': request_id}
+        body = {'connection_ids': [self.connection_id(self.ana)], 'start_date': self.today.isoformat(), 'request_id': request_id}
         self.assertEqual(self.client.post(f"/api/coach/templates/{template['id']}/assign/", body, format='json').status_code, 200)
         self.assertEqual(ClientPlanVersion.objects.count(), 1)
         self.assertEqual(Routine.objects.filter(owner=self.ana).count(), 2)
@@ -141,10 +146,11 @@ class PlanChangeTests(PlanTestCase):
         self.plan = self.plan_of(self.ana)
         self.monday_routine = self.plan['versions'][0]['days'][0]['routine']['id']
 
-    def change(self, valid_from, days, request_id=None, **extra):
+    def change(self, valid_from, days, request_id=None, connection_id=None, **extra):
         self.as_user(self.coach)
         return self.client.post(self.url, {
-            'valid_from': valid_from.isoformat(), 'days': days, 'request_id': request_id or str(uuid.uuid4()), **extra,
+            'valid_from': valid_from.isoformat(), 'days': days, 'request_id': request_id or str(uuid.uuid4()),
+            'connection_id': connection_id or self.connection_id(self.ana), **extra,
         }, format='json')
 
     def tailored(self, weight='55', exercise=None):
@@ -224,7 +230,8 @@ class PlanChangeTests(PlanTestCase):
         self.as_user(self.other_coach)
         self.assertEqual(self.client.get(f'/api/coach/clients/{self.ana.pk}/plan/').status_code, 404)
         self.assertEqual(self.client.post(self.url, {'valid_from': self.today.isoformat(), 'days': [],
-                                                     'request_id': str(uuid.uuid4())}, format='json').status_code, 404)
+                                                     'request_id': str(uuid.uuid4()), 'connection_id': self.connection_id(self.ana)},
+                                          format='json').status_code, 409)
         self.as_user(self.ana)
         mine = self.client.get('/api/coach/plan/').data
         self.assertEqual(mine['current_version_id'], self.plan['current_version_id'])
@@ -241,3 +248,30 @@ class PlanChangeTests(PlanTestCase):
         self.as_user(self.ana)
         today = self.client.get('/api/coach/plan/').data['today']
         self.assertEqual(today['routine']['id'], self.monday_routine)
+
+
+class CollaborationBindingTests(PlanTestCase):
+    def test_a_delayed_assignment_never_lands_in_a_newer_collaboration(self):
+        template = self.template()
+        old_connection = self.connection_id(self.ana)
+        request_id = str(uuid.uuid4())
+        body = {'connection_ids': [old_connection], 'start_date': (self.today + timedelta(days=2)).isoformat(), 'request_id': request_id}
+        # Ended and connected again before the delayed request arrives.
+        CoachConnection.objects.filter(pk=old_connection).update(ended_at=timezone.now())
+        CoachConnection.objects.create(coach=self.coach, client=self.ana)
+        self.as_user(self.coach)
+        result = self.client.post(f"/api/coach/templates/{template['id']}/assign/", body, format='json')
+        self.assertEqual(result.data['results'], [{'connection_id': old_connection, 'ok': False, 'error': 'collaboration_changed'}])
+        self.assertIsNone(self.plan_of(self.ana))
+
+    def test_a_stale_editor_cannot_change_the_plan_of_a_newer_collaboration(self):
+        old_connection = self.connection_id(self.ana)
+        CoachConnection.objects.filter(pk=old_connection).update(ended_at=timezone.now())
+        CoachConnection.objects.create(coach=self.coach, client=self.ana)
+        self.as_user(self.coach)
+        response = self.client.post(f'/api/coach/clients/{self.ana.pk}/plan/versions/', {
+            'valid_from': self.today.isoformat(), 'days': [], 'request_id': str(uuid.uuid4()), 'connection_id': old_connection,
+        }, format='json')
+        self.assertEqual((response.status_code, response.data['code']), (409, 'collaboration_changed'))
+        self.assertIsNone(self.plan_of(self.ana))
+

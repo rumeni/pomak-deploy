@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { accessRegistry, dashboardAccess, guardVerdict, purgeClient, type ServerAccess } from './access'
+import { accessRegistry, dashboardAccess, guardVerdict, isAccessRevoked, isCollaborationChanged, isMissingResource, purgeClient, type ServerAccess } from './access'
 
 const state: { qc: QueryClient; dashboard?: unknown; targets: Record<string, unknown>; stats: Record<string, unknown> } = {
   qc: new QueryClient(), targets: {}, stats: {},
@@ -38,9 +38,9 @@ const dashboard = (patch: Record<string, unknown> = {}, archived: string[] = [])
   clients: [{ id: 'conn-1', client: { id: 'client-1' }, connected_at: CONNECTED, share_measurements: true, share_nutrition: true,
     share_readiness: true, coach_sets_nutrition: true, access_version: 1, ...patch }],
 })
-const httpError = (status?: number) => {
+const httpError = (status?: number, data: Record<string, unknown> = {}) => {
   const error = new AxiosError('failed')
-  if (status) error.response = { status, data: {}, statusText: '', headers: {}, config: { headers: new AxiosHeaders() } }
+  if (status) error.response = { status, data, statusText: '', headers: {}, config: { headers: new AxiosHeaders() } }
   return error
 }
 const target = { valid_from: '2026-11-18', mode: 'coach', kcal: 2300, protein_g: 160, carbs_g: null, fat_g: null, set_by_coach: true, note: '' }
@@ -93,5 +93,22 @@ describe('every coach view of client data follows the access registry', () => {
     await purgeClient(qc, 'client-1')
     expect(qc.getQueryCache().findAll().filter((q) => q.queryKey[1] === 'client-1')).toEqual([])
     expect(qc.getQueryData(['coach-client-week', 'client-2', 'x'])).toBeDefined()
+  })
+
+  it('a deleted workout (404 workout_not_found) is missing, not lost access', () => {
+    const registry = accessRegistry(state.qc)
+    const missing = httpError(404, { code: 'workout_not_found' })
+    expect(isMissingResource(missing)).toBe(true)
+    expect(isAccessRevoked(missing)).toBe(false)
+    expect(guardVerdict(access(), missing, undefined, registry).state).not.toBe('revoked')
+    expect(registry.revoked.size).toBe(0)
+    // Fresh, valid views of the same client keep working.
+    expect(guardVerdict(access(), null, dashboardAccess(dashboard(), registry), registry).state).toBe('ok')
+    expect(isAccessRevoked(httpError(404, { code: 'collaboration_not_found' }))).toBe(true)
+  })
+
+  it('tells a write meant for an older collaboration apart', () => {
+    expect(isCollaborationChanged(httpError(409, { code: 'collaboration_changed' }))).toBe(true)
+    expect(isCollaborationChanged(httpError(409, { code: 'request_conflict' }))).toBe(false)
   })
 })

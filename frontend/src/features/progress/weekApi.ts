@@ -44,7 +44,8 @@ export function useSaveCheckIn(monday: string) {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async (body: Omit<WeekCheckIn, 'updated_at'>) => (await api.put<WeekReview>(`/progress/weeks/${monday}/review/`, body)).data,
+    mutationFn: async (body: Omit<WeekCheckIn, 'updated_at' | 'shared_with_coach'> & { share_with: string | null }) =>
+      (await api.put<WeekReview>(`/progress/weeks/${monday}/review/`, body)).data,
     onSuccess: (review) => qc.setQueryData(weekKey(monday), review),
   })
 }

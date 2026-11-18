@@ -46,6 +46,9 @@ class ReviewTestCase(APITestCase):
     def as_user(self, user):
         self.client.force_authenticate(user=user)
 
+    def bound(self, **body):
+        return {'connection_id': str(self.connection.pk), **body}
+
     def url(self, suffix=''):
         return f'/api/coach/clients/{self.ana.pk}/workouts/{self.workout.pk}/{suffix}'
 
@@ -72,11 +75,11 @@ class WorkoutReviewTests(ReviewTestCase):
     def test_marking_reviewed_closes_the_review_task(self):
         self.as_user(self.coach)
         self.assertIsNone(self.client.get(self.url()).data['reviewed_at'])
-        self.assertEqual(self.client.post(self.url('reviewed/'), {}, format='json').status_code, 200)
+        self.assertEqual(self.client.post(self.url('reviewed/'), self.bound(), format='json').status_code, 200)
         task = CoachTask.objects.get(kind='workout_review', key=str(self.workout.pk))
         self.assertEqual(task.status, 'done')
         self.assertIsNotNone(self.client.get(self.url()).data['reviewed_at'])
-        self.client.post(self.url('reviewed/'), {}, format='json')  # again: still one task
+        self.client.post(self.url('reviewed/'), self.bound(), format='json')  # again: still one task
         self.assertEqual(CoachTask.objects.filter(kind='workout_review').count(), 1)
 
 
@@ -134,13 +137,13 @@ class CoachNutritionTargetTests(ReviewTestCase):
         self.as_user(self.coach)
         self.assertEqual(self.client.get(self.target_url()).data['allowed'], False)
         body = {'valid_from': timezone.localdate().isoformat(), 'kcal': 2200}
-        self.assertEqual(self.client.post(self.target_url(), body, format='json').status_code, 400)
+        self.assertEqual(self.client.post(self.target_url(), self.bound(**body), format='json').status_code, 400)
         self.as_user(self.ana)
         changed = self.client.patch('/api/coach/connection/', {'coach_sets_nutrition': True}, format='json').data
         self.assertTrue(changed['coach_sets_nutrition'])
         self.assertEqual(changed['access_version'], 2)
         self.as_user(self.coach)
-        response = self.client.post(self.target_url(), {**body, 'protein_g': 150, 'note': 'Više proteina'}, format='json')
+        response = self.client.post(self.target_url(), self.bound(**{**body, 'protein_g': 150, 'note': 'Više proteina'}), format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['current']['kcal'], 2200)
         target = NutritionTarget.objects.get(owner=self.ana)
@@ -155,11 +158,11 @@ class CoachNutritionTargetTests(ReviewTestCase):
         CoachConnection.objects.filter(pk=self.connection.pk).update(coach_sets_nutrition=True)
         self.as_user(self.coach)
         yesterday = (timezone.localdate() - timedelta(days=1)).isoformat()
-        self.assertEqual(self.client.post(self.target_url(), {'valid_from': yesterday, 'kcal': 2000}, format='json').status_code, 400)
+        self.assertEqual(self.client.post(self.target_url(), self.bound(**{'valid_from': yesterday, 'kcal': 2000}), format='json').status_code, 400)
         today = timezone.localdate().isoformat()
-        self.assertEqual(self.client.post(self.target_url(), {'valid_from': today, 'kcal': 1500, 'fat_g': 200}, format='json').status_code, 400)
-        self.client.post(self.target_url(), {'valid_from': today, 'kcal': 2000}, format='json')
-        self.client.post(self.target_url(), {'valid_from': today, 'kcal': 2100}, format='json')
+        self.assertEqual(self.client.post(self.target_url(), self.bound(**{'valid_from': today, 'kcal': 1500, 'fat_g': 200}), format='json').status_code, 400)
+        self.client.post(self.target_url(), self.bound(**{'valid_from': today, 'kcal': 2000}), format='json')
+        self.client.post(self.target_url(), self.bound(**{'valid_from': today, 'kcal': 2100}), format='json')
         self.assertEqual(list(NutritionTarget.objects.filter(owner=self.ana).values_list('kcal', flat=True)), [2100])
 
 
@@ -178,6 +181,50 @@ class ReviewAccessTests(ReviewTestCase):
         self.as_user(self.coach)
         url = f'/api/coach/clients/{self.ana.pk}/workouts/{old.pk}/'
         self.assertFalse(self.client.get(url).data['reviewable'])
-        self.assertEqual(self.client.post(url + 'reviewed/', {}, format='json').status_code, 400)
+        self.assertEqual(self.client.post(url + 'reviewed/', self.bound(), format='json').status_code, 400)
         self.assertTrue(self.client.get(self.url()).data['reviewable'])
+
+
+class ReviewIntegrityTests(ReviewTestCase):
+    def test_a_deleted_workout_is_missing_not_a_lost_collaboration(self):
+        self.as_user(self.coach)
+        url = self.url()
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.workout.delete()
+        gone = self.client.get(url)
+        self.assertEqual((gone.status_code, gone.data['code']), (404, 'workout_not_found'))
+        self.assertEqual(self.client.get(f'/api/coach/clients/{self.ana.pk}/').status_code, 200)
+        self.assertEqual(self.client.get(f'/api/coach/clients/{self.ana.pk}/plan/').status_code, 200)
+        self.as_user(self.other_coach)
+        lost = self.client.get(f'/api/coach/clients/{self.ana.pk}/stats/')
+        self.assertEqual((lost.status_code, lost.data['code']), (404, 'collaboration_not_found'))
+
+    def test_malformed_plan_snapshots_never_break_the_review(self):
+        self.as_user(self.coach)
+        for snapshot in ({'exercises': {}}, {'exercises': [None, 3]}, {'exercises': [{'exercise': {'name': {'x': 1}}, 'sets': {}}]},
+                         {'exercises': [{'exercise': 'x', 'sets': [None, {'reps_min': 'eight', 'weight_kg': 'heavy', 'set_type': 7}]}]},
+                         ['not', 'a', 'dict'], None):
+            WorkoutSession.objects.filter(pk=self.workout.pk).update(plan_snapshot=snapshot)
+            response = self.client.get(self.url())
+            self.assertEqual(response.status_code, 200, snapshot)
+            plan = response.data['plan']
+            if plan is not None:
+                for exercise in plan['exercises']:
+                    self.assertTrue(exercise['exercise']['name'] is None or isinstance(exercise['exercise']['name'], str))
+                    for s in exercise['sets']:
+                        self.assertIn(s['set_type'], ('warmup', 'working'))
+                        self.assertIsNone(s['reps_min']) if s['reps_min'] is None else self.assertIsInstance(s['reps_min'], int)
+            self.assertEqual(response.data['exercises'][0]['sets'][0]['reps'], 9)
+
+    def test_target_and_review_writes_are_bound_to_their_collaboration(self):
+        CoachConnection.objects.filter(pk=self.connection.pk).update(coach_sets_nutrition=True)
+        stale = str(self.connection.pk)
+        CoachConnection.objects.filter(pk=self.connection.pk).update(ended_at=timezone.now())
+        CoachConnection.objects.create(coach=self.coach, client=self.ana, coach_sets_nutrition=True)
+        self.as_user(self.coach)
+        target = self.client.post(f'/api/coach/clients/{self.ana.pk}/nutrition-target/',
+                                  {'connection_id': stale, 'valid_from': timezone.localdate().isoformat(), 'kcal': 2000}, format='json')
+        self.assertEqual(target.status_code, 409)
+        self.assertFalse(NutritionTarget.objects.exists())
+        self.assertEqual(self.client.post(self.url('reviewed/'), {'connection_id': stale}, format='json').status_code, 409)
 

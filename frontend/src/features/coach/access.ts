@@ -21,7 +21,21 @@ import type { CoachTask } from './tasks'
 /** The server said this account may not see it. Unlike a network failure, nothing cached may stay. */
 export function isAccessRevoked(error: unknown): boolean {
   if (!axios.isAxiosError(error) || !error.response) return false
+  // One missing thing (a deleted workout) is not a lost collaboration.
+  if (isMissingResource(error)) return false
   return [401, 403, 404].includes(error.response.status)
+}
+
+/** The server says only this one item is gone (code "workout_not_found"); access is intact. */
+export function isMissingResource(error: unknown): boolean {
+  if (!axios.isAxiosError(error) || error.response?.status !== 404) return false
+  return (error.response.data as { code?: string } | undefined)?.code === 'workout_not_found'
+}
+
+/** A write meant for a collaboration that is no longer the active one (409 "collaboration_changed"). */
+export function isCollaborationChanged(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 409
+    && (error.response.data as { code?: string } | undefined)?.code === 'collaboration_changed'
 }
 
 /** A transient failure (offline, timeout): the last loaded view may stay, marked as such. */
