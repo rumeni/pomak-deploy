@@ -128,15 +128,15 @@ describe('kopiranje i sačuvani obroci', () => {
     expect(day.entries.map((entry) => entry.id)).toEqual(['pending-original', 'pending-copy'])
     expect(totals(day.entries).kcal).toBe(143)
     expect(copied.body.per100_kcal).toBe('143.0')
-    expect(original.body.per100_kcal).toBeUndefined()
+    expect(original.body.per100_kcal).toBe('143.0')
   })
 
-  it('nov unos i sačuvani obrok bez kopiranja ne šalju stari snimak', () => {
+  it('nov unos i sačuvani obrok šalju vrednosti koje su korisniku prikazane, čak i offline', () => {
     const fresh = entryFromFood('fresh', DAY, 'lunch', { ...egg, kcal: '160.0' }, 100, '', now)
-    expect(fresh.body.per100_kcal).toBeUndefined()
+    expect(fresh.body).toMatchObject({ per100_kcal: '160.0', per100_protein_g: '12.56', per100_fat_g: '9.51', per100_fiber_g: '0.00' })
     const saved = entryFromSavedItem({ food: { ...egg, kcal: '160.0' }, grams: '100', portion_name: '', name: '', kcal: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null }, 'saved', DAY, 'dinner', now)
     expect(saved?.preview.kcal).toBe('160.0')
-    expect(saved?.body.per100_kcal).toBeUndefined()
+    expect(saved?.body.per100_kcal).toBe('160.0')
   })
 
   it('stavka čija je namirnica obrisana kopira se kao ručni unos', () => {

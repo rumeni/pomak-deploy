@@ -92,7 +92,16 @@ export async function loadDayEntries(ownerId: string, date: string): Promise<Dia
 
 /** Više novih stavki odjednom (kopiran ili sačuvan obrok), redom kojim su navedene. */
 export async function saveDrafts(ownerId: string, drafts: EntryDraft[]): Promise<void> {
-  for (const draft of drafts) await saveEntry(ownerId, draft.preview.id, draft)
+  if (!drafts.length) return
+  // One saved meal is one operation: no partial meals if the device/storage fails.
+  await db.transaction('rw', db.diaryOps, async () => {
+    for (const draft of drafts) {
+      await addQueuedOp(ownerId, draft.preview.date, {
+        type: 'upsert', entryId: draft.preview.id, body: draft.body, preview: draft.preview,
+      })
+    }
+  })
+  requestSync()
 }
 
 export async function cacheDay(ownerId: string, day: DiaryDay): Promise<void> {
