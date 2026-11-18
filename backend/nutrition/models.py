@@ -257,4 +257,11 @@ class FoodReport(TimeStampedModel):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['food', 'reporter'],
+                condition=Q(resolved_at__isnull=True, reporter__isnull=False),
+                name='one_open_food_report_per_user',
+            ),
+        ]
 

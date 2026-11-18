@@ -71,6 +71,18 @@ class DiaryTests(APITestCase):
         self.assertEqual((fresh.data['kcal'], fresh.data['fat_g']), ('600.0', '30.00'))
         self.assertEqual(original.data['kcal'], '500.0')
 
+    def test_fresh_offline_entry_keeps_its_displayed_snapshot_after_food_changes(self):
+        food = Food.objects.create(owner=self.user, source='custom', name='Hleb', kcal=300, protein_g=10)
+        # The phone captured 250 kcal per 100 g while offline; the other device
+        # edited the food to 300 before the queued entry arrived.
+        response = self.put(
+            uuid.uuid4(), food_id=str(food.id), grams='200',
+            per100_kcal='250', per100_protein_g='9', per100_carbs_g=None,
+            per100_fat_g=None, per100_fiber_g=None,
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual((response.data['kcal'], response.data['protein_g']), ('500.0', '18.00'))
+
     def test_copy_without_server_side_original_succeeds(self):
         """A queued offline copy does not require a previously uploaded original."""
         food = Food.objects.create(owner=self.user, source='custom', name='Pita', kcal=250, fat_g=12)

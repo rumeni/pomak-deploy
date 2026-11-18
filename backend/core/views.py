@@ -148,19 +148,22 @@ class IdempotentCreateMixin:
                     self.perform_update(serializer)
                     return Response(serializer.data, status=status.HTTP_200_OK)
                 raise RuntimeError('Unsupported retry_action')
-        if create_only and record_id:
-            # Two requests creating the same new ID at once: the database decides, the loser
-            # gets the same 412 instead of an error (and nothing is overwritten).
-            try:
-                with transaction.atomic():
-                    return super().create(request, *args, **kwargs)
-            except IntegrityError:
-                model = self.get_serializer_class().Meta.model
-                existing = model.objects.filter(pk=record_id).first()
-                if existing is not None and self.created_by_user(existing, request.user):
-                    raise AlreadyCreated() from None
-                raise
-        return super().create(request, *args, **kwargs)
+        if not record_id:
+            return super().create(request, *args, **kwargs)
+        # A concurrent request can create this UUID after our initial lookup.
+        # Retry through the same owner/visibility/payload checks, never return a 500.
+        try:
+            with transaction.atomic():
+                return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            existing = self.find_existing(model, record_id)
+            if existing is None:
+                raise  # Unrelated constraint failure.
+            if not self.created_by_user(existing, request.user):
+                raise ValidationError({'id': _('This ID is already taken.')}) from None
+            if create_only:
+                raise AlreadyCreated() from None
+            return self.create(request, *args, **kwargs)
 
 
 class SharedLibraryMixin:
