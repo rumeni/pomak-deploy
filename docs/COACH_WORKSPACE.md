@@ -151,6 +151,9 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
     - verziju pristupa uz svaku saradnju, koja raste sa svakom promenom deljenja i sa prekidom;
     - datum početka saradnje;
     - vreme kada je spisak klijenata bio tačan.
+  - **Evidencija pristupa:** spisak klijenata i ekran klijenta upisuju šta su videli u jednu
+    evidenciju za prijavljeni nalog. Ona čuva najvišu viđenu verziju po saradnji i nikad se ne
+    vraća na stariju; svi ekrani i lista zadataka proveravaju prema njoj. Briše se pri odjavi.
   - **Pravila u aplikaciji:**
     - Saradnja koja je završena, zamenjena novijom ili je nema na spisku koji je noviji od nje:
       ništa se ne prikazuje ni bez interneta, a keš se briše. Takva saradnja se pamti kao

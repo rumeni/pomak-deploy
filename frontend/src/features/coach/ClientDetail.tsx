@@ -7,7 +7,7 @@ import { Button, Card, FormError, selectClass } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { formatDecimal, getFormatLocale } from '../../lib/format'
 import { useRoutines } from '../training/api'
-import { dashboardAccess, isAccessRevoked, isNetworkFailure, purgeClient, redactCached, refreshCoachLists, viewableClient, visibleTaskList } from './access'
+import { accessRegistry, dashboardAccess, isAccessRevoked, isNetworkFailure, purgeClient, redactCached, refreshCoachLists, viewableClient, visibleTaskList } from './access'
 import {
   useAssignCoachRoutine, useClientStatus, useCoachClient, useCoachDashboard, useCoachNotes, useCoachTasks, useCreateCoachNote,
   useDeleteCoachNote, useDisconnectCoach, useUpdateCoachNote, type CoachClientDetails, type CoachNote,
@@ -36,9 +36,13 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   const qc = useQueryClient()
   // Which data may be shown is decided by server facts (access version, collaboration identity),
   // never by which response arrived last.
+  // The client data and the dashboard both report to the account's access registry, which keeps
+  // the highest version seen from any source; the task list below judges against it too.
+  const registry = accessRegistry(qc)
   const view = viewableClient(client.data, {
     error: client.isError ? client.error : null,
-    dashboard: dashboardAccess(dashboard.data),
+    dashboard: dashboardAccess(dashboard.data, registry),
+    registry,
   })
   const revoked = (client.isError && isAccessRevoked(client.error)) || view.purge
   const redactWith = view.redactWith
@@ -148,7 +152,8 @@ function OverviewTab({ data }: { data: CoachClientDetails }) {
   const { t, i18n } = useTranslation()
   const tasks = useCoachTasks()
   const dashboard = useCoachDashboard()
-  const open = visibleTaskList(tasks.data ?? [], dashboardAccess(dashboard.data))
+  const registry = accessRegistry(useQueryClient())
+  const open = visibleTaskList(tasks.data ?? [], dashboardAccess(dashboard.data, registry), registry)
     .filter((task) => task.client.id === data.connection.client.id && task.state === 'open')
   const last = data.recent_workouts[0]
   const withReadiness = data.recent_workouts.find((w) => w.readiness?.score != null)
