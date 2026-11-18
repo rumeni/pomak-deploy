@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "25060145403",
+    "project_id": "pomak-rs",
+    "storage_bucket": "pomak-rs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:25060145403:android:81eb12759054b04830d85e",
+        "android_client_info": {
+          "package_name": "rs.pomak.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBHqer8ZbRtvMXtQ8S3ptURDg8-Kpa2bXk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
