@@ -240,8 +240,9 @@ export function useSendCoachMessage(target: ChatTarget = {}) {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async (text: string) =>
-      (await api.post<CoachMessage>('/coach/messages/', { text, ...chatParams(target) })).data,
+    // The client-made ID makes a retry after a lost response return the stored message, not a copy.
+    mutationFn: async ({ id, text }: { id: string; text: string }) =>
+      (await api.post<CoachMessage>('/coach/messages/', { id, text, ...chatParams(target) })).data,
     onSuccess: () => Promise.all([
       qc.invalidateQueries({ queryKey: ['coach-messages', chatKey(target)] }),
       qc.invalidateQueries({ queryKey: CONVERSATIONS }),

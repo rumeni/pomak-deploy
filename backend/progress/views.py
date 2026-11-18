@@ -1,5 +1,6 @@
 import datetime
 
+from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import mixins, viewsets
@@ -11,6 +12,8 @@ from rest_framework.views import APIView
 from core.views import IdempotentCreateMixin
 
 from . import overview
+from accounts.models import User
+
 from .models import Goal, Measurement
 from .serializers import GoalSerializer, GoalStatusSerializer, MeasurementSerializer
 
@@ -47,7 +50,14 @@ class GoalViewSet(IdempotentCreateMixin, mixins.ListModelMixin, mixins.CreateMod
         return Response(self.get_serializer(goals, many=True).data)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        # Revalidate under a stable user-row lock: concurrent posts may both
+        # pass the initial serializer check for the same active goal kind.
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=self.request.user.pk)
+            kind = serializer.validated_data['kind']
+            if Goal.objects.filter(user=self.request.user, kind=kind, status=Goal.Status.ACTIVE).exists():
+                raise ValidationError(_('You already have an active goal of this kind.'))
+            serializer.save(user=self.request.user)
 
     @action(detail=True, methods=['post'])
     def close(self, request, pk=None):

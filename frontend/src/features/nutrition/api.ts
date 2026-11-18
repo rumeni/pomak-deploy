@@ -78,11 +78,13 @@ export function useFoods(q: string) {
   })
 }
 
-export function useFood(id: string | undefined) {
+export function useFood(id: string | undefined, fresh = false) {
   return useQuery({
     queryKey: ['foods', i18n.language, 'detail', id],
     queryFn: async () => (await api.get<Food>(`/nutrition/foods/${id}/`)).data,
     enabled: !!id,
+    // New diary entries must not silently use an old React Query snapshot.
+    ...(fresh ? { staleTime: 0, refetchOnMount: 'always' as const, retry: false } : {}),
   })
 }
 

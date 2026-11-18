@@ -10,6 +10,7 @@ import {
   loadPendingProgram,
   ProgramImportAuthChanged,
   programToRoutines,
+  firstImportRoutines,
   programAlreadyAdded,
   type Program,
 } from './programs'
@@ -47,6 +48,16 @@ describe('suggested programs', () => {
     expect(routines[0].exercises[0].sets[0]).toEqual(set)
     // A copy, not the same objects: editing the routine never changes the suggestion.
     expect(routines[0].exercises[0].sets[0]).not.toBe(set)
+  })
+
+  it('uses identical first-import UUIDs on independent devices but different UUIDs for a different owner', async () => {
+    const first = await firstImportRoutines(program, 'user-one')
+    const second = await firstImportRoutines(program, 'user-one')
+    const other = await firstImportRoutines(program, 'user-two')
+    expect(first.map((r) => r.id)).toEqual(second.map((r) => r.id))
+    expect(first[0].id).not.toBe(other[0].id)
+    expect(first[0].id).toMatch(/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/)
+    expect(new Set(first.map((r) => r.id)).size).toBe(first.length)
   })
 
   it('recognises an imported program after a language switch or routine rename', () => {

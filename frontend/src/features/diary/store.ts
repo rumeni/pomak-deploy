@@ -133,6 +133,15 @@ export function useDiaryDay(ownerId: string | undefined, date: string): { day: D
   return { day, offline: remote.isError }
 }
 
+/** Keep local recency order while preferring the server's latest food values. */
+export function mergeRecentFoods(local: Food[], remote: Food[]): Food[] {
+  const fresh = new Map(remote.map((food) => [food.id, food]))
+  const seen = new Set<string>()
+  return [...local.slice(0, 5), ...remote]
+    .map((food) => fresh.get(food.id) ?? food)
+    .filter((food) => !seen.has(food.id) && seen.add(food.id))
+}
+
 /** Nedavne namirnice: sa servera kad ima interneta, inače one sačuvane na telefonu. */
 export function useRecentFoods(ownerId: string | undefined): Food[] | undefined {
   const remote = useQuery({
@@ -146,9 +155,7 @@ export function useRecentFoods(ownerId: string | undefined): Food[] | undefined 
     [ownerId],
   )
   if (remote.data) {
-    // Lokalno korišćene (možda još neposlate) prve, pa ostale sa servera, bez ponavljanja.
-    const seen = new Set<string>()
-    return [...(local ?? []).slice(0, 5), ...remote.data].filter((f) => !seen.has(f.id) && seen.add(f.id))
+    return mergeRecentFoods(local ?? [], remote.data)
   }
   return local
 }

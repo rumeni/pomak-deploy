@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Card, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { getFormatLocale } from '../../lib/format'
+import { uuid } from '../../lib/uuid'
 import { useCoachMessages, useSendCoachMessage } from './api'
 import { mergeCoachMessagePages } from './messages'
 import { chatScrollTop, nearChatBottom } from './chatScroll'
@@ -24,6 +25,8 @@ export function CoachMessages({ selfId, clientId, connectionId, readOnly = false
   const messages = useCoachMessages(target, { live: !readOnly })
   const send = useSendCoachMessage(target)
   const [text, setText] = useState('')
+  // Preserve the same ID across a lost response and a manual retry.
+  const pendingMessage = useRef<{ id: string; text: string } | null>(null)
   const items = mergeCoachMessagePages(messages.data?.pages ?? [])
   const newestId = items.at(-1)?.id ?? null
   const listRef = useRef<HTMLDivElement>(null)
@@ -70,8 +73,18 @@ export function CoachMessages({ selfId, clientId, connectionId, readOnly = false
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (!text.trim()) return
-    send.mutate(text.trim(), { onSuccess: () => setText('') })
+    const message = text.trim()
+    if (!message || send.isPending) return
+    const body = pendingMessage.current?.text === message
+      ? pendingMessage.current
+      : { id: uuid(), text: message }
+    pendingMessage.current = body
+    send.mutate(body, {
+      onSuccess: () => {
+        pendingMessage.current = null
+        setText((current) => current.trim() === message ? '' : current)
+      },
+    })
   }
   return (
     <Card title={t('coach.messages')}>

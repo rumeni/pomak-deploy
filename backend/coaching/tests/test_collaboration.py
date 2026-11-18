@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 from django.utils import timezone
@@ -285,6 +286,25 @@ class CoachCollaborationTests(APITestCase):
         # A stranger cannot read the archive.
         self.as_user(self.other_client)
         self.assertEqual(self.client.get(url, {'connection_id': str(connection.pk)}).status_code, 404)
+
+    def test_retried_message_with_same_client_id_is_not_sent_twice(self):
+        self.connect()
+        self.as_user(self.coach)
+        message_id = str(uuid.uuid4())
+        url = '/api/coach/messages/'
+        original = {'id': message_id, 'text': 'Hello', 'client_id': str(self.client_user.pk)}
+        first = self.client.post(url, original, format='json')
+        self.assertEqual(first.status_code, 201, first.data)
+        repeated = self.client.post(url, original, format='json')
+        self.assertEqual(repeated.status_code, 200, repeated.data)
+        self.assertEqual(repeated.data['id'], first.data['id'])
+        self.assertEqual(CoachMessage.objects.count(), 1)
+        changed = self.client.post(url, {**original, 'text': 'Different'}, format='json')
+        self.assertEqual(changed.status_code, 400)
+        self.as_user(self.client_user)
+        stolen = self.client.post(url, {'id': message_id, 'text': 'Hello'}, format='json')
+        self.assertEqual(stolen.status_code, 400)
+        self.assertEqual(CoachMessage.objects.count(), 1)
 
     def test_message_history_cursor_loads_all_messages_with_new_messages_arriving(self):
         self.connect()

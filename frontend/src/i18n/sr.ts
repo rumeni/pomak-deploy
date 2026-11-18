@@ -11,6 +11,7 @@ export const sr = {
     loading: 'Učitavanje…',
     saving: 'Čuvanje…',
     save: 'Sačuvaj',
+    leaveUnsaved: 'Imaš nesačuvane izmene. Izaći bez čuvanja?',
     continue: 'Nastavi',
     back: 'Nazad',
     retry: 'Pokušaj ponovo',

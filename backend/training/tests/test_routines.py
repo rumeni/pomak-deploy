@@ -70,6 +70,35 @@ class RoutineTests(APITestCase):
         self.assertEqual(updated.status_code, 200, updated.data)
         self.assertEqual(updated.data['program_key'], 'full-body-beginner')
 
+    def test_revision_prevents_last_write_wins_from_another_device(self):
+        created = self.create()
+        self.assertEqual(created.status_code, 201, created.data)
+        rid, revision = created.data['id'], created.data['updated_at']
+        changed = self.client.put(
+            f'/api/training/routines/{rid}/',
+            self.payload(name='First device', revision=revision), format='json',
+        )
+        self.assertEqual(changed.status_code, 200, changed.data)
+        stale = self.client.put(
+            f'/api/training/routines/{rid}/',
+            self.payload(name='Old second device', revision=revision), format='json',
+        )
+        self.assertEqual(stale.status_code, 409, stale.data)
+        self.assertEqual(Routine.objects.get(pk=rid).name, 'First device')
+        # A timeout after the first PUT must not replace nested set rows again.
+        set_ids = set(RoutineSet.objects.values_list('pk', flat=True))
+        repeated = self.client.put(
+            f'/api/training/routines/{rid}/',
+            self.payload(name='First device', revision=revision), format='json',
+        )
+        self.assertEqual(repeated.status_code, 200, repeated.data)
+        self.assertEqual(set(RoutineSet.objects.values_list('pk', flat=True)), set_ids)
+        latest = self.client.put(
+            f'/api/training/routines/{rid}/',
+            self.payload(name='Refreshed', revision=changed.data['updated_at']), format='json',
+        )
+        self.assertEqual(latest.status_code, 200, latest.data)
+
     def test_retry_changed_post_updates_owned_routine_instead_of_silently_dropping_changes(self):
         body = self.payload(id=str(uuid.uuid4()), name='Prva')
         first = self.create(body)

@@ -55,7 +55,9 @@ export function DiaryPage() {
                 {[...day.errors.entries()].map(([id, message]) => (
                   <p key={id} className="mt-1 text-muted">{message}</p>
                 ))}
-                <button type="button" className="mt-2 underline" onClick={() => void discardRejectedDayOps(me.id, date)}>
+                <button type="button" className="mt-2 underline" onClick={() => {
+                  void discardRejectedDayOps(me.id, date).catch((cause) => setNotice(errorMessage(cause)))
+                }}>
                   {t('diary.dismissRejected')}
                 </button>
               </div>
@@ -158,6 +160,8 @@ function MealCard({
   const createSaved = useCreateSavedMeal()
   const [menuOpen, setMenuOpen] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const copying = useRef(false)
+  const [copyPending, setCopyPending] = useState(false)
   // A lost POST response must not cause a second saved-meal ID on retry.
   const pendingSavedMealId = useRef<string | null>(null)
   const entries = day.entries.filter((e) => e.meal === meal)
@@ -165,13 +169,23 @@ function MealCard({
 
   // Kopira isti obrok od juče; kopiranje ne menja status dana.
   const copyYesterday = async () => {
+    if (copying.current || !me) return
+    copying.current = true
+    setCopyPending(true)
     setMenuOpen(false)
-    if (!me) return
-    const source = (await loadDayEntries(me.id, addDays(date, -1))).filter((e) => e.meal === meal)
-    if (!source.length) return onNotice(t('diary.copyNothing'))
-    const now = new Date()
-    await saveDrafts(me.id, source.map((e) => copyEntry(e, uuid(), date, meal, now)))
-    onNotice(t('diary.copied', { count: source.length }))
+    setSaveError(null)
+    try {
+      const source = (await loadDayEntries(me.id, addDays(date, -1))).filter((e) => e.meal === meal)
+      if (!source.length) return onNotice(t('diary.copyNothing'))
+      const now = new Date()
+      await saveDrafts(me.id, source.map((e) => copyEntry(e, uuid(), date, meal, now)))
+      onNotice(t('diary.copied', { count: source.length }))
+    } catch (cause) {
+      setSaveError(errorMessage(cause))
+    } finally {
+      copying.current = false
+      setCopyPending(false)
+    }
   }
 
   const saveAsMeal = () => {
@@ -226,7 +240,7 @@ function MealCard({
       </div>
       {menuOpen && (
         <div className="mx-4 mb-1 flex flex-col rounded-xl bg-surface ring-1 ring-line">
-          <button type="button" onClick={() => void copyYesterday()} className="min-h-11 px-4 text-left font-medium active:bg-brand-soft">
+          <button type="button" disabled={copyPending} onClick={() => void copyYesterday()} className="min-h-11 px-4 text-left font-medium active:bg-brand-soft disabled:opacity-50">
             {t('diary.copyYesterday')}
           </button>
           {entries.length > 0 && (
@@ -282,7 +296,12 @@ function StatusCard({ date, day, ownerId }: { date: string; day: DisplayDay; own
   const { t } = useTranslation()
   // Dan bez unosa i bez oznake se jasno razlikuje od dana "u toku".
   const status: DayStatus | 'none' = day.status ?? (day.entries.length ? 'in_progress' : 'none')
-  const set = (s: DayStatus) => ownerId && void setDayStatus(ownerId, date, s)
+  const [error, setError] = useState<string | null>(null)
+  const set = (s: DayStatus) => {
+    if (!ownerId) return
+    setError(null)
+    void setDayStatus(ownerId, date, s).catch((cause) => setError(errorMessage(cause)))
+  }
 
   return (
     <Card>
@@ -292,6 +311,7 @@ function StatusCard({ date, day, ownerId }: { date: string; day: DisplayDay; own
       </div>
       <p className="mt-2 text-sm text-muted">{t(status === 'complete' ? 'diary.completeDone' : 'diary.completeHint')}</p>
       <div className="mt-3 flex flex-col gap-2">
+        <FormError message={error} />
         {status !== 'complete' && <Button onClick={() => set('complete')}>{t('diary.markComplete')}</Button>}
         {status === 'in_progress' && (
           <Button variant="secondary" onClick={() => set('incomplete')}>

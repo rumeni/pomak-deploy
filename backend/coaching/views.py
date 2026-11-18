@@ -20,6 +20,7 @@ from rest_framework.exceptions import APIException, NotFound, PermissionDenied, 
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import User
 from nutrition.models import MealEntry
 from progress.models import Goal, Measurement
 from training.models import Routine, RoutineExercise, RoutineSet, WorkoutSession
@@ -225,6 +226,7 @@ class AssignSerializer(serializers.Serializer):
 
 
 class MessageSerializer(serializers.Serializer):
+    id = serializers.UUIDField(required=False)
     text = serializers.CharField(max_length=800, trim_whitespace=True, allow_blank=False)
 
 
@@ -397,15 +399,17 @@ class InvitationCreateView(APIView):
         body = request.data if isinstance(request.data, dict) else {}
         serializer = InvitationLabelSerializer(data=body)
         serializer.is_valid(raise_exception=True)
-        now = timezone.now()
-        if CoachInvitation.objects.filter(
-            coach=request.user, redeemed_at__isnull=True, revoked_at__isnull=True, expires_at__gt=now,
-        ).count() >= MAX_ACTIVE_INVITES:
-            raise ValidationError({'detail': 'Revoke an invitation before creating another one.'})
-        # Very unlikely token collision; still retry without exposing DB errors.
+        # Count and insert under the SAME per-coach lock. Without this,
+        # simultaneous tabs may both pass the 5-invitation limit.
         for _attempt in range(3):
             try:
                 with transaction.atomic():
+                    User.objects.select_for_update().get(pk=request.user.pk)
+                    now = timezone.now()
+                    if CoachInvitation.objects.filter(
+                        coach=request.user, redeemed_at__isnull=True, revoked_at__isnull=True, expires_at__gt=now,
+                    ).count() >= MAX_ACTIVE_INVITES:
+                        raise ValidationError({'detail': 'Revoke an invitation before creating another one.'})
                     invite = CoachInvitation.objects.create(
                         coach=request.user, label=serializer.validated_data.get('label', ''),
                     )
@@ -672,11 +676,23 @@ class MessagesView(APIView):
         connection = CoachConnection.objects.select_for_update().filter(pk=relation.pk).first()
         if connection is None:
             raise NotFound()
+        message_id = serializer.validated_data.get('id')
+        text = serializer.validated_data['text']
+        if message_id:
+            # A retry of a message that was already stored returns it, even after the end.
+            existing = CoachMessage.objects.filter(pk=message_id).first()
+            if existing is not None:
+                if existing.connection_id != connection.pk or existing.sender_id != request.user.pk:
+                    raise ValidationError({'id': 'This message ID is already in use.'})
+                if existing.text != text:
+                    raise ValidationError({'id': 'This message ID has different content.'})
+                return Response(message_summary(existing), status=status.HTTP_200_OK)
         # Checked under the lock: an end that committed meanwhile wins.
         if connection.ended_at is not None:
             raise CollaborationEnded()
         message = CoachMessage.objects.create(
-            connection=connection, sender=request.user, text=serializer.validated_data['text'],
+            **({'id': message_id} if message_id else {}),
+            connection=connection, sender=request.user, text=text,
         )
         return Response(message_summary(message), status=status.HTTP_201_CREATED)
 

@@ -27,6 +27,7 @@ export interface DraftExercise {
 export interface RoutineDraft {
   id: string
   isNew: boolean
+  revision?: string
   name: string
   notes: string
   exercises: DraftExercise[]
@@ -113,6 +114,7 @@ export function routineToDraft(routine: Routine): RoutineDraft {
   return {
     id: routine.id,
     isNew: false,
+    revision: routine.updated_at,
     name: routine.name,
     notes: routine.notes,
     exercises: routine.exercises.map((e) => ({
@@ -135,6 +137,7 @@ export function draftToPayload(draft: RoutineDraft): RoutinePayload {
 
   return {
     id: draft.id,
+    ...(!draft.isNew && draft.revision ? { revision: draft.revision } : {}),
     name: draft.name.trim(),
     notes: draft.notes,
     exercises: draft.exercises.map((e) => {
