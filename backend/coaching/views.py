@@ -718,8 +718,12 @@ class MessagesView(APIView):
             if existing is not None:
                 if existing.connection_id != connection.pk or existing.sender_id != request.user.pk:
                     raise ValidationError({'id': 'This message ID is already in use.'})
-                if existing.text != text:
-                    raise ValidationError({'id': 'This message ID has different content.'})
+                # One ID identifies exactly one message AND its original destination.
+                # Keep checking after workout deletion (workout FK becomes NULL).
+                if (existing.text != text
+                        or (existing.workout_context_id or existing.workout_id) != serializer.validated_data.get('workout_id')
+                        or existing.week_start != serializer.validated_data.get('week')):
+                    raise ValidationError({'id': 'This message ID has different content or destination.'})
                 return Response(message_summary(existing), status=status.HTTP_200_OK)
         workout = None
         if serializer.validated_data.get('workout_id'):
@@ -732,6 +736,7 @@ class MessagesView(APIView):
         message = CoachMessage.objects.create(
             **({'id': message_id} if message_id else {}),
             connection=connection, sender=request.user, text=text, workout=workout,
+            workout_context_id=serializer.validated_data.get('workout_id'),
             week_start=serializer.validated_data.get('week'),
         )
         return Response(message_summary(message), status=status.HTTP_201_CREATED)
