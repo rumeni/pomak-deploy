@@ -1,10 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Button, FormError, LoadingScreen, ScreenHeader, SelectField } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
+import { errorMessage } from '../../lib/api'
 import { formatDecimal, parseDecimal, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { AmountPicker } from '../nutrition/AmountPicker'
@@ -28,12 +29,14 @@ export function EntryPage() {
   const foodId = params.get('namirnica')
   const { day } = useDiaryDay(me?.id, date)
 
-  // Namirnica (za porcije i novu stavku): sa telefona (radi bez interneta), inače sa servera.
-  // Kod izmene je to namirnica stavke, ako još postoji.
+  // Refresh from the server before a NEW diary entry; local food is only
+  // the offline fallback. Editing an existing entry keeps its own snapshot.
   const lookupId = foodId ?? (entryId ? (day?.entries.find((e) => e.id === entryId)?.food_id ?? null) : null)
   const local = useLiveQuery(async () => (me && lookupId ? ((await cachedFood(me.id, lookupId)) ?? null) : null), [me?.id, lookupId])
-  const remote = useFood(lookupId && local === null ? lookupId : undefined)
-  const food = local ?? remote.data
+  const remote = useFood(lookupId ?? undefined)
+  const food = entryId
+    ? (remote.data ?? local ?? undefined)
+    : (remote.isFetching && navigator.onLine ? undefined : remote.data ?? local ?? undefined)
 
   if (entryId) {
     if (!day) return <LoadingScreen />
@@ -43,7 +46,7 @@ export function EntryPage() {
     return <EntryForm key={`${entry.id}:${food?.id ?? ''}`} date={date} meal={entry.meal} entry={entry} food={food} />
   }
   if (!food) {
-    return local === undefined || remote.isLoading ? <LoadingScreen /> : <NotFound />
+    return local === undefined || remote.isFetching ? <LoadingScreen /> : <NotFound />
   }
   const meal = (MEALS.includes(params.get('obrok') as MealKey) ? params.get('obrok') : 'snack') as MealKey
   return <EntryForm key={food.id} date={date} meal={meal} food={food} />
@@ -73,6 +76,8 @@ function EntryForm({ date, meal: initialMeal, food, entry }: { date: string; mea
   const [meal, setMeal] = useState<MealKey>(initialMeal)
   const settings = mealSettings(me?.profile.meals)
   const [error, setError] = useState<string | null>(null)
+  const busy = useRef(false)
+  const [saving, setSaving] = useState(false)
   // ID nove stavke se pravi jednom: ponovljeno "Dodaj" posle greške ne pravi duplikat.
   const [newId] = useState(uuid)
 
@@ -89,15 +94,36 @@ function EntryForm({ date, meal: initialMeal, food, entry }: { date: string; mea
   const back = () => navigate(`/ishrana?datum=${date}`, { replace: true })
 
   const onSave = async () => {
+    if (busy.current) return
     if (!me || !draft) return setError(t('diary.invalidAmount'))
-    await saveEntry(me.id, entry?.id ?? newId, draft, entry?.date)
-    back()
+    busy.current = true
+    setSaving(true)
+    setError(null)
+    try {
+      await saveEntry(me.id, entry?.id ?? newId, draft, entry?.date)
+      back()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      busy.current = false
+      setSaving(false)
+    }
   }
 
   const onDelete = async () => {
-    if (!me || !entry || !window.confirm(t('diary.deleteConfirm', { name: entry.name }))) return
-    await deleteEntry(me.id, entry.date, entry.id)
-    back()
+    if (busy.current || !me || !entry || !window.confirm(t('diary.deleteConfirm', { name: entry.name }))) return
+    busy.current = true
+    setSaving(true)
+    setError(null)
+    try {
+      await deleteEntry(me.id, entry.date, entry.id)
+      back()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      busy.current = false
+      setSaving(false)
+    }
   }
 
   const rows: [string, string | null][] = [
@@ -142,11 +168,11 @@ function EntryForm({ date, meal: initialMeal, food, entry }: { date: string; mea
         </section>
 
         <FormError message={error ?? (valid ? null : t('diary.invalidAmount'))} />
-        <Button onClick={() => void onSave()} disabled={!valid}>
+        <Button onClick={() => void onSave()} disabled={!valid || saving}>
           {entry ? t('diary.saveChanges') : t('diary.addToDiary')}
         </Button>
         {entry && (
-          <Button variant="ghost" className="text-danger" onClick={() => void onDelete()}>
+          <Button variant="ghost" className="text-danger" disabled={saving} onClick={() => void onDelete()}>
             {t('diary.deleteEntry')}
           </Button>
         )}

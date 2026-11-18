@@ -158,6 +158,8 @@ function MealCard({
   const createSaved = useCreateSavedMeal()
   const [menuOpen, setMenuOpen] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const copying = useRef(false)
+  const [copyPending, setCopyPending] = useState(false)
   // A lost POST response must not cause a second saved-meal ID on retry.
   const pendingSavedMealId = useRef<string | null>(null)
   const entries = day.entries.filter((e) => e.meal === meal)
@@ -165,13 +167,23 @@ function MealCard({
 
   // Kopira isti obrok od juče; kopiranje ne menja status dana.
   const copyYesterday = async () => {
+    if (copying.current || !me) return
+    copying.current = true
+    setCopyPending(true)
     setMenuOpen(false)
-    if (!me) return
-    const source = (await loadDayEntries(me.id, addDays(date, -1))).filter((e) => e.meal === meal)
-    if (!source.length) return onNotice(t('diary.copyNothing'))
-    const now = new Date()
-    await saveDrafts(me.id, source.map((e) => copyEntry(e, uuid(), date, meal, now)))
-    onNotice(t('diary.copied', { count: source.length }))
+    setSaveError(null)
+    try {
+      const source = (await loadDayEntries(me.id, addDays(date, -1))).filter((e) => e.meal === meal)
+      if (!source.length) return onNotice(t('diary.copyNothing'))
+      const now = new Date()
+      await saveDrafts(me.id, source.map((e) => copyEntry(e, uuid(), date, meal, now)))
+      onNotice(t('diary.copied', { count: source.length }))
+    } catch (cause) {
+      setSaveError(errorMessage(cause))
+    } finally {
+      copying.current = false
+      setCopyPending(false)
+    }
   }
 
   const saveAsMeal = () => {
@@ -226,7 +238,7 @@ function MealCard({
       </div>
       {menuOpen && (
         <div className="mx-4 mb-1 flex flex-col rounded-xl bg-surface ring-1 ring-line">
-          <button type="button" onClick={() => void copyYesterday()} className="min-h-11 px-4 text-left font-medium active:bg-brand-soft">
+          <button type="button" disabled={copyPending} onClick={() => void copyYesterday()} className="min-h-11 px-4 text-left font-medium active:bg-brand-soft disabled:opacity-50">
             {t('diary.copyYesterday')}
           </button>
           {entries.length > 0 && (

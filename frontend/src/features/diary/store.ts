@@ -146,9 +146,12 @@ export function useRecentFoods(ownerId: string | undefined): Food[] | undefined 
     [ownerId],
   )
   if (remote.data) {
-    // Lokalno korišćene (možda još neposlate) prve, pa ostale sa servera, bez ponavljanja.
+    // Preserve local recency order, but take current values from the server.
+    const fresh = new Map(remote.data.map((food) => [food.id, food]))
     const seen = new Set<string>()
-    return [...(local ?? []).slice(0, 5), ...remote.data].filter((f) => !seen.has(f.id) && seen.add(f.id))
+    return [...(local ?? []).slice(0, 5), ...remote.data]
+      .map((food) => fresh.get(food.id) ?? food)
+      .filter((food) => !seen.has(food.id) && seen.add(food.id))
   }
   return local
 }

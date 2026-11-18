@@ -101,12 +101,14 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const weightId = useRef(uuid())
+  const calculationVersion = useRef(0)
   const { save, submit } = useSaveAndReturn()
 
   // Svaka izmena podataka poništava prikazan predlog: prihvata se samo ono što je izračunato.
   const changed =
     <T,>(set: (v: T) => void) =>
     (v: T) => {
+      calculationVersion.current += 1
       set(v)
       setResult(null)
     }
@@ -115,6 +117,7 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
   const paceOptions = goal ? PACES[goal] : []
 
   const calculate = async () => {
+    const version = ++calculationVersion.current
     setError(null)
     setPending(true)
     try {
@@ -138,9 +141,10 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
         weightId.current = uuid()
         await queryClient.invalidateQueries({ queryKey: ['measurements'] })
       }
-      setResult(
-        await estimateTarget({ activity, goal, pace: goal === 'maintain' ? 0 : Number(pace), special_conditions: special === 'yes' }, validFrom),
+      const estimate = await estimateTarget(
+        { activity, goal, pace: goal === 'maintain' ? 0 : Number(pace), special_conditions: special === 'yes' }, validFrom,
       )
+      if (version === calculationVersion.current) setResult(estimate)
     } catch (e) {
       setError(e instanceof InputError ? t(e.message) : errorMessage(e))
     } finally {

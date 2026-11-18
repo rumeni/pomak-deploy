@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Button, Field, FormError, LoadingScreen, ScreenHeader, SelectField } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
+import { errorMessage } from '../../lib/api'
 import { formatDecimal, toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { manualEntry } from './model'
@@ -52,6 +53,8 @@ function ManualForm({ date, meal: initialMeal, entry }: { date: string; meal: Me
     fiber_g: initial(entry?.fiber_g),
   })
   const [error, setError] = useState<string | null>(null)
+  const busy = useRef(false)
+  const [saving, setSaving] = useState(false)
 
   const fields: [ManualValueField, string][] = [
     ['kcal', t('diary.manualKcal')],
@@ -65,7 +68,7 @@ function ManualForm({ date, meal: initialMeal, entry }: { date: string; meal: Me
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!me) return
+    if (!me || busy.current) return
     if (!name.trim()) return setError(t('newFood.errors.nameRequired'))
     if (name.trim().length > 150) return setError(t('diary.manualNameTooLong', { max: 150 }))
     const parsed: Record<ManualValueField, string | null> = { kcal: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null }
@@ -81,14 +84,34 @@ function ManualForm({ date, meal: initialMeal, entry }: { date: string; meal: Me
     }
     if (parsed.kcal === null) return setError(t('newFood.errors.kcalRequired'))
     const draft = manualEntry(entry?.id ?? newId, date, meal, name.trim(), parsed, new Date(), entry)
-    await saveEntry(me.id, entry?.id ?? newId, draft, entry?.date)
-    back()
+    busy.current = true
+    setSaving(true)
+    setError(null)
+    try {
+      await saveEntry(me.id, entry?.id ?? newId, draft, entry?.date)
+      back()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      busy.current = false
+      setSaving(false)
+    }
   }
 
   const onDelete = async () => {
-    if (!me || !entry || !window.confirm(t('diary.deleteConfirm', { name: entry.name }))) return
-    await deleteEntry(me.id, entry.date, entry.id)
-    back()
+    if (busy.current || !me || !entry || !window.confirm(t('diary.deleteConfirm', { name: entry.name }))) return
+    busy.current = true
+    setSaving(true)
+    setError(null)
+    try {
+      await deleteEntry(me.id, entry.date, entry.id)
+      back()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      busy.current = false
+      setSaving(false)
+    }
   }
 
   return (
@@ -117,9 +140,9 @@ function ManualForm({ date, meal: initialMeal, entry }: { date: string; meal: Me
           ))}
         </div>
         <FormError message={error} />
-        <Button type="submit">{entry ? t('diary.saveChanges') : t('diary.addToDiary')}</Button>
+        <Button type="submit" disabled={saving}>{entry ? t('diary.saveChanges') : t('diary.addToDiary')}</Button>
         {entry && (
-          <Button type="button" variant="ghost" className="text-danger" onClick={() => void onDelete()}>
+          <Button type="button" variant="ghost" className="text-danger" disabled={saving} onClick={() => void onDelete()}>
             {t('diary.deleteEntry')}
           </Button>
         )}
