@@ -11,7 +11,7 @@ vi.mock('./currentUser', () => ({ getCurrentUserId: () => state.userId }))
 vi.mock('./tokens', () => ({ tokens: { session: () => ({ id: 's1' }) } }))
 
 import { applicationServerKey, enablePush, PushAborted, pushSignOut, pushStatus } from './push'
-import { flushPushRemovals, pendingPushRemoval, pushRemovals } from './pushPending'
+import { flushPushRemovals, pendingPushRemoval, pushRevocations, recoverPushRevocations } from './pushPending'
 
 const store = new Map<string, string>()
 const subscription = {
@@ -20,6 +20,10 @@ const subscription = {
   unsubscribe: vi.fn(async () => true),
 }
 let permission: ((value: NotificationPermission) => void) | null = null
+const offline = () => Object.assign(new Error('Network Error'), { isAxiosError: true })
+/** The attempt sent with the n-th registration request. */
+const attemptOf = (call = 0) => (post.mock.calls[call][1] as { attempt: string }).attempt
+const revoked = () => rawPost.mock.calls.map((c) => c[1] as { attempt: string; user_id: string })
 
 beforeEach(() => {
   store.clear()
@@ -49,6 +53,13 @@ beforeEach(() => {
 
 const config = { web_public_key: 'BAAA', fcm: false }
 
+async function enable() {
+  const enabling = enablePush(config)
+  await vi.waitFor(() => expect(permission).not.toBeNull())
+  permission!('granted')
+  return enabling
+}
+
 describe('push', () => {
   it('turns the server key (base64url, no padding) into the bytes the browser expects', () => {
     const bytes = new Uint8Array(65).map((_, i) => (i * 37) % 256)
@@ -67,51 +78,67 @@ describe('push', () => {
     expect(await pushStatus(config, 'user-b')).toBe('off')
   })
 
-  it('a registration belongs to its account: another one on this device sees it off', async () => {
-    const enabling = enablePush(config)
-    await vi.waitFor(() => expect(permission).not.toBeNull())
-    permission!('granted')
-    await expect(enabling).resolves.toBe('on')
-    expect(post).toHaveBeenCalledWith('/push/devices/', expect.objectContaining({ token: subscription.endpoint }), expect.anything())
+  it('a registration belongs to its account and attempt', async () => {
+    await expect(enable()).resolves.toBe('on')
+    expect(post).toHaveBeenCalledWith('/push/devices/', expect.objectContaining({ token: subscription.endpoint, attempt: attemptOf() }), expect.anything())
     expect(await pushStatus(config, 'user-a')).toBe('on')
     expect(await pushStatus(config, 'user-b')).toBe('off')
-    // Sign-out: dropped on the device, remembered for the sign-out request to remove.
-    expect(pushSignOut()).toBe(subscription.endpoint)
-    expect(pendingPushRemoval()).toBe(subscription.endpoint)
+    rawPost.mockRejectedValueOnce(offline())
+    expect(pushSignOut()).toBe(attemptOf()) // the sign-out request revokes this attempt
+    await vi.waitFor(() => expect(rawPost).toHaveBeenCalled())
+    expect(pendingPushRemoval()).toBe(attemptOf()) // offline: kept for later
     expect(await pushStatus(config, 'user-a')).toBe('off')
   })
 
-  it('signing out while the first registration is on its way removes it once it landed', async () => {
+  it('signing out while the registration is on its way revokes that attempt at once (order does not matter)', async () => {
     let answer: (value: { data: object }) => void = () => undefined
     post.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
-    const enabling = enablePush(config)
-    await vi.waitFor(() => expect(permission).not.toBeNull())
-    permission!('granted')
+    const enabling = enable()
     await vi.waitFor(() => expect(post).toHaveBeenCalledTimes(1))
     pushSignOut()
     state.userId = 'user-b'
-    await Promise.resolve()
-    // Not before the registration is answered: a removal must never overtake it.
-    expect(rawPost).not.toHaveBeenCalled()
+    // Sent before the registration is answered: the server refuses the attempt if it lands later.
+    await vi.waitFor(() => expect(revoked()).toContainEqual({ attempt: attemptOf(), user_id: 'user-a' }))
     answer({ data: {} })
     await expect(enabling).rejects.toBeInstanceOf(PushAborted)
-    await vi.waitFor(() => expect(rawPost).toHaveBeenCalledWith(
-      '/api/push/devices/remove/', { token: subscription.endpoint, user_id: 'user-a' }, expect.anything(),
-    ))
-    await vi.waitFor(() => expect(pushRemovals()).toEqual([]))
+    await vi.waitFor(() => expect(pushRevocations()).toEqual([]))
     expect(await pushStatus(config, 'user-b')).toBe('off')
   })
 
-  it('a removal that failed offline is kept and sent again later', async () => {
-    const enabling = enablePush(config)
-    await vi.waitFor(() => expect(permission).not.toBeNull())
-    permission!('granted')
-    await enabling
-    rawPost.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { isAxiosError: true }))
-    pushSignOut()
-    await vi.waitFor(() => expect(rawPost).toHaveBeenCalledTimes(1))
+  it('a lost answer (timeout) while still signed in revokes the attempt', async () => {
+    post.mockRejectedValueOnce(Object.assign(new Error('timeout of 15000ms exceeded'), { isAxiosError: true }))
+    await expect(enable()).rejects.toThrow()
+    await vi.waitFor(() => expect(revoked()).toEqual([{ attempt: attemptOf(), user_id: 'user-a' }]))
+    expect(await pushStatus(config, 'user-a')).toBe('off')
+  })
+
+  it('re-enabling with a revocation still pending keeps the new opt-in', async () => {
+    await enable()
+    const first = attemptOf(0)
+    rawPost.mockRejectedValue(offline())
+    pushSignOut() // offline: the revocation of the first attempt waits
+    await vi.waitFor(() => expect(rawPost).toHaveBeenCalled())
+    permission = null
+    await expect(enable()).resolves.toBe('on') // same account again, same device token
+    const second = attemptOf(1)
+    expect(second).not.toBe(first)
+    rawPost.mockReset()
+    rawPost.mockImplementation(async () => ({ data: {} }))
     await flushPushRemovals()
-    expect(rawPost).toHaveBeenCalledTimes(2)
-    expect(pushRemovals()).toEqual([])
+    // Only the old attempt is revoked; the new one is never named, so it survives on the server.
+    expect(revoked()).toEqual([{ attempt: first, user_id: 'user-a' }])
+    expect(await pushStatus(config, 'user-a')).toBe('on')
+    expect(pushRevocations()).toEqual([])
+  })
+
+  it('start-up recovery leaves another tab\'s fresh attempt alone and revokes an abandoned one', async () => {
+    store.set('pomak.push.revocations', JSON.stringify([
+      { attempt: 'fresh', ownerId: 'user-a', inflight: true, startedAt: Date.now() },
+      { attempt: 'abandoned', ownerId: 'user-a', inflight: true, startedAt: Date.now() - 120_000 },
+    ]))
+    recoverPushRevocations(null)
+    await flushPushRemovals()
+    expect(revoked()).toEqual([{ attempt: 'abandoned', user_id: 'user-a' }])
+    expect(pushRevocations().map((x) => x.attempt)).toEqual(['fresh'])
   })
 })

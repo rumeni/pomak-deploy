@@ -274,31 +274,74 @@ class OutboxTests(PushTestCase):
             self.assertEqual(self.client.post('/api/internal/push-deliver/', b'{}', content_type='application/json',
                                               HTTP_UPSTASH_SIGNATURE=wrong).status_code, 403)
             right = jwt.encode({'iss': 'Upstash', 'sub': url, 'nbf': now, 'exp': now + 60, 'body': body_hash}, 'next-key', algorithm='HS256')
-            with mock.patch('notifications.views.drain', return_value=False) as drain:
+            with mock.patch('notifications.views.drain', return_value=None) as drain:
                 self.assertEqual(self.client.post('/api/internal/push-deliver/', b'{}', content_type='application/json',
                                                   HTTP_UPSTASH_SIGNATURE=right).status_code, 204)
             drain.assert_called_once()
 
 
 class LogoutTests(PushTestCase):
-    def test_signing_out_removes_this_devices_registration(self):
-        self.subscribe(self.ana)
+    def test_signing_out_revokes_this_devices_registration_attempt(self):
+        attempt = uuid4()
+        self.as_user(self.ana)
+        self.client.post('/api/push/devices/', {'kind': 'web', 'token': 'https://fcm.googleapis.com/fcm/send/sub-1', 'attempt': str(attempt),
+                                                'p256dh': push.b64url(self.ua_public), 'auth': push.b64url(self.auth_secret)}, format='json')
         self.subscribe(self.ana, 'https://fcm.googleapis.com/fcm/send/other-device')
         refresh = RefreshToken.for_user(self.ana)
-        self.as_user(self.ana)
-        response = self.client.post('/api/auth/logout/', {'refresh': str(refresh), 'push_token': 'https://fcm.googleapis.com/fcm/send/sub-1'}, format='json')
+        response = self.client.post('/api/auth/logout/', {'refresh': str(refresh), 'push_attempt': str(attempt)}, format='json')
         self.assertEqual(response.status_code, 204)
         self.assertEqual(list(PushDevice.objects.values_list('token', flat=True)), ['https://fcm.googleapis.com/fcm/send/other-device'])
 
-    def test_signed_out_removal_needs_the_token_and_its_account(self):
-        self.subscribe(self.ana)
-        self.client.force_authenticate(user=None)
-        url = '/api/push/devices/remove/'
-        token = 'https://fcm.googleapis.com/fcm/send/sub-1'
-        self.assertEqual(self.client.post(url, {'token': token}, format='json').status_code, 400)
-        self.client.post(url, {'token': token, 'user_id': str(self.coach.pk)}, format='json')
-        self.assertTrue(PushDevice.objects.exists())  # someone else's account: nothing happens
-        self.assertEqual(self.client.post(url, {'token': token, 'user_id': str(self.ana.pk)}, format='json').status_code, 200)
+
+class GenerationTests(PushTestCase):
+    """A removal names the registration attempt it undoes; revoking it is final for that attempt."""
+
+    def register(self, attempt, token='https://fcm.googleapis.com/fcm/send/g', user=None):
+        self.as_user(user or self.ana)
+        return self.client.post('/api/push/devices/', {'kind': 'web', 'token': token, 'attempt': str(attempt),
+                                                       'p256dh': push.b64url(self.ua_public), 'auth': push.b64url(self.auth_secret)}, format='json')
+
+    def revoke(self, attempt, user_id=None):
+        self.client.force_authenticate(user=None)  # signed out
+        body = {'attempt': str(attempt)}
+        if user_id:
+            body['user_id'] = str(user_id)
+        return self.client.post('/api/push/devices/remove/', body, format='json')
+
+    def test_revoked_before_the_registration_arrives_it_is_refused(self):
+        attempt = uuid4()
+        self.assertEqual(self.revoke(attempt, self.ana.pk).status_code, 200)
+        late = self.register(attempt)
+        self.assertEqual((late.status_code, late.data['code']), (409, 'push_revoked'))
+        self.assertFalse(PushDevice.objects.exists())
+        # A later, explicit opt-in (a new attempt) is valid.
+        self.assertEqual(self.register(uuid4()).status_code, 201)
+        self.assertTrue(PushDevice.objects.exists())
+
+    def test_revoked_after_it_arrived_it_is_removed(self):
+        attempt = uuid4()
+        self.register(attempt)
+        self.revoke(attempt, self.ana.pk)
+        self.assertFalse(PushDevice.objects.exists())
+
+    def test_an_old_revocation_never_removes_a_new_opt_in_with_the_same_token(self):
+        old, new = uuid4(), uuid4()
+        self.register(old)
+        self.register(new)  # re-enabled; the provider gave the same token
+        self.revoke(old, self.ana.pk)  # the pending removal of the old attempt arrives late
+        self.assertEqual(PushDevice.objects.get().attempt, new)
+
+    def test_signed_out_removal_needs_the_attempt_and_its_account(self):
+        attempt = uuid4()
+        self.register(attempt)
+        self.assertEqual(self.revoke(attempt).status_code, 400)
+        self.client.post('/api/push/devices/remove/', {'token': 'https://fcm.googleapis.com/fcm/send/g', 'user_id': str(self.ana.pk)}, format='json')
+        self.assertTrue(PushDevice.objects.exists())  # a token alone does nothing without a session
+        self.revoke(attempt, self.coach.pk)
+        self.assertTrue(PushDevice.objects.exists())  # another account: nothing removed
+        self.revoke(uuid4(), self.ana.pk)
+        self.assertTrue(PushDevice.objects.exists())  # another attempt: nothing removed
+        self.revoke(attempt, self.ana.pk)
         self.assertFalse(PushDevice.objects.exists())
 
 
@@ -399,4 +442,115 @@ class GroupAssignTests(APITransactionTestCase):
         self.assertLess(elapsed, push.KICK_BUDGET + 3)  # bounded even with everything down
         # Nothing lost: whatever was not sent waits in the outbox for the worker or the next drain.
         self.assertEqual(PushMessage.objects.count(), 6)
+
+
+class WakeUpTests(PushTestCase):
+    """A retry's backoff is scheduled with QStash: no later app traffic is needed."""
+
+    @mock.patch.dict(os.environ, {**VAPID_ENV, 'PUSH_WORKER_URL': 'https://api.example.test/api/internal/push-deliver/'})
+    @override_settings(QSTASH_TOKEN='t', QSTASH_CURRENT_SIGNING_KEY='current-key', QSTASH_NEXT_SIGNING_KEY='next-key')
+    def test_the_worker_schedules_itself_for_a_retry_and_fails_loudly_if_it_cannot(self):
+        import base64
+        import hashlib
+
+        PushDevice.objects.create(user=self.ana, kind='web', token='https://fcm.googleapis.com/fcm/send/only',
+                                  p256dh=push.b64url(self.ua_public), auth=push.b64url(self.auth_secret))
+        with mock.patch('notifications.push.kick'):
+            push.notify(self.ana, title='x', body='y', url='/', tag='t')
+        body_hash = base64.urlsafe_b64encode(hashlib.sha256(b'{}').digest()).decode().rstrip('=')
+        now = int(time.time())
+        signature = jwt.encode({'iss': 'Upstash', 'sub': 'https://api.example.test/api/internal/push-deliver/', 'nbf': now,
+                                'exp': now + 60, 'body': body_hash}, 'current-key', algorithm='HS256')
+
+        def unavailable(request, timeout):
+            raise HTTPError(request.full_url, 503, 'Unavailable', {}, None)
+
+        published = []
+
+        class Accepted(Response):
+            status = 201
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def publish(request, timeout):
+            published.append(request)
+            return Accepted()
+
+        call = lambda: self.client.post('/api/internal/push-deliver/', b'{}', content_type='application/json',  # noqa: E731
+                                        HTTP_UPSTASH_SIGNATURE=signature)
+        with mock.patch('notifications.push.http_post', unavailable), mock.patch('notifications.push.urllib.request.urlopen', publish):
+            self.assertEqual(call().status_code, 204)
+        self.assertEqual(len(published), 1)
+        delay = int(published[0].headers['Upstash-delay'].rstrip('s'))
+        self.assertTrue(25 <= delay <= 31, delay)  # when the backoff ends, not right away
+        # The delayed call comes: the retry goes out and nothing is left to schedule.
+        PushMessage.objects.update(claimed_until=timezone.now() - timedelta(seconds=1))
+        with mock.patch('notifications.push.http_post', return_value=Response()) as sent, \
+                mock.patch('notifications.push.urllib.request.urlopen', publish):
+            self.assertEqual(call().status_code, 204)
+        sent.assert_called_once()
+        self.assertEqual(len(published), 1)
+        self.assertFalse(PushMessage.objects.exists())
+        # If the continuation cannot be scheduled, QStash must retry the worker call itself.
+        with mock.patch('notifications.push.kick'):
+            push.notify(self.ana, title='x', body='y', url='/', tag='t')
+        with mock.patch('notifications.push.http_post', unavailable), \
+                mock.patch('notifications.push.urllib.request.urlopen', side_effect=TimeoutError('qstash down')):
+            self.assertEqual(call().status_code, 503)
+
+
+class DeadlineTests(PushTestCase):
+    """The hand-off after a request stays within KICK_BUDGET, even with a cold FCM token."""
+
+    def fcm_account(self):
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        return {'project_id': 'pomak-test', 'client_email': 'push@pomak-test.iam.gserviceaccount.com',
+                'private_key': key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                 serialization.NoEncryption()).decode()}
+
+    def test_a_cold_fcm_token_service_that_hangs_does_not_hold_the_request(self):
+        for i in range(4):
+            PushDevice.objects.create(user=self.ana, kind='fcm', token=f'fcm-{i}')
+        push._fcm_token.update(value=None, expires=0)
+
+        def hang(request, timeout):  # the OAuth token service never answers
+            time.sleep(timeout)
+            raise TimeoutError('token service')
+
+        with mock.patch.dict(os.environ, {'FCM_SERVICE_ACCOUNT': json.dumps(self.fcm_account())}):
+            os.environ.pop('PUSH_WORKER_URL', None)
+            with mock.patch('notifications.push.kick'):
+                push.notify(self.ana, title='x', body='y', url='/', tag='t')
+            with mock.patch('notifications.push.http_post', hang):
+                started = time.monotonic()
+                push.kick()
+                elapsed = time.monotonic() - started
+        self.assertLess(elapsed, push.KICK_BUDGET + 0.6)
+        message = PushMessage.objects.get()
+        self.assertEqual(len(message.devices), 4)  # all kept for a retry, none lost
+
+    @override_settings(QSTASH_TOKEN='t', QSTASH_CURRENT_SIGNING_KEY='a', QSTASH_NEXT_SIGNING_KEY='b')
+    def test_with_the_worker_a_request_never_calls_a_push_service(self):
+        PushDevice.objects.create(user=self.ana, kind='fcm', token='fcm-x')
+
+        def slow_qstash(request, timeout):
+            time.sleep(timeout)
+            raise TimeoutError('qstash')
+
+        with mock.patch.dict(os.environ, {'FCM_SERVICE_ACCOUNT': json.dumps(self.fcm_account()),
+                                          'PUSH_WORKER_URL': 'https://api.example.test/api/internal/push-deliver/'}):
+            with mock.patch('notifications.push.kick'):
+                push.notify(self.ana, title='x', body='y', url='/', tag='t')
+            with mock.patch('notifications.push.urllib.request.urlopen', slow_qstash), \
+                    mock.patch('notifications.push.http_post') as provider:
+                started = time.monotonic()
+                push.kick()
+                elapsed = time.monotonic() - started
+        provider.assert_not_called()
+        self.assertLess(elapsed, push.KICK_BUDGET + 0.6)
+        self.assertEqual(PushMessage.objects.count(), 1)  # still queued for the worker
 

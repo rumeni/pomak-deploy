@@ -38,7 +38,7 @@ from .models import (
 )
 from .plans import assignable_routine, copy_routine
 from notifications.models import PushMessage
-from notifications.push import drain, notify, push_enabled, queue_configured
+from notifications.push import notify, poll_kick, push_enabled
 
 from .inbox import mark_read, unread_counts
 from .media import MESSAGE_SIDE, PHOTO_SIDE, process_image
@@ -958,9 +958,9 @@ class UnreadView(APIView):
 
     def get(self, request):
         counts = unread_counts(request.user)
-        # Without the QStash worker, pushes left over by a busy request go out with the next poll.
-        if push_enabled() and not queue_configured() and PushMessage.objects.exists():
-            drain(1.5)
+        # Pushes a failed hand-off left behind are picked up by the next poll.
+        if push_enabled() and PushMessage.objects.exists():
+            poll_kick()
         return Response({'total': sum(counts.values()), 'by_connection': {str(k): v for k, v in counts.items()}})
 
 

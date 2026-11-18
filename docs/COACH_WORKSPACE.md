@@ -362,12 +362,19 @@ klijenta iz T1.
   - Pretplata na uređaju se odmah poništava, a već prikazana obaveštenja se brišu.
   - Server briše registraciju kroz sam zahtev za odjavu. Na webu se taj zahtev ponavlja dok ne
     uspe.
-  - Uz to uređaj pamti registracije koje treba ukloniti. Šalje ih bez prijave, samo sa svojim
-    tokenom i nalogom kome je registracija pripadala (`POST /api/push/devices/remove/`).
-    Ponavlja ih pri pokretanju aplikacije i kad se vrati internet, pa uklanjanje radi i posle
-    odjave bez interneta na Androidu.
-  - Registracija koja je još na putu kad se korisnik odjavi zapamćena je kao „u toku“. Uklanja
-    se tek kad server odgovori, pa uklanjanje nikad ne stigne pre registracije koju poništava.
+  - **Svaka registracija je zaseban pokušaj, sa slučajnim ID-jem koji pravi uređaj.**
+    - Opoziv (`POST /api/push/devices/remove/` sa `attempt` i `user_id`, bez prijave) ukida
+      tačno taj pokušaj za taj nalog i server ga pamti nedelju dana. Registracija tog pokušaja
+      koja stigne kasnije se odbija (409 `push_revoked`).
+    - Zato redosled nije bitan: opoziv sme da stigne i pre registracije.
+    - Kasnije novo uključivanje (novi pokušaj, čak i sa istim tokenom uređaja) ostaje važeće.
+    - Push token se nikad ne šalje bez prijave; ID pokušaja zna samo uređaj.
+  - **Uređaj pamti opozive koji nisu potvrđeni.** Ponavlja ih pri pokretanju aplikacije i kad se
+    vrati internet, pa i odjava bez interneta na Androidu na kraju ukine registraciju.
+  - **Odjava dok je registracija na putu.** Ta registracija se odmah opoziva.
+  - **Izgubljen odgovor.** Pokušaj sa izgubljenim odgovorom (timeout) se takođe opoziva.
+  - **Pokušaji iz drugog taba.** Pri pokretanju se diraju samo pokušaji „u toku“ stariji od
+    minut. Mlađi mogu pripadati drugom tabu koji se upravo registruje.
   - Obaveštenje koje je sistem već primio pre odjave i dalje može da se pojavi.
 - **Nova pretplata ili token.** Posle prijave aplikacija osvežava registraciju ako je pregledač
   obnovio pretplatu ili je Firebase promenio token.
@@ -394,11 +401,24 @@ klijenta iz T1.
     registrovan.
   - Upisi tokom zahteva samo beleže da ima posla. Isporuka se pokreće jednom, na kraju zahteva
     (`PushKickMiddleware`). Dodela programa za 50 klijenata ima 50 upisa, ali jedno pokretanje.
-  - Ceo taj korak traje najviše 3 s, i kad QStash ili push servisi ne rade; ono što ne stigne
-    ostaje u redu.
-  - Privremena greška (timeout, 429, 5xx) pokušava se ponovo, najviše tri puta, sa razmakom
-    od 30 s pa 60 s. Ponovo se šalje samo uređajima koji obaveštenje nisu dobili, pa niko ne
-    dobije duplikat. Konačno odbijanje (ostali 4xx) se ne ponavlja.
+  - **Sa QStash-om** zahtev samo predaje posao workeru (najviše 2 s) i nikad sam ne zove push
+    servise ni Firebase OAuth. Ako predaja ne uspe, obaveštenja ostaju u redu: preuzima ih
+    sledeći događaj, osvežavanje broja nepročitanih poruka (za ono što čeka duže od minut) ili
+    dnevni cron.
+  - **Bez QStash-a** (razvoj, ili dok nije podešen) red se prazni u samom zahtevu.
+    - Rok od 3 s važi za ceo put: čekanje na zaključavanje, Firebase OAuth i svako slanje.
+    - Ono što ne stigne ostaje u redu.
+    - Ovo je samo rezervni režim. Pouzdana isporuka u roku traži QStash.
+  - **Privremena greška** (timeout, 429, 5xx) pokušava se ponovo, najviše tri puta, sa razmakom
+    od 30 s pa 60 s.
+    - Ponovo se šalje samo uređajima koji nisu potvrdili prijem.
+    - Worker sam zakazuje sledeći QStash poziv za trenutak kad pokušaj dospeva, pa nije potreban
+      novi događaj.
+    - Ako to zakazivanje ne uspe, worker vraća grešku i QStash ponavlja poziv.
+    - Konačno odbijanje (ostali 4xx) se ne ponavlja.
+  - **Isporuka je najbolji pokušaj i „bar jednom“, ne „tačno jednom“.** Ako se izgubi odgovor
+    push servisa, ili worker stane posle slanja, a pre upisa ishoda, obaveštenje može da stigne
+    dvaput.
   - Greška u slanju nikad ne obara zahtev.
 - **Samo pravi push servisi.** Web pretplata se prihvata samo za push servise pregledača:
   Google (FCM), Mozilla, Apple i Microsoft.
@@ -441,7 +461,7 @@ klijenta iz T1.
 ### Uvođenje na produkciju
 
 - **Migracije:** `coaching.0006_coach_photos_images` i `notifications.0001_initial`
-  (`PushDevice`, `PushMessage`), zatim `notifications.0002_push_retry_devices`.
+  (`PushDevice`, `PushMessage`), zatim `notifications.0002_push_retry_revocation`.
 - **Nove biblioteke:** `requirements.txt` dobija `cryptography` i `Pillow`.
 - **Isporuka preko QStash-a.** Postavi `PUSH_WORKER_URL` na
   `https://<api>/api/internal/push-deliver/`; QStash ključevi su isti kao za mejlove. Bez toga

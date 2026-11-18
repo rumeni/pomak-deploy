@@ -99,12 +99,18 @@ class RefreshView(TokenRefreshView):
         return output_tokens(request, super().post(request, *args, **kwargs))
 
 
-def forget_push_device(user_id, token):
-    """Signing out on a device turns its notifications off for that account."""
-    from notifications.models import PushDevice
+def forget_push_device(user_id, attempt):
+    """Signing out on a device revokes its push registration attempt for that account."""
+    from uuid import UUID
 
-    if user_id and isinstance(token, str) and 0 < len(token) <= 2000:
-        PushDevice.objects.filter(user_id=user_id, token=token).delete()
+    from notifications.registrations import revoke
+
+    try:
+        attempt = UUID(str(attempt)) if attempt else None
+    except ValueError:
+        attempt = None
+    if user_id and attempt:
+        revoke(user_id, attempt)
 
 
 class LogoutView(APIView):
@@ -127,7 +133,7 @@ class LogoutView(APIView):
             if request.user.is_authenticated and str(refresh.get('user_id')) != str(request.user.pk):
                 raise ValidationError({'refresh': _('Invalid refresh token.')})
             refresh.blacklist()
-            forget_push_device(refresh.get('user_id'), request.data.get('push_token'))
+            forget_push_device(refresh.get('user_id'), request.data.get('push_attempt'))
         except TokenError:
             # Missing/revoked cookie is already logged out; always clear it.
             if web_request(request) and not request.data.get('refresh'):

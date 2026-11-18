@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.db import transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -11,7 +13,8 @@ from accounts.recovery_views import valid_qstash_signature
 from core.views import require_object_body
 
 from .models import PushDevice
-from .push import WORKER_BUDGET, allowed_endpoint, drain, fcm_enabled, publish_drain, valid_keys, vapid_public_key, web_push_enabled, worker_url
+from .push import WORKER_BUDGET, allowed_endpoint, drain, fcm_enabled, schedule_next, valid_keys, vapid_public_key, web_push_enabled, worker_url
+from .registrations import register, revoke
 
 MAX_DEVICES = 10
 
@@ -32,6 +35,8 @@ class DeviceSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=2000)
     p256dh = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
     auth = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
+    # The device's ID for this registration attempt (older apps: made here).
+    attempt = serializers.UUIDField(required=False)
 
     def validate(self, data):
         if data['kind'] == PushDevice.Kind.WEB:
@@ -46,9 +51,12 @@ class DeviceSerializer(serializers.Serializer):
 
 
 class RemoveSerializer(serializers.Serializer):
-    token = serializers.CharField(max_length=2000)
-    # Without a session (after sign-out): the account the device was registered for.
+    # The registration attempt to undo (also a capability: only the device knows it).
+    attempt = serializers.UUIDField(required=False)
+    # Without a session (after sign-out): the account the attempt was for.
     user_id = serializers.UUIDField(required=False)
+    # Older apps, signed in only: the device token.
+    token = serializers.CharField(max_length=2000, required=False)
 
 
 class DevicesView(APIView):
@@ -58,18 +66,20 @@ class DevicesView(APIView):
         serializer = DeviceSerializer(data=require_object_body(request))
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        PushDevice.objects.update_or_create(token=data['token'], defaults={
-            'user': request.user, 'kind': data['kind'], 'p256dh': data['p256dh'], 'auth': data['auth'],
-        })
+        attempt = data.get('attempt') or uuid4()
+        if not register(request.user, attempt, token=data['token'], kind=data['kind'], p256dh=data['p256dh'], auth=data['auth']):
+            # Revoked before it arrived (signed out meanwhile): never registered.
+            return Response({'code': 'push_revoked', 'detail': 'This registration was revoked.'}, status=409)
         stale = PushDevice.objects.filter(user=request.user).values_list('pk', flat=True)[MAX_DEVICES:]
         PushDevice.objects.filter(pk__in=list(stale)).delete()
-        return Response({'ok': True}, status=201)
+        return Response({'ok': True, 'attempt': str(attempt)}, status=201)
 
 
 class DeviceRemoveView(APIView):
-    """Turn push off for a device. Signed in: the user's own token. Signed out (a sign-out that was
-    offline, or a registration that finished after it): the token itself and the account it was
-    for. Only the device has its token, so this can only ever switch that device off."""
+    """Undo a registration attempt: the device's ID for it plus the account (no session needed:
+    an offline sign-out, a registration answered after sign-out). The attempt ID is random and
+    known only to the device; the provider token is never sent. Revoking is final for that attempt
+    (a delayed registration of it is refused) and never touches a later opt-in."""
 
     permission_classes = [AllowAny]
 
@@ -77,13 +87,15 @@ class DeviceRemoveView(APIView):
         serializer = RemoveSerializer(data=require_object_body(request))
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        if request.user.is_authenticated:
-            owner = request.user.pk
-        elif data.get('user_id'):
-            owner = data['user_id']
+        if data.get('attempt'):
+            owner = request.user.pk if request.user.is_authenticated else data.get('user_id')
+            if owner is None:
+                return Response({'user_id': ['Required without a session.']}, status=400)
+            revoke(owner, data['attempt'])
+        elif request.user.is_authenticated and data.get('token'):
+            PushDevice.objects.filter(user=request.user, token=data['token']).delete()
         else:
-            return Response({'user_id': ['Required without a session.']}, status=400)
-        PushDevice.objects.filter(user_id=owner, token=data['token']).delete()
+            return Response({'attempt': ['Required.']}, status=400)
         return Response({'ok': True})
 
 
@@ -93,7 +105,10 @@ def push_worker(request):
     """Drain the push outbox. Reachable only with a QStash signature for PUSH_WORKER_URL."""
     if not worker_url() or not valid_qstash_signature(request.headers.get('Upstash-Signature', ''), request.body, subject=worker_url()):
         return HttpResponse(status=403)
-    if drain(WORKER_BUDGET):
-        publish_drain()  # more left: continue in a fresh invocation
+    # Run again when the queue next has work (now, or when a retry's backoff ends). If that cannot
+    # be scheduled, answer with an error so QStash retries this call instead of the work being
+    # silently dropped.
+    if not schedule_next(drain(WORKER_BUDGET)):
+        return HttpResponse(status=503)
     return HttpResponse(status=204)
 

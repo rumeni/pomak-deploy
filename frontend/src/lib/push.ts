@@ -16,7 +16,10 @@ import { Capacitor } from '@capacitor/core'
 
 import { api, scopeIsCurrent, type AuthScope, type ScopedRequestConfig } from './api'
 import { getCurrentUserId } from './currentUser'
-import { addPushRemoval, flushPushRemovals, pendingPushRemoval, recoverPushRemovals, settlePushRegistration } from './pushPending'
+import {
+  flushPushRemovals, keepPushAttempt, pendingPushRemoval, recoverPushRevocations, revokeInflightAttempts, revokePushAttempt, startPushAttempt,
+} from './pushPending'
+import { uuid } from './uuid'
 import { tokens } from './tokens'
 
 const STORAGE = 'pomak.push.device'
@@ -30,7 +33,8 @@ export interface PushConfig {
 /** unsupported: this device cannot; unavailable: the server has no push configured. */
 export type PushStatus = 'unsupported' | 'unavailable' | 'denied' | 'off' | 'on'
 
-interface Registration { ownerId: string; token: string }
+/** What this device registered: for whom, its token, and the attempt that registered it. */
+interface Registration { ownerId: string; token: string; attempt?: string }
 
 function read(key: string): string | null {
   try {
@@ -137,26 +141,26 @@ async function nativeToken(check: () => void): Promise<string | null> {
 
 async function register(scope: AuthScope, body: Record<string, unknown>, token: string, check: () => void) {
   const config: ScopedRequestConfig = { __pomakScope: scope }
-  const item = { token, ownerId: scope.ownerId }
-  // Until the request is answered it may still land on the server: remembered "in flight", so a
-  // sign-out meanwhile undoes it afterwards instead of racing it.
-  addPushRemoval({ ...item, inflight: true })
+  // A new attempt each time: the server revokes attempts, never "this token" in general.
+  const item = { attempt: uuid(), ownerId: scope.ownerId }
+  startPushAttempt(item)
   try {
-    await api.post('/push/devices/', body, config)
+    await api.post('/push/devices/', { ...body, attempt: item.attempt }, config)
     check()
   } catch (error) {
-    // Signed out or switched account meanwhile, or an unknown outcome: remove it as soon as
-    // possible (as that account, with the device's own token).
-    settlePushRegistration(item, true)
+    // Signed out, another account, refused, or an unknown outcome (a lost answer): revoke this
+    // attempt. The server refuses it if it lands later, so the order does not matter.
+    revokePushAttempt(item)
     void flushPushRemovals()
     throw error
   }
   const previous = registration()
-  write(STORAGE, JSON.stringify({ ownerId: scope.ownerId, token } satisfies Registration))
-  settlePushRegistration(item, false)
-  // A rotated token: the old one must not keep a registration.
-  if (previous && previous.ownerId === scope.ownerId && previous.token !== token) {
-    await api.post('/push/devices/remove/', { token: previous.token }, config).catch(() => undefined)
+  write(STORAGE, JSON.stringify({ ownerId: scope.ownerId, token, attempt: item.attempt } satisfies Registration))
+  keepPushAttempt(item)
+  // The attempt this one replaces (a rotated token or a renewed subscription) is revoked.
+  if (previous?.attempt && previous.ownerId === scope.ownerId && previous.attempt !== item.attempt) {
+    revokePushAttempt({ attempt: previous.attempt, ownerId: previous.ownerId })
+    void flushPushRemovals()
   }
 }
 
@@ -201,7 +205,7 @@ export function disablePush(): Promise<PushStatus> {
     const mine = registration()
     if (mine && mine.ownerId === scope.ownerId) {
       const config: ScopedRequestConfig = { __pomakScope: scope }
-      await api.post('/push/devices/remove/', { token: mine.token }, config)
+      await api.post('/push/devices/remove/', mine.attempt ? { attempt: mine.attempt } : { token: mine.token }, config)
     }
     write(STORAGE, null)
     await unsubscribeLocally()
@@ -235,16 +239,19 @@ export function pushSignOut(): string | null {
   epoch += 1
   const mine = registration()
   write(STORAGE, null)
-  if (mine) addPushRemoval({ token: mine.token, ownerId: mine.ownerId })
+  if (mine?.attempt) revokePushAttempt({ attempt: mine.attempt, ownerId: mine.ownerId })
+  // A registration of this account still on its way is revoked as well (refused if it lands).
+  const ownerId = mine?.ownerId ?? getCurrentUserId()
+  if (ownerId) revokeInflightAttempts(ownerId)
   void serial(unsubscribeLocally)
   // Also without a session or network: retried at start-up and when the device is online again.
   void flushPushRemovals()
-  return mine?.token ?? pendingPushRemoval()
+  return mine?.attempt ?? pendingPushRemoval(ownerId ?? undefined)
 }
 
 /** At start-up: finish removals left by an offline sign-out or a closed app, and retry online. */
 export function startPushRecovery() {
-  recoverPushRemovals(registration())
+  recoverPushRevocations(registration())
   void flushPushRemovals()
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('online', () => void flushPushRemovals())

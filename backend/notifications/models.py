@@ -22,9 +22,21 @@ class PushDevice(TimeStampedModel):
     # Web push only: the browser's public key and auth secret (base64url).
     p256dh = models.CharField(max_length=200, blank=True)
     auth = models.CharField(max_length=100, blank=True)
+    # The registration attempt (a random ID made by the device): what a removal names, so it
+    # only ever undoes that attempt, never a later opt-in with the same token.
+    attempt = models.UUIDField(null=True, blank=True)
 
     class Meta:
         ordering = ['-updated_at']
+
+
+class PushRevocation(models.Model):
+    """A registration attempt that was revoked (tombstone): if its registration request arrives
+    later, it is refused. Kept for a week (longer than any request can be delayed)."""
+
+    attempt = models.UUIDField(primary_key=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class PushMessage(TimeStampedModel):
