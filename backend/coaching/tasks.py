@@ -18,12 +18,20 @@ stall. A transaction that committed after a later one can land behind the cursor
 bounded pass over the last LOOK_BACK picks up such workouts that still have no review task.
 
 Workout tasks follow their workout: a corrected workout updates (or drops) its tasks, a deleted
-one removes them (see coaching/signals.py), so no stale facts stay in the inbox.
+one removes them (see coaching/signals.py), so no stale facts stay in the inbox. Records are
+current facts, not snapshots: correcting or deleting a workout also re-judges the records of
+the later workouts.
+
+Every writer of a collaboration's tasks (sync, reconciliation, a deleted workout, a consent
+change, the end, a coach's action) first locks that collaboration row and re-reads it. So a
+sync can never insert facts after consent was revoked or the collaboration ended, and a
+deleted workout cannot get its tasks back from a sync that read it just before.
 """
 
 from collections import defaultdict
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import CharField, Exists, Max, OuterRef, Q
 from django.db.models.functions import Cast
 from django.utils import timezone
@@ -42,6 +50,8 @@ MAX_WORKOUTS_PER_SYNC = 60
 WORKOUT_KINDS = (CoachTask.Kind.WORKOUT_REVIEW, CoachTask.Kind.LOW_READINESS, CoachTask.Kind.PERSONAL_RECORD)
 MAX_OPEN_TASKS = 300
 MAX_OTHER_TASKS = 100
+# Later workouts whose records are judged again after a correction (newest collaboration first).
+MAX_LATER_RECORDS = 100
 
 
 def _best_lifts(session) -> dict:
@@ -165,47 +175,110 @@ def _sync_inactivity(connection, last_workout, now) -> None:
         )], ignore_conflicts=True)
 
 
+def lock_active(connection_id):
+    """The collaboration, locked, if it is still active. Call inside atomic()."""
+    return CoachConnection.objects.select_for_update().filter(pk=connection_id, ended_at__isnull=True).first()
+
+
 def sync_tasks(connections) -> None:
     """Brings the tasks of these active collaborations up to date (idempotent, safe to run concurrently)."""
-    connections = [c for c in connections if c.ended_at is None]
-    if not connections:
+    ids = [c.id for c in connections if c.ended_at is None]
+    if not ids:
         return
     now = timezone.now()
     last = dict(
         WorkoutSession.objects.filter(owner_id__in=[c.client_id for c in connections])
         .values('owner_id').annotate(last=Max('started_at')).values_list('owner_id', 'last')
     )
-    for connection in connections:
-        _sync_workouts(connection)
-        _sync_inactivity(connection, last.get(connection.client_id), now)
+    for connection_id in ids:
+        with transaction.atomic():
+            connection = lock_active(connection_id)  # consent and end are read under the lock
+            if connection is None:
+                continue
+            _sync_workouts(connection)
+            _sync_inactivity(connection, last.get(connection.client_id), now)
+
+
+def _set_record_task(connection, session, records) -> None:
+    task = CoachTask.objects.filter(connection=connection, kind=CoachTask.Kind.PERSONAL_RECORD, key=str(session.id)).first()
+    if not records:
+        if task:
+            task.delete()
+        return
+    data = {'workout_id': str(session.id), 'workout': session.name, 'records': records}
+    if task:
+        task.data = data
+        task.save(update_fields=['data', 'updated_at'])
+    else:
+        CoachTask.objects.bulk_create([CoachTask(
+            connection=connection, kind=CoachTask.Kind.PERSONAL_RECORD, key=str(session.id),
+            event_at=session.finished_at or session.started_at, data=data,
+        )], ignore_conflicts=True)
+
+
+def _rejudge_later_records(connection, owner_id, after) -> None:
+    """Records of the workouts after `after` that were already turned into tasks, judged again."""
+    reviewed = CoachTask.objects.filter(
+        connection=connection, kind=CoachTask.Kind.WORKOUT_REVIEW, key=Cast(OuterRef('id'), output_field=CharField()),
+    )
+    later = _with_details(
+        _eligible_workouts(connection).filter(owner_id=owner_id, started_at__gt=after).filter(Exists(reviewed))
+        .order_by('-started_at')
+    )[:MAX_LATER_RECORDS]
+    for session in later:
+        _set_record_task(connection, session, _records(session))
 
 
 def reconcile_workout(session_id) -> None:
-    """After a client corrects a workout: its tasks get the current facts, or go if no longer true.
+    """After a client corrects a workout: its tasks get the current facts, or go if no longer true,
+    and the records of later workouts are judged again.
 
     The coach's action (done, snoozed) stays on a task that still applies. Workouts not turned
     into tasks yet are left to the sync.
     """
-    session = _with_details(WorkoutSession.objects.filter(pk=session_id)).first()
-    if session is None:
-        remove_workout_tasks(session_id)
-        return
-    for connection in CoachConnection.objects.filter(client_id=session.owner_id, ended_at__isnull=True):
-        existing = {t.kind: t for t in CoachTask.objects.filter(connection=connection, key=str(session.id), kind__in=WORKOUT_KINDS)}
-        if not existing:
-            continue
-        wanted = {t.kind: t for t in _workout_tasks(connection, session)} if session.finished_at >= connection.created_at else {}
-        for kind, task in existing.items():
-            if kind in wanted:
-                task.data, task.event_at = wanted[kind].data, wanted[kind].event_at
-                task.save(update_fields=['data', 'event_at', 'updated_at'])
-            else:
-                task.delete()
-        CoachTask.objects.bulk_create([t for kind, t in wanted.items() if kind not in existing], ignore_conflicts=True)
+    owner_id = WorkoutSession.objects.filter(pk=session_id).values_list('owner_id', flat=True).first()
+    if owner_id is None:
+        return  # deleted meanwhile: the deletion removed its tasks
+    for connection_id in CoachConnection.objects.filter(client_id=owner_id, ended_at__isnull=True).values_list('id', flat=True):
+        with transaction.atomic():
+            connection = lock_active(connection_id)
+            if connection is None:
+                continue
+            # Read under the lock: the current workout, not one read before a concurrent change.
+            session = _with_details(WorkoutSession.objects.filter(pk=session_id)).first()
+            if session is None:
+                return
+            existing = {t.kind: t for t in CoachTask.objects.filter(connection=connection, key=str(session.id), kind__in=WORKOUT_KINDS)}
+            if existing:
+                wanted = {t.kind: t for t in _workout_tasks(connection, session)} if session.finished_at >= connection.created_at else {}
+                for kind, task in existing.items():
+                    if kind in wanted:
+                        task.data, task.event_at = wanted[kind].data, wanted[kind].event_at
+                        task.save(update_fields=['data', 'event_at', 'updated_at'])
+                    else:
+                        task.delete()
+                CoachTask.objects.bulk_create([t for kind, t in wanted.items() if kind not in existing], ignore_conflicts=True)
+            _rejudge_later_records(connection, owner_id, session.started_at)
+
+
+def workout_deleted(session_id, owner_id, started_at) -> None:
+    """A deleted workout leaves nothing about it in any inbox. Runs inside the deleting transaction:
+    the collaborations are locked first, so a sync that read the workout just before cannot
+    publish its tasks afterwards. Later records are judged again once the deletion committed."""
+    list(CoachConnection.objects.select_for_update().filter(client_id=owner_id, ended_at__isnull=True).values_list('id', flat=True))
+    remove_workout_tasks(session_id)
+
+    def rejudge():
+        for connection_id in CoachConnection.objects.filter(client_id=owner_id, ended_at__isnull=True).values_list('id', flat=True):
+            with transaction.atomic():
+                connection = lock_active(connection_id)
+                if connection is not None:
+                    _rejudge_later_records(connection, owner_id, started_at)
+
+    transaction.on_commit(rejudge)
 
 
 def remove_workout_tasks(session_id) -> None:
-    """A deleted workout leaves nothing about it in any inbox."""
     CoachTask.objects.filter(key=str(session_id), kind__in=WORKOUT_KINDS).delete()
 
 

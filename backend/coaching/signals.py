@@ -6,7 +6,7 @@ from django.dispatch import receiver
 
 from training.models import WorkoutSession
 
-from .tasks import reconcile_workout, remove_workout_tasks
+from .tasks import reconcile_workout, workout_deleted
 
 
 @receiver(post_save, sender=WorkoutSession, dispatch_uid='coaching_reconcile_corrected_workout')
@@ -20,4 +20,4 @@ def reconcile_corrected_workout(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=WorkoutSession, dispatch_uid='coaching_remove_deleted_workout_tasks')
 def remove_deleted_workout_tasks(sender, instance, **kwargs):
-    remove_workout_tasks(instance.pk)
+    workout_deleted(instance.pk, instance.owner_id, instance.started_at)

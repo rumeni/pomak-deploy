@@ -2,6 +2,8 @@
 
 import threading
 import time
+from datetime import timedelta
+from unittest import mock
 
 from django.db import close_old_connections, connections, transaction
 from django.test import TransactionTestCase
@@ -9,8 +11,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote
-from training.models import Routine
+from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachTask
+from training.models import Routine, WorkoutSession
 
 
 class ConnectionTeardownConcurrencyTests(TransactionTestCase):
@@ -147,3 +149,84 @@ class NoteEndRaceTests(TransactionTestCase):
     def test_deleting_a_note_as_the_collaboration_ends_is_refused(self):
         self._race('delete')
         self.assertTrue(CoachNote.objects.filter(pk=self.note.pk).exists())
+
+
+class TaskSyncRaceTests(TransactionTestCase):
+    """Consent changes, the end and a deleted workout always win against a sync in flight."""
+
+    def setUp(self):
+        self.coach = User.objects.create_user('coach-sync-race@example.test', 'a-strong-password')
+        self.coach.profile.is_coach = True
+        self.coach.profile.save()
+        self.trainee = User.objects.create_user('trainee-sync-race@example.test', 'a-strong-password')
+        self.connection = CoachConnection.objects.create(coach=self.coach, client=self.trainee, share_readiness=True)
+        now = timezone.now()
+        self.workout = WorkoutSession.objects.create(
+            owner=self.trainee, name='Upper A', started_at=now, finished_at=now + timedelta(minutes=50),
+            sleep_hours=4, stress=5, soreness_lower=5, motivation=1,
+        )
+
+    def _race(self, competitor):
+        """Runs a sync that pauses while it holds the collaboration, then `competitor` meanwhile."""
+        from coaching import tasks
+
+        paused, release, problems, done = threading.Event(), threading.Event(), [], []
+        original = tasks._records
+
+        def slow_records(session):
+            paused.set()
+            release.wait(timeout=8)
+            return original(session)
+
+        def sync():
+            close_old_connections()
+            try:
+                tasks.sync_tasks([CoachConnection.objects.get(pk=self.connection.pk)])
+            except Exception as error:
+                problems.append(error)
+            finally:
+                connections.close_all()
+
+        def compete():
+            close_old_connections()
+            try:
+                competitor()
+                done.append(True)
+            except Exception as error:
+                problems.append(error)
+            finally:
+                connections.close_all()
+
+        with mock.patch.object(tasks, '_records', slow_records):
+            sync_thread, competitor_thread = threading.Thread(target=sync), threading.Thread(target=compete)
+            sync_thread.start()
+            self.assertTrue(paused.wait(timeout=8), 'sync never reached the workout')
+            competitor_thread.start()
+            time.sleep(0.2)
+            self.assertEqual(done, [], 'the competitor did not wait for the sync holding the collaboration')
+            release.set()
+            sync_thread.join(timeout=12)
+            competitor_thread.join(timeout=12)
+        self.assertFalse(problems, problems)
+        self.assertEqual(done, [True])
+
+    def test_revoking_readiness_during_a_sync_leaves_no_answers(self):
+        def revoke():
+            api = APIClient()
+            api.force_authenticate(user=self.trainee)
+            assert api.patch('/api/coach/connection/', {'share_readiness': False}, format='json').status_code == 200
+        self._race(revoke)
+        self.assertFalse(CoachTask.objects.filter(kind='low_readiness').exists())
+
+    def test_ending_during_a_sync_leaves_no_tasks(self):
+        def end():
+            api = APIClient()
+            api.force_authenticate(user=self.trainee)
+            assert api.delete('/api/coach/connection/').status_code == 204
+        self._race(end)
+        self.assertFalse(CoachTask.objects.exists())
+
+    def test_deleting_a_workout_during_a_sync_leaves_no_tasks_about_it(self):
+        self._race(lambda: WorkoutSession.objects.get(pk=self.workout.pk).delete())
+        self.assertFalse(CoachTask.objects.filter(key=str(self.workout.pk)).exists())
+

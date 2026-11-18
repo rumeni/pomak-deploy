@@ -355,3 +355,55 @@ class WorkoutCorrectionTests(WorkspaceTestCase):
         self.tasks()
         self.client.delete(f'/api/coach/clients/{self.athlete.pk}/')
         self.assertFalse(CoachTask.objects.exists())
+
+
+class TaskAccessTests(WorkspaceTestCase):
+    def test_a_readiness_task_cannot_be_read_or_changed_without_consent(self):
+        connection = self.connect(days_ago=1, readiness=True)
+        self.workout(sleep_hours=4, stress=5, soreness_lower=5, motivation=1)
+        task_id = next(t['id'] for t in self.tasks() if t['kind'] == 'low_readiness')
+        # A row left behind (or an ID learnt before revoking) gives nothing away.
+        CoachConnection.objects.filter(pk=connection.pk).update(share_readiness=False)
+        response = self.client.patch(f'/api/coach/tasks/{task_id}/', {'action': 'done'}, format='json')
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn('answers', str(response.data))
+        CoachConnection.objects.filter(pk=connection.pk).update(share_readiness=True, ended_at=timezone.now())
+        self.assertEqual(self.client.patch(f'/api/coach/tasks/{task_id}/', {'action': 'done'}, format='json').status_code, 404)
+
+
+class LaterRecordTests(WorkspaceTestCase):
+    def records(self):
+        return sorted(t['data']['workout_id'] for t in self.tasks() if t['kind'] == 'personal_record')
+
+    def set_weight(self, session, weight):
+        with self.captureOnCommitCallbacks(execute=True):
+            SetLog.objects.filter(session_exercise__session=session).update(weight_kg=weight)
+            session.save()
+
+    def test_lowering_an_earlier_best_makes_a_later_workout_a_record(self):
+        self.connect(days_ago=5)
+        self.workout(hours_ago=72, weight='80')
+        middle = self.workout(hours_ago=48, weight='100')
+        last = self.workout(hours_ago=24, weight='95')
+        self.assertEqual(self.records(), [str(middle.pk)])
+        self.set_weight(middle, '90')
+        self.assertEqual(self.records(), sorted([str(middle.pk), str(last.pk)]))
+
+    def test_raising_an_earlier_best_removes_a_later_record(self):
+        self.connect(days_ago=5)
+        first = self.workout(hours_ago=48, weight='80')
+        second = self.workout(hours_ago=24, weight='90')
+        self.assertEqual(self.records(), [str(second.pk)])
+        self.set_weight(first, '95')
+        self.assertEqual(self.records(), [])
+
+    def test_deleting_the_best_workout_makes_the_next_best_a_record(self):
+        self.connect(days_ago=5)
+        self.workout(hours_ago=72, weight='80')
+        middle = self.workout(hours_ago=48, weight='100')
+        last = self.workout(hours_ago=24, weight='95')
+        self.tasks()
+        with self.captureOnCommitCallbacks(execute=True):
+            middle.delete()
+        self.assertEqual(self.records(), [str(last.pk)])
+

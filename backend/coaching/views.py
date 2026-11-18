@@ -30,7 +30,7 @@ from core.views import require_object_body
 from .models import (
     CoachAssignment, CoachConnection, CoachInvitation, CoachMessage, CoachNote, CoachProfile, CoachTask,
 )
-from .tasks import sync_tasks, visible_tasks
+from .tasks import lock_active, sync_tasks, visible_tasks
 
 
 MAX_ACTIVE_INVITES = 5
@@ -810,8 +810,16 @@ class TaskView(APIView):
         require_object_body(request)
         serializer = TaskActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        # Collaboration first, then the task (the order every task writer uses), so consent and the
+        # end are checked on what is current; a task the coach may no longer see does not exist.
+        found = CoachTask.objects.filter(pk=pk, connection__coach=request.user).values_list('connection_id', 'kind').first()
+        if found is None:
+            raise NotFound()
+        connection = lock_active(found[0])
+        if connection is None or (found[1] == CoachTask.Kind.LOW_READINESS and not connection.share_readiness):
+            raise NotFound()
         task = CoachTask.objects.select_for_update(of=('self',)).select_related('connection__client__profile').filter(
-            pk=pk, connection__coach=request.user, connection__ended_at__isnull=True,
+            pk=pk, connection=connection,
         ).first()
         if task is None:
             raise NotFound()

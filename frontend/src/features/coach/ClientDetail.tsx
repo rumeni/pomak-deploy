@@ -7,7 +7,7 @@ import { Button, Card, FormError, selectClass } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { formatDecimal, getFormatLocale } from '../../lib/format'
 import { useRoutines } from '../training/api'
-import { cachedClientIsCurrent, isAccessRevoked, isNetworkFailure, purgeClient } from './access'
+import { isAccessRevoked, isNetworkFailure, purgeClient, refreshCoachLists, viewableClient, visibleTaskList } from './access'
 import {
   useAssignCoachRoutine, useClientStatus, useCoachClient, useCoachDashboard, useCoachNotes, useCoachTasks, useCreateCoachNote,
   useDeleteCoachNote, useDisconnectCoach, useUpdateCoachNote, type CoachClientDetails, type CoachNote,
@@ -34,15 +34,22 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   const client = useCoachClient(clientId)
   const dashboard = useCoachDashboard()
   const qc = useQueryClient()
-  const revoked = client.isError && isAccessRevoked(client.error)
-  const activeConnectionId = dashboard.data?.role === 'coach'
-    ? dashboard.data.clients.find((c) => c.client.id === clientId)?.id
-    : undefined
+  const rows = dashboard.data?.role === 'coach' ? dashboard.data.clients : undefined
+  // Which data may be shown: the newer of the client screen and the dashboard decides.
+  const view = viewableClient(client.data, {
+    error: client.isError ? client.error : null,
+    detailUpdatedAt: client.dataUpdatedAt,
+    rows,
+    dashboardUpdatedAt: dashboard.dataUpdatedAt,
+  })
+  const revoked = (client.isError && isAccessRevoked(client.error)) || view.purge
 
-  // The server says no (e.g. the client ended the collaboration): forget what was cached.
+  // Access confirmed gone (the server said no, or a newer dashboard no longer lists the
+  // collaboration): forget what was cached. A confirmed consent change: load again.
   useEffect(() => {
-    if (revoked) void purgeClient(qc, clientId)
-  }, [revoked, qc, clientId])
+    if (view.purge) void purgeClient(qc, clientId)
+    else if (view.refresh) void refreshCoachLists(qc, clientId)
+  }, [view.purge, view.refresh, qc, clientId])
 
   if (revoked) {
     return (
@@ -53,11 +60,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
       </Card>
     )
   }
-  // Cached data is shown only after a network failure, and only for the current collaboration.
-  const usable = client.data && (!client.isError || isNetworkFailure(client.error))
-    && cachedClientIsCurrent(client.data.connection.id, activeConnectionId)
-    ? client.data
-    : null
+  const usable = view.data
   if (client.isLoading || (!usable && !client.isError)) return <p className="p-4 text-muted">{t('common.loading')}</p>
   if (!usable) {
     return (
@@ -139,7 +142,10 @@ function StatusButton({ clientId, paused }: { clientId: string; paused: boolean 
 function OverviewTab({ data }: { data: CoachClientDetails }) {
   const { t, i18n } = useTranslation()
   const tasks = useCoachTasks()
-  const open = (tasks.data ?? []).filter((task) => task.client.id === data.connection.client.id && task.state === 'open')
+  const dashboard = useCoachDashboard()
+  const rows = dashboard.data?.role === 'coach' ? dashboard.data.clients : undefined
+  const open = visibleTaskList(tasks.data ?? [], rows, dashboard.dataUpdatedAt >= tasks.dataUpdatedAt)
+    .filter((task) => task.client.id === data.connection.client.id && task.state === 'open')
   const last = data.recent_workouts[0]
   const withReadiness = data.recent_workouts.find((w) => w.readiness?.score != null)
   const now = new Date()

@@ -115,6 +115,14 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
   - Kad klijent ispravi trening, zadaci dobijaju nove činjenice ili nestaju ako više ne važe.
     Trenerova radnja (završeno, odloženo) ostaje na zadatku koji i dalje važi.
   - Obrisan trening briše i svoje zadatke.
+  - Lični rekordi su trenutne činjenice, ne snimak u trenutku otkrivanja. Ispravka ili brisanje
+    treninga ponovo ocenjuje rekorde kasnijih treninga u oba smera: kasniji trening može da
+    postane rekord ili da prestane da bude rekord.
+- **Zaključavanje:** svako ko menja zadatke prvo zaključava saradnju i ponovo je čita. To važi
+  za proveru novih treninga, usklađivanje, brisanje treninga, promenu dozvola, prekid i
+  trenerovu radnju nad zadatkom. Zato provera koja je u toku ne može da upiše odgovore posle
+  povlačenja dozvole ili posle prekida, niti da vrati zadatke obrisanog treninga.
+  - Zadatak o spremnosti bez važeće dozvole ne postoji ni za čitanje ni za izmenu (404).
 - **Duplikati:** sprečava ih jedinstveni ključ u bazi. Zato je provera bezbedna i kada se
   pokrene više puta istovremeno.
 - **Upozorenje „nema treninga“** se samo zatvara kada klijent ponovo trenira ili ode na pauzu.
@@ -136,6 +144,13 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Ekran bivšeg trenera:** čim server odgovori da trener više nema pristup (401/403/404), podaci
   klijenta se brišu i iz keša u aplikaciji. Ne prikazuju se ni posle povratka na taj ekran, ni
   uz neku novu saradnju sa istim klijentom.
+- **Novije stanje ima prednost:** između ekrana klijenta i spiska klijenata uvek odlučuje novije.
+  - Spisak je noviji, a saradnje nema na njemu: podaci se ne prikazuju ni bez interneta, a keš
+    se briše.
+  - Spisak je noviji, a klijent je u međuvremenu isključio neko deljenje: ti podaci se odmah
+    sakrivaju, i ništa se ne vraća bez ponovnog učitavanja.
+  - Spisak još nije učitan (npr. bez interneta od početka): prikazuje se poslednji učitani
+    ekran, sa dozvolama sa kojima je učitan.
 - Klijent kasnije može da se poveže ponovo, i sa istim trenerom. To je nova saradnja, a stara
   arhiva ostaje odvojena.
 - U bazi važi pravilo da klijent ima najviše jednu aktivnu saradnju.
