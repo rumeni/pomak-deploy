@@ -38,6 +38,15 @@ export function programAlreadyAdded(program: Program, routines: readonly Pick<Ro
     || (!routine.program_key && names.has(routine.name) && routine.notes === program.name))
 }
 
+/** Serialise one program import across tabs on Chrome/Android secure origins.
+ * The caller must re-read server routines AFTER taking the lock so a waiting
+ * second tab can see what the first tab just imported.
+ */
+export async function withProgramImportLock<T>(ownerId: string, programKey: string, run: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+  return locks ? locks.request(`pomak-import:${ownerId}:${programKey}`, run) : run()
+}
+
 /** "3 × 8–10 @ 6,5" for the program preview. */
 export function describePrescription(item: RoutineExercise, secondsUnit: string): string {
   const s = item.sets[0]

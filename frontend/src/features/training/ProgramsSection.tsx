@@ -11,7 +11,7 @@ import { tokens } from '../../lib/tokens'
 import { uuid } from '../../lib/uuid'
 import { useAuth } from '../../lib/auth'
 import type { Routine, RoutinePayload } from './api'
-import { describePrescription, importProgram, isImportingProgram, loadPendingProgram, programAlreadyAdded, programToRoutines, type PendingProgram, type Program } from './programs'
+import { describePrescription, importProgram, isImportingProgram, loadPendingProgram, programAlreadyAdded, programToRoutines, withProgramImportLock, type PendingProgram, type Program } from './programs'
 
 function usePrograms() {
   return useQuery({
@@ -90,30 +90,42 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
   const { me } = useAuth()
   const [open, setOpen] = useState(false)
   const [added, setAdded] = useState(false)
+  const busy = useRef(false)
+  const [waiting, setWaiting] = useState(false)
   // The batch (with its routine IDs) of an add that has not finished: a retry resumes it.
   const pending = useRef<{ ownerId: string; record: PendingProgram } | null>(null)
-  const alreadyThere = programAlreadyAdded(program, routines)
+  // Existing routines are re-fetched under the cross-tab lock before import.
+  void routines
 
-  const onAdd = () => {
-    if (!me) return
-    // A persisted batch takes precedence even when this component was unmounted or reloaded.
-    // An import of this program already running (started before leaving the screen) is joined,
-    // never started twice. Otherwise the stored record wins over this screen's memory.
-    const previous = loadPendingProgram(me.id, program)
-      ?? (pending.current?.ownerId === me.id ? pending.current.record : null)
-    if (previous || isImportingProgram(me.id, program.key)) {
-      pending.current = { ownerId: me.id, record: previous ?? pending.current?.record ?? { batch: [], done: [] } }
-    } else {
-      if (alreadyThere && !window.confirm(t('programs.addAgainConfirm'))) return
-      pending.current = { ownerId: me.id, record: { batch: programToRoutines(program, uuid), done: [] } }
-    }
+  const onAdd = async () => {
+    if (!me || busy.current) return
+    busy.current = true
+    setWaiting(true)
     const scope: AuthScope = { ownerId: me.id, session: tokens.session() }
-    add.mutate({ scope, programKey: program.key, record: pending.current.record }, {
-      onSuccess: () => {
+    try {
+      await withProgramImportLock(me.id, program.key, async () => {
+        if (!scopeIsCurrent(scope)) return
+        // The second tab must re-check the server inside the lock, not rely on
+        // stale React-query state captured before the first tab imported.
+        const previous = loadPendingProgram(me.id, program)
+          ?? (pending.current?.ownerId === me.id ? pending.current.record : null)
+        if (previous || isImportingProgram(me.id, program.key)) {
+          pending.current = { ownerId: me.id, record: previous ?? pending.current?.record ?? { batch: [], done: [] } }
+        } else {
+          const fresh = (await api.get<Routine[]>('/training/routines/')).data
+          if (programAlreadyAdded(program, fresh) && !window.confirm(t('programs.addAgainConfirm'))) return
+          pending.current = { ownerId: me.id, record: { batch: programToRoutines(program, uuid), done: [] } }
+        }
+        await add.mutateAsync({ scope, programKey: program.key, record: pending.current.record })
         pending.current = null
         setAdded(true)
-      },
-    })
+      })
+    } catch {
+      // React Query's mutation error is displayed below the preview.
+    } finally {
+      busy.current = false
+      setWaiting(false)
+    }
   }
 
   return (
@@ -159,7 +171,7 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
       {added ? (
         <p role="status" className="rounded-xl bg-brand-soft px-3 py-2 text-sm font-semibold">{t('programs.added', { count: program.routines.length })}</p>
       ) : (
-        <Button variant={program.recommended ? 'primary' : 'secondary'} onClick={onAdd} disabled={add.isPending}>
+        <Button variant={program.recommended ? 'primary' : 'secondary'} onClick={() => void onAdd()} disabled={add.isPending || waiting}>
           {add.isPending ? t('common.saving') : add.isError ? t('programs.retry') : t('programs.add', { count: program.routines.length })}
         </Button>
       )}
