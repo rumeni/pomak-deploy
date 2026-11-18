@@ -375,6 +375,22 @@ klijenta iz T1.
   - **Izgubljen odgovor.** Pokušaj sa izgubljenim odgovorom (timeout) se takođe opoziva.
   - **Pokušaji iz drugog taba.** Pri pokretanju se diraju samo pokušaji „u toku“ stariji od
     minut. Mlađi mogu pripadati drugom tabu koji se upravo registruje.
+  - **Rani restart.** Pokušaj ostavljen „u toku“ zbog ranog restarta ponovo se proverava posle
+    tog minuta: uz tajmer, kad se aplikacija vrati u prvi plan i kad se vrati internet.
+  - **Opoziv bez prijave je ograničen.** Najviše 120 zahteva na sat po klijentu. Nepoznat nalog
+    se ignoriše, a zapisi o opozivu ističu posle nedelju dana.
+- **Prelaz sa #75 (registracije bez ID-ja pokušaja).**
+  - Stari red na serveru (`attempt` prazno) važi kao „legacy“. Briše ga samo uklanjanje po
+    tokenu: odjava sa `push_token` ili isključivanje iz starije aplikacije.
+  - To uklanjanje nikad ne briše noviju registraciju sa ID-jem pokušaja, čak ni sa istim
+    tokenom.
+  - Starija aplikacija koja ne šalje ID pokušaja i dalje se registruje kao „legacy“.
+  - **Nadogradnja.** Novija aplikacija posle prijave staru registraciju odmah registruje
+    ponovo, sa ID-jem pokušaja, i kad se token nije promenio.
+  - **Odjava pre nadogradnje.** Imenuje stari token u (prijavljenom) zahtevu za odjavu. Na webu
+    se taj zahtev ponavlja dok ne uspe.
+  - **Android bez interneta pre nadogradnje.** Oslanja se na lokalnu odjavu kod Firebase-a:
+    kad FCM javi `UNREGISTERED`, server briše uređaj. Token se bez prijave nikad ne šalje.
   - Obaveštenje koje je sistem već primio pre odjave i dalje može da se pojavi.
 - **Nova pretplata ili token.** Posle prijave aplikacija osvežava registraciju ako je pregledač
   obnovio pretplatu ili je Firebase promenio token.

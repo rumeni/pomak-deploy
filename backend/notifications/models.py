@@ -23,7 +23,9 @@ class PushDevice(TimeStampedModel):
     p256dh = models.CharField(max_length=200, blank=True)
     auth = models.CharField(max_length=100, blank=True)
     # The registration attempt (a random ID made by the device): what a removal names, so it
-    # only ever undoes that attempt, never a later opt-in with the same token.
+    # only ever undoes that attempt, never a later opt-in with the same token. Null: a legacy
+    # registration (made before attempts, or by an older app); only legacy removals touch it,
+    # and a newer app upgrades it by registering again with an attempt.
     attempt = models.UUIDField(null=True, blank=True)
 
     class Meta:

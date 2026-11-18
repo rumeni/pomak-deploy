@@ -10,8 +10,8 @@ vi.mock('axios', () => ({ default: { post: rawPost, isAxiosError: (e: unknown) =
 vi.mock('./currentUser', () => ({ getCurrentUserId: () => state.userId }))
 vi.mock('./tokens', () => ({ tokens: { session: () => ({ id: 's1' }) } }))
 
-import { applicationServerKey, enablePush, PushAborted, pushSignOut, pushStatus } from './push'
-import { flushPushRemovals, pendingPushRemoval, pushRevocations, recoverPushRevocations } from './pushPending'
+import { applicationServerKey, enablePush, PushAborted, pushSignOut, pushStatus, syncPush } from './push'
+import { flushPushRemovals, legacyLogoutToken, pendingPushRemoval, pushRevocations, recoverPushRevocations } from './pushPending'
 
 const store = new Map<string, string>()
 const subscription = {
@@ -84,7 +84,7 @@ describe('push', () => {
     expect(await pushStatus(config, 'user-a')).toBe('on')
     expect(await pushStatus(config, 'user-b')).toBe('off')
     rawPost.mockRejectedValueOnce(offline())
-    expect(pushSignOut()).toBe(attemptOf()) // the sign-out request revokes this attempt
+    expect(pushSignOut()).toEqual({ push_attempt: attemptOf() }) // the sign-out request revokes this attempt
     await vi.waitFor(() => expect(rawPost).toHaveBeenCalled())
     expect(pendingPushRemoval()).toBe(attemptOf()) // offline: kept for later
     expect(await pushStatus(config, 'user-a')).toBe('off')
@@ -140,5 +140,33 @@ describe('push', () => {
     await flushPushRemovals()
     expect(revoked()).toEqual([{ attempt: 'abandoned', user_id: 'user-a' }])
     expect(pushRevocations().map((x) => x.attempt)).toEqual(['fresh'])
+  })
+
+  it('a registration from #75 (token only) is upgraded to an attempt even with the same token', async () => {
+    store.set('pomak.push.device', JSON.stringify({ ownerId: 'user-a', token: subscription.endpoint }))
+    await syncPush(config)
+    expect(post).toHaveBeenCalledWith('/push/devices/', expect.objectContaining({ token: subscription.endpoint, attempt: attemptOf() }), expect.anything())
+    expect(JSON.parse(store.get('pomak.push.device')!)).toMatchObject({ ownerId: 'user-a', attempt: attemptOf() })
+    expect(pushSignOut()).toEqual({ push_attempt: attemptOf() })
+  })
+
+  it('signing out before the upgrade names the legacy token (kept for the retried web sign-out)', async () => {
+    store.set('pomak.push.device', JSON.stringify({ ownerId: 'user-a', token: subscription.endpoint }))
+    expect(pushSignOut()).toEqual({ push_token: subscription.endpoint })
+    expect(legacyLogoutToken()).toBe(subscription.endpoint)
+    await flushPushRemovals()
+    expect(rawPost).not.toHaveBeenCalled() // a token is never sent without a session
+    expect(await pushStatus(config, 'user-a')).toBe('off')
+  })
+
+  it('an attempt left in flight by an early restart is revoked once it is clearly abandoned', async () => {
+    const now = Date.now()
+    store.set('pomak.push.revocations', JSON.stringify([{ attempt: 'early', ownerId: 'user-a', inflight: true, startedAt: now }]))
+    recoverPushRevocations(null, now + 5_000) // restarted 5 s later: may still be another tab's
+    await flushPushRemovals(null, now + 5_000)
+    expect(rawPost).not.toHaveBeenCalled()
+    await flushPushRemovals(null, now + 61_000) // the app stayed open past the grace period
+    expect(revoked()).toEqual([{ attempt: 'early', user_id: 'user-a' }])
+    expect(pushRevocations()).toEqual([])
   })
 })

@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 from django.db import transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -14,7 +12,7 @@ from core.views import require_object_body
 
 from .models import PushDevice
 from .push import WORKER_BUDGET, allowed_endpoint, drain, fcm_enabled, schedule_next, valid_keys, vapid_public_key, web_push_enabled, worker_url
-from .registrations import register, revoke
+from .registrations import register, remove_legacy, revoke
 
 MAX_DEVICES = 10
 
@@ -66,13 +64,14 @@ class DevicesView(APIView):
         serializer = DeviceSerializer(data=require_object_body(request))
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        attempt = data.get('attempt') or uuid4()
+        # An older app sends no attempt: its row is marked legacy (it could never name an attempt).
+        attempt = data.get('attempt')
         if not register(request.user, attempt, token=data['token'], kind=data['kind'], p256dh=data['p256dh'], auth=data['auth']):
             # Revoked before it arrived (signed out meanwhile): never registered.
             return Response({'code': 'push_revoked', 'detail': 'This registration was revoked.'}, status=409)
         stale = PushDevice.objects.filter(user=request.user).values_list('pk', flat=True)[MAX_DEVICES:]
         PushDevice.objects.filter(pk__in=list(stale)).delete()
-        return Response({'ok': True, 'attempt': str(attempt)}, status=201)
+        return Response({'ok': True, 'attempt': str(attempt) if attempt else None}, status=201)
 
 
 class DeviceRemoveView(APIView):
@@ -82,6 +81,8 @@ class DeviceRemoveView(APIView):
     (a delayed registration of it is refused) and never touches a later opt-in."""
 
     permission_classes = [AllowAny]
+    # Anyone may call it: bounded per client (tombstones of made-up attempts expire in a week).
+    throttle_scope = 'push_revoke'
 
     def post(self, request):
         serializer = RemoveSerializer(data=require_object_body(request))
@@ -93,7 +94,7 @@ class DeviceRemoveView(APIView):
                 return Response({'user_id': ['Required without a session.']}, status=400)
             revoke(owner, data['attempt'])
         elif request.user.is_authenticated and data.get('token'):
-            PushDevice.objects.filter(user=request.user, token=data['token']).delete()
+            remove_legacy(request.user.pk, data['token'])
         else:
             return Response({'attempt': ['Required.']}, status=400)
         return Response({'ok': True})

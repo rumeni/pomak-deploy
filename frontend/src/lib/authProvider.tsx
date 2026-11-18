@@ -118,8 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     // Push off on this device first: the subscription is dropped here at once, and the sign-out
     // request removes the registration on the server.
-    const pushAttempt = pushSignOut()
-    const pushBody = pushAttempt ? { push_attempt: pushAttempt } : {}
+    const pushBody = pushSignOut()
     const pendingRefresh = tokens.refresh()
     const access = tokens.access()
     const isWeb = Object.keys(webHeaders()).length > 0

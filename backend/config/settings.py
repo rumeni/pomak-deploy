@@ -142,6 +142,7 @@ REST_FRAMEWORK = {
         'anon': '200/day',
         'user': '5000/day',
         'auth': '10/min',
+        'push_revoke': '120/hour',
     },
 }
 

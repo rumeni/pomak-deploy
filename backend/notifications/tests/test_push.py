@@ -554,3 +554,57 @@ class DeadlineTests(PushTestCase):
         self.assertLess(elapsed, push.KICK_BUDGET + 0.6)
         self.assertEqual(PushMessage.objects.count(), 1)  # still queued for the worker
 
+
+
+class LegacyTransitionTests(PushTestCase):
+    """Registrations from #75 (no attempt) and older apps keep working through the upgrade."""
+
+    TOKEN = 'https://fcm.googleapis.com/fcm/send/legacy'
+
+    def legacy_row(self, user=None):
+        # What notifications.0002 leaves for a device registered under #75.
+        return PushDevice.objects.create(user=user or self.ana, kind='web', token=self.TOKEN,
+                                         p256dh=push.b64url(self.ua_public), auth=push.b64url(self.auth_secret))
+
+    def logout(self, user, **body):
+        self.as_user(user)
+        return self.client.post('/api/auth/logout/', {'refresh': str(RefreshToken.for_user(user)), **body}, format='json')
+
+    def test_an_older_app_registers_without_an_attempt_and_signs_out_by_token(self):
+        self.as_user(self.ana)
+        response = self.client.post('/api/push/devices/', {'kind': 'web', 'token': self.TOKEN, 'p256dh': push.b64url(self.ua_public),
+                                                            'auth': push.b64url(self.auth_secret)}, format='json')
+        self.assertEqual((response.status_code, response.data['attempt']), (201, None))
+        self.assertIsNone(PushDevice.objects.get().attempt)  # marked legacy
+        self.assertEqual(self.logout(self.ana, push_token=self.TOKEN).status_code, 204)
+        self.assertFalse(PushDevice.objects.exists())
+
+    def test_a_75_row_is_removed_by_the_legacy_logout_and_upgraded_by_a_new_registration(self):
+        self.legacy_row()
+        self.logout(self.ana, push_token=self.TOKEN)
+        self.assertFalse(PushDevice.objects.exists())
+        self.legacy_row()
+        attempt = uuid4()
+        self.as_user(self.ana)
+        self.client.post('/api/push/devices/', {'kind': 'web', 'token': self.TOKEN, 'attempt': str(attempt),
+                                                'p256dh': push.b64url(self.ua_public), 'auth': push.b64url(self.auth_secret)}, format='json')
+        self.assertEqual(PushDevice.objects.get().attempt, attempt)  # same token, now with an attempt
+
+    def test_a_legacy_removal_never_deletes_a_newer_registration_with_the_same_token(self):
+        attempt = uuid4()
+        PushDevice.objects.create(user=self.ana, kind='web', token=self.TOKEN, attempt=attempt,
+                                  p256dh=push.b64url(self.ua_public), auth=push.b64url(self.auth_secret))
+        self.logout(self.ana, push_token=self.TOKEN)  # a late logout of the old app
+        self.as_user(self.ana)
+        self.client.post('/api/push/devices/remove/', {'token': self.TOKEN}, format='json')  # an old app turning it off
+        self.assertEqual(PushDevice.objects.get().attempt, attempt)
+
+    def test_anonymous_revocations_are_bounded(self):
+        from notifications.models import PushRevocation
+        from notifications.views import DeviceRemoveView
+
+        self.client.force_authenticate(user=None)
+        response = self.client.post('/api/push/devices/remove/', {'attempt': str(uuid4()), 'user_id': str(uuid4())}, format='json')
+        self.assertEqual(response.status_code, 200)  # an unknown account: nothing to do, no error
+        self.assertFalse(PushRevocation.objects.exists())
+        self.assertEqual(DeviceRemoveView.throttle_scope, 'push_revoke')

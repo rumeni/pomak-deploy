@@ -91,13 +91,45 @@ export function recoverPushRevocations(kept: { attempt?: string; ownerId: string
     .map((x) => (x.inflight && now - (x.startedAt ?? 0) > ABANDONED_AFTER_MS ? { attempt: x.attempt, ownerId: x.ownerId } : x)))
 }
 
+const LEGACY_LOGOUT = 'pomak.push.legacyLogout'
+
+/**
+ * A registration made before attempts existed (#75) knows only its token: the next sign-out
+ * request names it (authenticated), retried with the web sign-out until it went through.
+ */
+export function setLegacyLogoutToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(LEGACY_LOGOUT, token)
+    else localStorage.removeItem(LEGACY_LOGOUT)
+  } catch {
+    // The device unsubscribes locally anyway.
+  }
+}
+
+export function legacyLogoutToken(): string | null {
+  try {
+    return localStorage.getItem(LEGACY_LOGOUT)
+  } catch {
+    return null
+  }
+}
+
+/** Abandoned: still "in flight" long after any request would have ended, and not kept. */
+function abandoned(x: PushRevocation, kept: { attempt?: string; ownerId: string } | null, now: number) {
+  return !!x.inflight && now - (x.startedAt ?? 0) > ABANDONED_AFTER_MS && !(kept?.attempt && same(x, { attempt: kept.attempt, ownerId: kept.ownerId }))
+}
+
 let flushing: Promise<void> | null = null
 
-/** Send the pending revocations (no session needed); failures stay for the next try. */
-export function flushPushRemovals(): Promise<void> {
+/**
+ * Send the pending revocations (no session needed); failures stay for the next try. Attempts
+ * left "in flight" by an app closed mid-request are included once they are clearly abandoned,
+ * so an early restart does not leave them pending forever.
+ */
+export function flushPushRemovals(kept: { attempt?: string; ownerId: string } | null = null, now = Date.now()): Promise<void> {
   flushing ??= (async () => {
     const { api } = await import('./api')
-    for (const item of load().filter((x) => !x.inflight)) {
+    for (const item of load().filter((x) => !x.inflight || abandoned(x, kept, now))) {
       try {
         await axios.post(`${api.defaults.baseURL}/push/devices/remove/`, { attempt: item.attempt, user_id: item.ownerId }, { timeout: 5000 })
         completePushRemoval(item.attempt, item.ownerId)

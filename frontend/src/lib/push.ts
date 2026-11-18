@@ -17,7 +17,8 @@ import { Capacitor } from '@capacitor/core'
 import { api, scopeIsCurrent, type AuthScope, type ScopedRequestConfig } from './api'
 import { getCurrentUserId } from './currentUser'
 import {
-  flushPushRemovals, keepPushAttempt, pendingPushRemoval, recoverPushRevocations, revokeInflightAttempts, revokePushAttempt, startPushAttempt,
+  flushPushRemovals, keepPushAttempt, pendingPushRemoval, recoverPushRevocations, revokeInflightAttempts, revokePushAttempt,
+  setLegacyLogoutToken, startPushAttempt,
 } from './pushPending'
 import { uuid } from './uuid'
 import { tokens } from './tokens'
@@ -151,7 +152,7 @@ async function register(scope: AuthScope, body: Record<string, unknown>, token: 
     // Signed out, another account, refused, or an unknown outcome (a lost answer): revoke this
     // attempt. The server refuses it if it lands later, so the order does not matter.
     revokePushAttempt(item)
-    void flushPushRemovals()
+    void flushPush()
     throw error
   }
   const previous = registration()
@@ -160,7 +161,7 @@ async function register(scope: AuthScope, body: Record<string, unknown>, token: 
   // The attempt this one replaces (a rotated token or a renewed subscription) is revoked.
   if (previous?.attempt && previous.ownerId === scope.ownerId && previous.attempt !== item.attempt) {
     revokePushAttempt({ attempt: previous.attempt, ownerId: previous.ownerId })
-    void flushPushRemovals()
+    void flushPush()
   }
 }
 
@@ -235,26 +236,44 @@ async function unsubscribeLocally() {
  * return the token the sign-out request should remove on the server (remembered until it did).
  * Notifications already handed to the system before this may still appear.
  */
-export function pushSignOut(): string | null {
+/** What the sign-out request names: the attempt, or the token of a not yet upgraded registration. */
+export interface PushSignOutBody { push_attempt?: string; push_token?: string }
+
+export function pushSignOut(): PushSignOutBody {
   epoch += 1
   const mine = registration()
   write(STORAGE, null)
   if (mine?.attempt) revokePushAttempt({ attempt: mine.attempt, ownerId: mine.ownerId })
+  // A registration from before attempts (#75): only the authenticated sign-out can remove it
+  // (by token, legacy rows only); on the web that request is retried until it went through.
+  const legacy = mine && !mine.attempt ? mine.token : null
+  if (legacy) setLegacyLogoutToken(legacy)
   // A registration of this account still on its way is revoked as well (refused if it lands).
   const ownerId = mine?.ownerId ?? getCurrentUserId()
   if (ownerId) revokeInflightAttempts(ownerId)
   void serial(unsubscribeLocally)
   // Also without a session or network: retried at start-up and when the device is online again.
-  void flushPushRemovals()
-  return mine?.attempt ?? pendingPushRemoval(ownerId ?? undefined)
+  void flushPush()
+  const attempt = mine?.attempt ?? pendingPushRemoval(ownerId ?? undefined)
+  return { ...(attempt ? { push_attempt: attempt } : {}), ...(legacy ? { push_token: legacy } : {}) }
+}
+
+/** Revocations with the current registration kept (it is never revoked by recovery). */
+function flushPush(now = Date.now()) {
+  return flushPushRemovals(registration(), now)
 }
 
 /** At start-up: finish removals left by an offline sign-out or a closed app, and retry online. */
 export function startPushRecovery() {
   recoverPushRevocations(registration())
-  void flushPushRemovals()
+  void flushPush()
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-    window.addEventListener('online', () => void flushPushRemovals())
+    window.addEventListener('online', () => void flushPush())
+    // An attempt left "in flight" by an early restart becomes revocable after the grace period.
+    setTimeout(() => void flushPush(), 61_000)
+  }
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void flushPush() })
   }
 }
 
@@ -274,7 +293,8 @@ export function syncPush(config: PushConfig): Promise<void> {
       const { PushNotifications } = await import('@capacitor/push-notifications')
       if ((await PushNotifications.checkPermissions()).receive !== 'granted') return
       const token = await nativeToken(check)
-      if (token && token !== mine.token) await register(scope, { kind: 'fcm', token }, token, check)
+      // A new token, or a registration from before attempts: registered again with an attempt.
+      if (token && (token !== mine.token || !mine.attempt)) await register(scope, { kind: 'fcm', token }, token, check)
       return
     }
     const subscription = await webSubscription()
@@ -283,7 +303,9 @@ export function syncPush(config: PushConfig): Promise<void> {
       write(STORAGE, null)
       return
     }
-    if (subscription.endpoint !== mine.token) {
+    // A renewed subscription, or a registration from before attempts (#75): registered again with
+    // an attempt, so it can be revoked later like any other.
+    if (subscription.endpoint !== mine.token || !mine.attempt) {
       const keys = subscription.toJSON().keys ?? {}
       await register(scope, { kind: 'web', token: subscription.endpoint, p256dh: keys.p256dh, auth: keys.auth }, subscription.endpoint, check)
     }
