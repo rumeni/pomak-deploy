@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -6,8 +7,9 @@ import { Button, Card, FormError, selectClass } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { formatDecimal, getFormatLocale } from '../../lib/format'
 import { useRoutines } from '../training/api'
+import { cachedClientIsCurrent, isAccessRevoked, isNetworkFailure, purgeClient } from './access'
 import {
-  useAssignCoachRoutine, useClientStatus, useCoachClient, useCoachNotes, useCoachTasks, useCreateCoachNote,
+  useAssignCoachRoutine, useClientStatus, useCoachClient, useCoachDashboard, useCoachNotes, useCoachTasks, useCreateCoachNote,
   useDeleteCoachNote, useDisconnectCoach, useUpdateCoachNote, type CoachClientDetails, type CoachNote,
 } from './api'
 import { taskText } from './taskText'
@@ -30,17 +32,42 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   const [params, setParams] = useSearchParams()
   const tab: Tab = (TABS as readonly string[]).includes(params.get('tab') ?? '') ? params.get('tab') as Tab : 'overview'
   const client = useCoachClient(clientId)
+  const dashboard = useCoachDashboard()
+  const qc = useQueryClient()
+  const revoked = client.isError && isAccessRevoked(client.error)
+  const activeConnectionId = dashboard.data?.role === 'coach'
+    ? dashboard.data.clients.find((c) => c.client.id === clientId)?.id
+    : undefined
 
-  if (client.isLoading) return <p className="p-4 text-muted">{t('common.loading')}</p>
-  if (client.isError && !client.data) {
+  // The server says no (e.g. the client ended the collaboration): forget what was cached.
+  useEffect(() => {
+    if (revoked) void purgeClient(qc, clientId)
+  }, [revoked, qc, clientId])
+
+  if (revoked) {
     return (
       <Card>
-        <p className="text-danger">{navigator.onLine ? t('coach.clientNotFound') : t('errors.loadFailed')}</p>
+        <p className="font-semibold">{t('coachSpace.client.noAccess')}</p>
+        <p className="mt-1 text-sm text-muted">{t('coachSpace.client.noAccessHint')}</p>
+        <Button variant="secondary" className="mt-3" onClick={() => navigate('/trener/klijenti', { replace: true })}>{t('common.back')}</Button>
+      </Card>
+    )
+  }
+  // Cached data is shown only after a network failure, and only for the current collaboration.
+  const usable = client.data && (!client.isError || isNetworkFailure(client.error))
+    && cachedClientIsCurrent(client.data.connection.id, activeConnectionId)
+    ? client.data
+    : null
+  if (client.isLoading || (!usable && !client.isError)) return <p className="p-4 text-muted">{t('common.loading')}</p>
+  if (!usable) {
+    return (
+      <Card>
+        <p className="text-danger">{isNetworkFailure(client.error) ? t('errors.loadFailed') : t('coach.clientNotFound')}</p>
         <Button variant="secondary" className="mt-3" onClick={() => navigate('/trener/klijenti')}>{t('common.back')}</Button>
       </Card>
     )
   }
-  const data = client.data!
+  const data = usable
   const connection = data.connection
 
   return (
@@ -136,7 +163,9 @@ function OverviewTab({ data }: { data: CoachClientDetails }) {
         </div>
         <div className="app-card !p-3">
           <span className="block text-2xl font-extrabold">{withReadiness?.readiness?.score != null ? `${withReadiness.readiness.score}%` : '–'}</span>
-          <span className="text-xs text-muted">{t('coachSpace.client.lastReadiness')}</span>
+          <span className="text-xs text-muted">
+            {t('coachSpace.client.lastReadiness')}{data.connection.share_readiness === false ? ` · ${t('coach.notSharedShort')}` : ''}
+          </span>
         </div>
       </div>
       {withReadiness?.readiness && readinessReasons(withReadiness.readiness.answers).length > 0 && (
@@ -285,6 +314,23 @@ function NoteItem({ note, connectionId, readOnly }: { note: CoachNote; connectio
   const { t } = useTranslation()
   const update = useUpdateCoachNote(connectionId)
   const remove = useDeleteCoachNote(connectionId)
+  const [editing, setEditing] = useState<string | null>(null)
+  if (editing !== null) {
+    return (
+      <li className="rounded-xl border border-brand p-3">
+        <label htmlFor={`note-${note.id}`} className="sr-only">{t('coachSpace.notes.edit')}</label>
+        <textarea id={`note-${note.id}`} value={editing} onChange={(e) => setEditing(e.target.value)} maxLength={2000} rows={3}
+          className="w-full rounded-xl border border-line bg-card p-3 outline-none focus:border-brand" />
+        <div className="mt-2 flex gap-2">
+          <Button size="sm" disabled={update.isPending || !editing.trim()} onClick={() => update.mutate({ id: note.id, text: editing.trim() }, { onSuccess: () => setEditing(null) })}>
+            {t('common.save')}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>{t('coachSpace.notes.cancel')}</Button>
+        </div>
+        <FormError message={update.error ? errorMessage(update.error) : null} />
+      </li>
+    )
+  }
   return (
     <li className={`rounded-xl border p-3 ${note.visible_to_client ? 'border-brand/40 bg-brand-soft/40' : 'border-line bg-card'}`}>
       <p className={`mb-1 text-xs font-semibold uppercase tracking-wide ${note.visible_to_client ? 'text-brand-dark' : 'text-muted'}`}>
@@ -293,6 +339,7 @@ function NoteItem({ note, connectionId, readOnly }: { note: CoachNote; connectio
       <p className="whitespace-pre-wrap break-words text-sm">{note.text}</p>
       {!readOnly && (
         <div className="mt-2 flex flex-wrap gap-1">
+          <Button size="sm" variant="ghost" onClick={() => { update.reset(); setEditing(note.text) }}>{t('coachSpace.notes.edit')}</Button>
           <Button size="sm" variant="ghost" disabled={update.isPending} onClick={() => {
             if (note.visible_to_client || window.confirm(t('coachSpace.notes.shareConfirm'))) {
               update.mutate({ id: note.id, visible_to_client: !note.visible_to_client })

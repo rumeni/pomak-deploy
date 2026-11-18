@@ -9,6 +9,8 @@ export interface Connection {
   client: { id: string; name: string }
   share_measurements: boolean
   share_nutrition: boolean
+  // Older servers did not send it; treat missing as not shared.
+  share_readiness?: boolean
   connected_at: string
   // Older servers did not send these; treat missing as an active collaboration.
   status?: 'active' | 'paused' | 'ended'
@@ -20,6 +22,13 @@ export interface ClientRow extends Connection {
   last_workout_at: string | null
   workouts_7d: number
   open_tasks: number
+}
+
+/** What the client lets the coach see beyond workouts; each is its own revocable consent. */
+export interface Sharing {
+  share_measurements: boolean
+  share_nutrition: boolean
+  share_readiness: boolean
 }
 
 export interface CoachInvitation {
@@ -193,7 +202,7 @@ export function useConnectCoach() {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async (data: { code: string; share_measurements: boolean; share_nutrition: boolean }) =>
+    mutationFn: async (data: { code: string } & Sharing) =>
       (await api.post<Connection>('/coach/connect/', data)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: DASHBOARD }),
   })
@@ -203,7 +212,7 @@ export function useUpdateCoachSharing() {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async (data: { share_measurements: boolean; share_nutrition: boolean }) =>
+    mutationFn: async (data: Sharing) =>
       (await api.patch<Connection>('/coach/connection/', data)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: DASHBOARD }),
   })

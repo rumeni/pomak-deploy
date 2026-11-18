@@ -11,7 +11,7 @@ import { CoachCardView } from './CoachCardView'
 import { CoachMessages } from './CoachMessages'
 import {
   useCoachDashboard, useConnectCoach, useDisconnectCoach, useInvitePreview, useUpdateCoachSharing,
-  type CoachAssignment, type CoachCard, type CoachNote, type Connection,
+  type CoachAssignment, type CoachCard, type CoachNote, type Connection, type Sharing,
 } from './api'
 import { normalizeInviteCode } from './workspace'
 
@@ -41,10 +41,7 @@ export function CoachPage() {
   )
 }
 
-function SharingOptions({ values, onChange }: {
-  values: { share_measurements: boolean; share_nutrition: boolean }
-  onChange: (values: { share_measurements: boolean; share_nutrition: boolean }) => void
-}) {
+function SharingOptions({ values, onChange }: { values: Sharing; onChange: (values: Sharing) => void }) {
   const { t } = useTranslation()
   return (
     <fieldset className="flex flex-col gap-3 rounded-xl border border-line p-3">
@@ -56,6 +53,10 @@ function SharingOptions({ values, onChange }: {
       <label className="flex items-center gap-3 text-sm">
         <input type="checkbox" checked={values.share_nutrition} onChange={(e) => onChange({ ...values, share_nutrition: e.target.checked })} className="size-5 accent-brand" />
         {t('coach.shareNutrition')}
+      </label>
+      <label className="flex items-center gap-3 text-sm">
+        <input type="checkbox" checked={values.share_readiness} onChange={(e) => onChange({ ...values, share_readiness: e.target.checked })} className="size-5 accent-brand" />
+        {t('coach.shareReadiness')}
       </label>
       <p className="text-xs text-muted">{t('coach.shareTrainingNotice')}</p>
     </fieldset>
@@ -71,7 +72,7 @@ function ConnectFlow() {
   const [checking, setChecking] = useState<string | null>(fromLink)
   const preview = useInvitePreview(checking)
   const connect = useConnectCoach()
-  const [sharing, setSharing] = useState({ share_measurements: false, share_nutrition: false })
+  const [sharing, setSharing] = useState<Sharing>({ share_measurements: false, share_nutrition: false, share_readiness: false })
 
   const onCheck = (e: FormEvent) => {
     e.preventDefault()
@@ -150,7 +151,7 @@ function Collaboration({ connection, coach, notes, assignments }: {
       <CoachMessages key={connection.id} selfId={connection.client.id} />
       <Card title={t('coach.sharingTitle')}>
         <ConnectedSharingSettings
-          key={`${connection.id}:${connection.share_measurements}:${connection.share_nutrition}`}
+          key={`${connection.id}:${connection.share_measurements}:${connection.share_nutrition}:${connection.share_readiness}`}
           connection={connection}
         />
         <p className="mt-2 text-xs text-muted">{t('coach.revokeAnytime')}</p>
@@ -190,9 +191,10 @@ function PastCollaborations({ rows }: { rows: Connection[] }) {
 function ConnectedSharingSettings({ connection }: { connection: Connection }) {
   const { t } = useTranslation()
   const updateSharing = useUpdateCoachSharing()
-  const [sharing, setSharing] = useState({
+  const [sharing, setSharing] = useState<Sharing>({
     share_measurements: connection.share_measurements,
     share_nutrition: connection.share_nutrition,
+    share_readiness: connection.share_readiness ?? false,
   })
   return (
     <>

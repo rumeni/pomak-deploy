@@ -44,7 +44,8 @@ def collect(user) -> dict:
         'coaching': {
             'connections': [
                 {'coach': c.coach.profile.display_name or c.coach.email.split('@')[0], 'client': c.client.profile.display_name or c.client.email.split('@')[0],
-                 'share_measurements': c.share_measurements, 'share_nutrition': c.share_nutrition, 'connected_at': c.created_at,
+                 'share_measurements': c.share_measurements, 'share_nutrition': c.share_nutrition,
+                 'share_readiness': c.share_readiness, 'connected_at': c.created_at,
                  'ended_at': c.ended_at}
                 for c in connections
             ],

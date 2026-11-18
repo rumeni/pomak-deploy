@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from coaching.models import CoachConnection, CoachNote, CoachTask
+from coaching.tasks import MAX_WORKOUTS_PER_SYNC
 from training.models import Exercise, RoutineSet, SessionExercise, SetLog, WorkoutSession
 
 
@@ -32,8 +33,10 @@ class WorkspaceTestCase(APITestCase):
     def as_user(self, user):
         self.client.force_authenticate(user=user)
 
-    def connect(self, athlete=None, coach=None, *, days_ago=0):
-        connection = CoachConnection.objects.create(coach=coach or self.coach, client=athlete or self.athlete)
+    def connect(self, athlete=None, coach=None, *, days_ago=0, readiness=False):
+        connection = CoachConnection.objects.create(
+            coach=coach or self.coach, client=athlete or self.athlete, share_readiness=readiness,
+        )
         if days_ago:
             moment = timezone.now() - timedelta(days=days_ago)
             CoachConnection.objects.filter(pk=connection.pk).update(created_at=moment, active_since=moment)
@@ -125,7 +128,7 @@ class TaskTests(WorkspaceTestCase):
         task_id = first[0]['id']
         self.assertEqual(self.client.patch(f'/api/coach/tasks/{task_id}/', {'action': 'done'}, format='json').data['state'], 'done')
         # Closed stays closed: the same workout is never raised again, even after the look-back.
-        CoachConnection.objects.update(tasks_checked_at=None)
+        CoachConnection.objects.update(tasks_checked_at=None, tasks_checked_id=None)
         self.assertEqual([t['state'] for t in self.tasks()], ['done'])
         self.assertEqual(self.client.patch(f'/api/coach/tasks/{task_id}/', {'action': 'reopen'}, format='json').data['state'], 'open')
         snoozed = self.client.patch(f'/api/coach/tasks/{task_id}/', {'action': 'snooze', 'days': 3}, format='json')
@@ -145,7 +148,7 @@ class TaskTests(WorkspaceTestCase):
         self.assertEqual([t['data']['workout_id'] for t in self.tasks()], [str(late.pk)])
 
     def test_low_readiness_lists_the_answers_and_good_readiness_does_not(self):
-        self.connect(days_ago=1)
+        self.connect(days_ago=1, readiness=True)
         self.workout(hours_ago=3, sleep_hours=8, motivation=5, stress=1)
         low = self.workout(hours_ago=1, sleep_hours=4, stress=5, soreness_lower=5, motivation=2)
         tasks = [t for t in self.tasks() if t['kind'] == 'low_readiness']
@@ -246,3 +249,109 @@ class NotesAndArchiveTests(WorkspaceTestCase):
         CoachConnection.objects.update(ended_at=timezone.now())
         CoachConnection.objects.create(coach=self.other_coach, client=self.athlete)
         self.assertEqual(CoachNote.objects.count(), 0)
+
+
+class TaskSyncCursorTests(WorkspaceTestCase):
+    def test_many_workouts_stored_in_the_same_instant_are_all_handled(self):
+        connection = self.connect(days_ago=2)
+        count = MAX_WORKOUTS_PER_SYNC + 5
+        sessions = [self.workout(hours_ago=1) for _ in range(count)]
+        same = timezone.now()
+        WorkoutSession.objects.filter(pk__in=[x.pk for x in sessions]).update(created_at=same)
+        self.tasks()
+        self.assertEqual(CoachTask.objects.filter(kind='workout_review').count(), MAX_WORKOUTS_PER_SYNC)
+        self.tasks()  # the cursor moved on within the same instant (by ID), it did not stall
+        self.assertEqual(CoachTask.objects.filter(kind='workout_review').count(), count)
+        connection.refresh_from_db()
+        self.assertEqual(connection.tasks_checked_at, same)
+
+    def test_a_workout_committed_behind_the_cursor_is_still_picked_up(self):
+        connection = self.connect(days_ago=2)
+        self.workout()
+        self.tasks()
+        connection.refresh_from_db()
+        # Stored (committed) later, but with an insert time just behind the cursor.
+        late = self.workout(hours_ago=0)
+        WorkoutSession.objects.filter(pk=late.pk).update(created_at=connection.tasks_checked_at - timedelta(minutes=2))
+        self.assertIn(str(late.pk), [t['data']['workout_id'] for t in self.tasks()])
+
+
+class ReadinessConsentTests(WorkspaceTestCase):
+    def poor(self):
+        return self.workout(sleep_hours=4, stress=5, soreness_lower=5, motivation=1)
+
+    def test_readiness_is_not_shared_without_its_own_consent(self):
+        self.connect(days_ago=1)
+        self.poor()
+        self.assertNotIn('low_readiness', [t['kind'] for t in self.tasks()])
+        detail = self.client.get(f'/api/coach/clients/{self.athlete.pk}/').data
+        self.assertIsNone(detail['recent_workouts'][0]['readiness'])
+        self.assertFalse(detail['connection']['share_readiness'])
+
+    def test_revoking_readiness_consent_removes_the_stored_answers(self):
+        self.connect(days_ago=1, readiness=True)
+        self.poor()
+        self.assertIn('low_readiness', [t['kind'] for t in self.tasks()])
+        self.assertIsNotNone(self.client.get(f'/api/coach/clients/{self.athlete.pk}/').data['recent_workouts'][0]['readiness'])
+        self.as_user(self.athlete)
+        self.assertEqual(self.client.patch('/api/coach/connection/', {'share_readiness': False}, format='json').status_code, 200)
+        self.assertFalse(CoachTask.objects.filter(kind='low_readiness').exists())
+        self.assertNotIn('low_readiness', [t['kind'] for t in self.tasks()])
+        self.assertIsNone(self.client.get(f'/api/coach/clients/{self.athlete.pk}/').data['recent_workouts'][0]['readiness'])
+
+    def test_consent_is_chosen_when_accepting_and_off_by_default(self):
+        self.as_user(self.coach)
+        code = self.client.post('/api/coach/invitations/', {}, format='json').data['code']
+        self.as_user(self.athlete)
+        accepted = self.client.post('/api/coach/connect/', {'code': code, 'share_readiness': True}, format='json')
+        self.assertTrue(accepted.data['share_readiness'])
+        self.assertFalse(CoachConnection._meta.get_field('share_readiness').default)
+
+
+class WorkoutCorrectionTests(WorkspaceTestCase):
+    def correct(self, session, **changes):
+        with self.captureOnCommitCallbacks(execute=True):
+            for key, value in changes.items():
+                setattr(session, key, value)
+            session.save()
+
+    def test_corrected_readiness_updates_or_drops_the_task_and_keeps_the_coachs_action(self):
+        self.connect(days_ago=1, readiness=True)
+        session = self.workout(sleep_hours=4, stress=5, soreness_lower=5, motivation=1)
+        tasks = {t['kind']: t for t in self.tasks()}
+        self.client.patch(f"/api/coach/tasks/{tasks['workout_review']['id']}/", {'action': 'done'}, format='json')
+        self.correct(session, name='Upper A (corrected)', sleep_hours=8, stress=1, soreness_lower=1, motivation=5)
+        kinds = {t['kind']: t for t in self.tasks()}
+        self.assertNotIn('low_readiness', kinds)  # no longer true: gone, with its old answers
+        self.assertEqual(kinds['workout_review']['state'], 'done')  # the coach's action stays
+        self.assertEqual(kinds['workout_review']['data']['workout'], 'Upper A (corrected)')
+
+    def test_corrected_record_and_deleted_workout_leave_no_stale_facts(self):
+        self.connect(days_ago=3)
+        self.workout(hours_ago=48, weight='80')
+        best = self.workout(hours_ago=1, weight='90')
+        self.assertIn('personal_record', [t['kind'] for t in self.tasks()])
+        with self.captureOnCommitCallbacks(execute=True):
+            SetLog.objects.filter(session_exercise__session=best).update(weight_kg='70')
+            best.save()
+        self.assertNotIn('personal_record', [t['kind'] for t in self.tasks()])
+        best.delete()
+        self.assertFalse(CoachTask.objects.filter(key=str(best.pk)).exists())
+
+    def test_open_tasks_are_never_crowded_out_by_done_ones(self):
+        connection = self.connect()
+        now = timezone.now()
+        CoachTask.objects.bulk_create([
+            CoachTask(connection=connection, kind='workout_review', key=f'done-{i}', event_at=now,
+                      status='done', resolved_at=now) for i in range(150)
+        ] + [CoachTask(connection=connection, kind='workout_review', key='open-1', event_at=now - timedelta(days=3))])
+        states = [t['state'] for t in self.tasks()]
+        self.assertIn('open', states)
+        self.assertLessEqual(states.count('done'), 100)
+
+    def test_ending_a_collaboration_removes_its_tasks(self):
+        self.connect(days_ago=1, readiness=True)
+        self.workout(sleep_hours=4, stress=5)
+        self.tasks()
+        self.client.delete(f'/api/coach/clients/{self.athlete.pk}/')
+        self.assertFalse(CoachTask.objects.exists())

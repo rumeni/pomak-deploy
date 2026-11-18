@@ -100,6 +100,16 @@ class Migration(migrations.Migration):
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
+            model_name='coachconnection',
+            name='tasks_checked_id',
+            field=models.UUIDField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='coachconnection',
+            name='share_readiness',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AddField(
             model_name='coachinvitation',
             name='label',
             field=models.CharField(blank=True, max_length=60),

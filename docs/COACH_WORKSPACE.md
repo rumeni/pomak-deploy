@@ -16,6 +16,12 @@ specifikacije, važi ovaj dokument. Tok saradnje (pozivnica, deljenje, prekid) i
    korisnicima bez trenera.
 5. **Spremnost:** prikazuje se procenat zajedno sa odgovorima koji su na njega uticali. Nema
    medicinskih zaključaka i nema automatske promene opterećenja.
+6. **Posebna dozvola za spremnost.** Odgovori „Kako si danas?“ (san, stres, upala, motivacija)
+   i procenat su subjektivni podaci o oporavku. Ne dele se uz istoriju treninga, već samo uz
+   zasebnu dozvolu koju klijent može da povuče u bilo kom trenutku.
+   - Podrazumevano je isključena, i za veze nastale pre ove izmene.
+   - Povlačenje dozvole briše i već nastale zadatke o niskoj spremnosti, zajedno sa sačuvanim
+     odgovorima.
 
 ## Trenerski prostor
 
@@ -94,13 +100,21 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 | Zadatak | Kada | Ključ (jednom po događaju) |
 |---|---|---|
 | Završen trening | klijent je završio trening | trening |
-| Niska spremnost | spremnost pred trening ispod 50 % | trening |
+| Niska spremnost | spremnost pred trening ispod 50 %, samo uz dozvolu za spremnost | trening |
 | Lični rekord | procenjeni 1RM bolji od svih ranijih treninga (prvi put nije rekord) | trening |
 | Nema treninga | 7 dana bez treninga (računa se od poslednjeg treninga ili od povezivanja/povratka sa pauze) | početak tog perioda |
 
 - **Kada se računaju:** pri otvaranju Pregleda ili liste klijenata. Treninzi se pronalaze po
   vremenu kada su stigli na server, pa se računa i trening zabeležen bez interneta i poslat
   kasnije.
+  - Kursor uvek ide napred (vreme, pa ID), pa ni mnogo treninga sačuvanih u istom trenutku ne
+    može da ga zaglavi.
+  - Odvojen, ograničen prolaz preko poslednjih 10 minuta hvata trening čija je transakcija
+    završena posle neke kasnije.
+- **Ispravka i brisanje treninga:** zadaci prate trening.
+  - Kad klijent ispravi trening, zadaci dobijaju nove činjenice ili nestaju ako više ne važe.
+    Trenerova radnja (završeno, odloženo) ostaje na zadatku koji i dalje važi.
+  - Obrisan trening briše i svoje zadatke.
 - **Duplikati:** sprečava ih jedinstveni ključ u bazi. Zato je provera bezbedna i kada se
   pokrene više puta istovremeno.
 - **Upozorenje „nema treninga“** se samo zatvara kada klijent ponovo trenira ili ode na pauzu.
@@ -115,7 +129,13 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Klijent:**
   - zadržava razgovor i podeljene beleške, samo za čitanje;
   - zadržava i dodeljene rutine.
-- Nove poruke i beleške se odbijaju (409).
+- Nove poruke i beleške, kao i izmena ili brisanje postojeće beleške, odbijaju se (409). Izmena
+  beleške zaključava vezu pre beleške, pa ni prekid u istom trenutku ne može da promeni
+  arhiviranu belešku.
+- Zadaci te saradnje se brišu.
+- **Ekran bivšeg trenera:** čim server odgovori da trener više nema pristup (401/403/404), podaci
+  klijenta se brišu i iz keša u aplikaciji. Ne prikazuju se ni posle povratka na taj ekran, ni
+  uz neku novu saradnju sa istim klijentom.
 - Klijent kasnije može da se poveže ponovo, i sa istim trenerom. To je nova saradnja, a stara
   arhiva ostaje odvojena.
 - U bazi važi pravilo da klijent ima najviše jednu aktivnu saradnju.
@@ -123,6 +143,9 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 ### Bez interneta
 
 - Trenerski ekrani prikazuju poslednje učitane podatke, uz traku „Nema interneta…“.
+- **Pristup koji je klijent ukinuo dok je trener bez interneta** ne može da se primeni trenutno:
+  trener do ponovnog povezivanja vidi ono što je ranije učitao. Prvi odgovor servera posle
+  povezivanja briše te podatke.
 - Akcije trenera (zadatak, beleška, pozivnica, profil, poruka) traže vezu sa serverom.
   - Bez veze odmah javljaju „Nema veze sa serverom“.
   - Ne čekaju tiho u pozadini.

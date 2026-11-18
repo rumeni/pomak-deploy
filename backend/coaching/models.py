@@ -50,14 +50,19 @@ class CoachConnection(TimeStampedModel):
     client = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='coach_connections')
     share_measurements = models.BooleanField(default=False)
     share_nutrition = models.BooleanField(default=False)
+    # The pre-workout check-in (sleep, stress, soreness...) and its score: subjective recovery
+    # data, shared only with its own consent, never implied by sharing workouts.
+    share_readiness = models.BooleanField(default=False)
     # Coach-side workflow state: a paused client (holiday, injury) raises no inactivity tasks.
     paused_at = models.DateTimeField(null=True, blank=True)
     # When the client became active (connected or resumed); inactivity counts from here at the earliest.
     active_since = models.DateTimeField(default=timezone.now)
     ended_at = models.DateTimeField(null=True, blank=True)
     ended_by = models.CharField(max_length=10, choices=EndedBy.choices, blank=True)
-    # Workouts stored on the server after this moment have not been turned into tasks yet.
+    # Forward cursor of task sync: workouts stored after (tasks_checked_at, tasks_checked_id),
+    # in that order, have not been turned into tasks yet.
     tasks_checked_at = models.DateTimeField(null=True, blank=True)
+    tasks_checked_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         constraints = [

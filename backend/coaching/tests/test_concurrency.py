@@ -5,10 +5,11 @@ import time
 
 from django.db import close_old_connections, connections, transaction
 from django.test import TransactionTestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from coaching.models import CoachAssignment, CoachConnection, CoachMessage
+from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote
 from training.models import Routine
 
 
@@ -84,3 +85,65 @@ class ConnectionTeardownConcurrencyTests(TransactionTestCase):
 
     def test_coach_disconnect_waits_for_inflight_assignment(self):
         self._check_concurrent_disconnect(client_deletes=False, write_message=False)
+
+
+class NoteEndRaceTests(TransactionTestCase):
+    """A note can never change after the collaboration ended, even if the end commits mid-request."""
+
+    def setUp(self):
+        self.coach = User.objects.create_user('coach-note-race@example.test', 'a-strong-password')
+        self.coach.profile.is_coach = True
+        self.coach.profile.save()
+        self.trainee = User.objects.create_user('trainee-note-race@example.test', 'a-strong-password')
+        self.connection = CoachConnection.objects.create(coach=self.coach, client=self.trainee)
+        self.note = CoachNote.objects.create(connection=self.connection, text='Private', visible_to_client=False)
+
+    def _race(self, method, body=None):
+        acquired, release, outcomes, problems = threading.Event(), threading.Event(), [], []
+
+        def ender():
+            close_old_connections()
+            try:
+                with transaction.atomic():
+                    row = CoachConnection.objects.select_for_update().get(pk=self.connection.pk)
+                    acquired.set()
+                    release.wait(timeout=8)
+                    row.ended_at = timezone.now()
+                    row.save(update_fields=['ended_at'])
+            except Exception as error:
+                problems.append(error)
+            finally:
+                connections.close_all()
+
+        def editor():
+            close_old_connections()
+            try:
+                api = APIClient()
+                api.force_authenticate(user=self.coach)
+                url = f'/api/coach/notes/{self.note.pk}/'
+                response = api.patch(url, body, format='json') if method == 'patch' else api.delete(url)
+                outcomes.append(response.status_code)
+            except Exception as error:
+                problems.append(error)
+            finally:
+                connections.close_all()
+
+        end_thread, edit_thread = threading.Thread(target=ender), threading.Thread(target=editor)
+        end_thread.start()
+        self.assertTrue(acquired.wait(timeout=8))
+        edit_thread.start()
+        time.sleep(0.15)  # the edit reaches the locked collaboration
+        release.set()
+        end_thread.join(timeout=12)
+        edit_thread.join(timeout=12)
+        self.assertFalse(problems, problems)
+        self.assertEqual(outcomes, [409])
+
+    def test_making_a_private_note_shared_as_the_collaboration_ends_is_refused(self):
+        self._race('patch', {'visible_to_client': True, 'text': 'Changed'})
+        note = CoachNote.objects.get(pk=self.note.pk)
+        self.assertEqual((note.text, note.visible_to_client), ('Private', False))
+
+    def test_deleting_a_note_as_the_collaboration_ends_is_refused(self):
+        self._race('delete')
+        self.assertTrue(CoachNote.objects.filter(pk=self.note.pk).exists())

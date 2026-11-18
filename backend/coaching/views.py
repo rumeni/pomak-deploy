@@ -127,6 +127,7 @@ def connection_summary(connection):
         'client': {'id': str(connection.client_id), 'name': display_name(connection.client)},
         'share_measurements': connection.share_measurements,
         'share_nutrition': connection.share_nutrition,
+        'share_readiness': connection.share_readiness,
         'connected_at': connection.created_at,
         'status': connection_status(connection),
         'ended_at': connection.ended_at,
@@ -200,6 +201,7 @@ class InviteSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=16, min_length=16)
     share_measurements = serializers.BooleanField(default=False)
     share_nutrition = serializers.BooleanField(default=False)
+    share_readiness = serializers.BooleanField(default=False)
 
     def validate_code(self, value):
         value = value.strip().upper()
@@ -215,6 +217,7 @@ class InvitationLabelSerializer(serializers.Serializer):
 class SharingSerializer(serializers.Serializer):
     share_measurements = serializers.BooleanField(required=False)
     share_nutrition = serializers.BooleanField(required=False)
+    share_readiness = serializers.BooleanField(required=False)
 
 
 class ClientStatusSerializer(serializers.Serializer):
@@ -468,6 +471,7 @@ class ConnectView(APIView):
                         coach=invite.coach, client=request.user,
                         share_measurements=serializer.validated_data['share_measurements'],
                         share_nutrition=serializer.validated_data['share_nutrition'],
+                        share_readiness=serializer.validated_data['share_readiness'],
                     )
             except IntegrityError:
                 raise ValidationError({'detail': 'You already have a coach.'}) from None
@@ -482,9 +486,8 @@ def end_connection(connection, ended_by):
     connection.ended_at = now
     connection.ended_by = ended_by
     connection.save(update_fields=['ended_at', 'ended_by', 'updated_at'])
-    connection.tasks.filter(status=CoachTask.Status.OPEN).update(
-        status=CoachTask.Status.DONE, resolved_at=now, auto_resolved=True,
-    )
+    # Tasks are about the client's current data, which the coach may no longer see.
+    connection.tasks.all().delete()
 
 
 class ConnectionView(APIView):
@@ -500,6 +503,9 @@ class ConnectionView(APIView):
             setattr(connection, key, value)
         if serializer.validated_data:
             connection.save(update_fields=[*serializer.validated_data.keys(), 'updated_at'])
+        if not connection.share_readiness:
+            # Revoked: the stored readiness answers in tasks go too, not just their display.
+            connection.tasks.filter(kind=CoachTask.Kind.LOW_READINESS).delete()
         return Response(connection_summary(connection))
 
     @transaction.atomic
@@ -530,7 +536,7 @@ class CoachClientView(APIView):
             'recent_workouts': [
                 {'id': str(x.id), 'name': x.name, 'started_at': x.started_at, 'finished_at': x.finished_at,
                  'feeling': x.feeling, 'notes': x.notes, 'edited_at': x.edited_at,
-                 'readiness': readiness_summary(x),
+                 'readiness': readiness_summary(x) if connection.share_readiness else None,
                  'exercises': [
                      {'name': item.exercise.name, 'sets': [
                          {'set_type': setlog.set_type, 'reps': setlog.reps, 'weight_kg': str(setlog.weight_kg) if setlog.weight_kg is not None else None,
@@ -758,25 +764,32 @@ class NotesView(APIView):
 
 class NoteView(APIView):
     def _note(self, request, pk):
+        """The note, locked, under a lock on its collaboration (same order as ending it), so an end
+        that commits meanwhile is seen and an archived note never changes. Call inside atomic()."""
         coach_only(request)
-        note = CoachNote.objects.select_related('connection').filter(pk=pk, connection__coach=request.user).first()
+        connection_id = CoachNote.objects.filter(pk=pk, connection__coach=request.user).values_list('connection_id', flat=True).first()
+        if connection_id is None:
+            raise NotFound()
+        connection = CoachConnection.objects.select_for_update().get(pk=connection_id)
+        if connection.ended_at is not None:
+            raise CollaborationEnded()
+        note = CoachNote.objects.select_for_update().filter(pk=pk, connection=connection).first()
         if note is None:
             raise NotFound()
-        if note.connection.ended_at is not None:
-            raise CollaborationEnded()
         return note
 
     @transaction.atomic
     def patch(self, request, pk):
         require_object_body(request)
-        note = self._note(request, pk)
         serializer = NoteUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        note = self._note(request, pk)
         for key, value in serializer.validated_data.items():
             setattr(note, key, value)
         note.save()
         return Response(note_summary(note))
 
+    @transaction.atomic
     def delete(self, request, pk):
         self._note(request, pk).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -787,7 +800,7 @@ class TasksView(APIView):
         coach_only(request)
         sync_tasks(list(active_connections().filter(coach=request.user)))
         now = timezone.now()
-        return Response([task_summary(t, now) for t in visible_tasks(request.user, now)[:300]])
+        return Response([task_summary(t, now) for t in visible_tasks(request.user, now)])
 
 
 class TaskView(APIView):

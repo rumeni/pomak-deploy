@@ -6,19 +6,26 @@ conclusions about the client.
 
 - workout_review: a finished workout (key: the workout).
 - low_readiness: the check-in before a workout scored below LOW_READINESS (key: the workout).
+  Only while the client shares readiness; revoking that consent deletes these tasks.
 - personal_record: a workout beat the client's earlier best estimated 1RM in a lift (key: the workout).
 - inactive: no workout for INACTIVE_DAYS (key: the start of that period). Closes by itself when the
   client trains again or is paused; paused clients never raise it.
 
-Workouts are found by when the SERVER stored them (created_at), since a workout logged offline
-arrives later with an older start time. A short look-back covers transactions that committed
-after a later one; the unique key keeps that from duplicating anything.
+Finding new workouts. A workout logged offline reaches the server later with an older start
+time, so workouts are taken in the order the SERVER stored them, with a forward cursor
+(created_at, id) that always moves on - many workouts stored in the same instant cannot make it
+stall. A transaction that committed after a later one can land behind the cursor; a separate,
+bounded pass over the last LOOK_BACK picks up such workouts that still have no review task.
+
+Workout tasks follow their workout: a corrected workout updates (or drops) its tasks, a deleted
+one removes them (see coaching/signals.py), so no stale facts stay in the inbox.
 """
 
 from collections import defaultdict
 from datetime import timedelta
 
-from django.db.models import Max, Q
+from django.db.models import CharField, Exists, Max, OuterRef, Q
+from django.db.models.functions import Cast
 from django.utils import timezone
 
 from training.models import RoutineSet, WorkoutSession
@@ -32,6 +39,9 @@ INACTIVE_DAYS = 7
 LOW_READINESS = 50
 LOOK_BACK = timedelta(minutes=10)
 MAX_WORKOUTS_PER_SYNC = 60
+WORKOUT_KINDS = (CoachTask.Kind.WORKOUT_REVIEW, CoachTask.Kind.LOW_READINESS, CoachTask.Kind.PERSONAL_RECORD)
+MAX_OPEN_TASKS = 300
+MAX_OTHER_TASKS = 100
 
 
 def _best_lifts(session) -> dict:
@@ -52,7 +62,10 @@ def _best_lifts(session) -> dict:
 
 
 def _records(session) -> list:
-    """Lifts where this workout beat every earlier workout of the client (a first lift is no record)."""
+    """Lifts where this workout beat every earlier workout of the client (a first lift is no record).
+
+    Judged on the current data of the workouts, so a corrected workout is judged again correctly.
+    """
     lifts = _best_lifts(session)
     if not lifts:
         return []
@@ -75,15 +88,17 @@ def _records(session) -> list:
 
 
 def _workout_tasks(connection, session) -> list:
+    """The tasks one workout should have now (unsaved)."""
     event_at = session.finished_at or session.started_at
     base = {'workout_id': str(session.id), 'workout': session.name}
     tasks = [CoachTask(connection=connection, kind=CoachTask.Kind.WORKOUT_REVIEW, key=str(session.id),
                        event_at=event_at, data=base)]
-    answers = readiness_answers(session)
-    score = readiness_score(answers)
-    if score is not None and score < LOW_READINESS:
-        tasks.append(CoachTask(connection=connection, kind=CoachTask.Kind.LOW_READINESS, key=str(session.id),
-                               event_at=session.started_at, data={**base, 'score': score, 'answers': answers}))
+    if connection.share_readiness:
+        answers = readiness_answers(session)
+        score = readiness_score(answers)
+        if score is not None and score < LOW_READINESS:
+            tasks.append(CoachTask(connection=connection, kind=CoachTask.Kind.LOW_READINESS, key=str(session.id),
+                                   event_at=session.started_at, data={**base, 'score': score, 'answers': answers}))
     records = _records(session)
     if records:
         tasks.append(CoachTask(connection=connection, kind=CoachTask.Kind.PERSONAL_RECORD, key=str(session.id),
@@ -91,24 +106,47 @@ def _workout_tasks(connection, session) -> list:
     return tasks
 
 
-def _sync_workouts(connection, now) -> None:
-    since = connection.tasks_checked_at or connection.created_at
-    sessions = list(
-        WorkoutSession.objects.filter(
-            owner_id=connection.client_id, created_at__gt=since - LOOK_BACK,
-            # Workouts finished before the collaboration are history, not tasks.
-            finished_at__gte=connection.created_at,
-        ).order_by('created_at').prefetch_related('exercises__exercise', 'exercises__sets')[:MAX_WORKOUTS_PER_SYNC]
-    )
-    if not sessions:
-        return
-    tasks = [task for session in sessions for task in _workout_tasks(connection, session)]
-    CoachTask.objects.bulk_create(tasks, ignore_conflicts=True)
-    # Only forward: a concurrent sync that got further must not be moved back.
-    checked = sessions[-1].created_at
-    CoachConnection.objects.filter(pk=connection.pk).filter(
-        Q(tasks_checked_at__isnull=True) | Q(tasks_checked_at__lt=checked),
-    ).update(tasks_checked_at=checked)
+def _eligible_workouts(connection):
+    # Workouts finished before the collaboration are history, not tasks.
+    return WorkoutSession.objects.filter(owner_id=connection.client_id, finished_at__gte=connection.created_at)
+
+
+def _with_details(queryset):
+    return queryset.prefetch_related('exercises__exercise', 'exercises__sets')
+
+
+def _sync_workouts(connection) -> None:
+    eligible = _eligible_workouts(connection)
+    at, last_id = connection.tasks_checked_at, connection.tasks_checked_id
+    ahead = eligible
+    if at is not None:
+        ahead = eligible.filter(Q(created_at__gt=at) | Q(created_at=at, id__gt=last_id) if last_id else Q(created_at__gt=at))
+    new = list(_with_details(ahead.order_by('created_at', 'id'))[:MAX_WORKOUTS_PER_SYNC])
+
+    # Late commits behind the cursor: bounded, and separate, so it never crowds out new work.
+    late = []
+    if at is not None:
+        reviewed = CoachTask.objects.filter(
+            connection=connection, kind=CoachTask.Kind.WORKOUT_REVIEW,
+            key=Cast(OuterRef('id'), output_field=CharField()),
+        )
+        late = list(_with_details(
+            eligible.filter(created_at__gte=at - LOOK_BACK, created_at__lte=at)
+            .exclude(Exists(reviewed)).order_by('created_at', 'id')
+        )[:MAX_WORKOUTS_PER_SYNC])
+
+    sessions = new + late
+    if sessions:
+        CoachTask.objects.bulk_create(
+            [task for session in sessions for task in _workout_tasks(connection, session)], ignore_conflicts=True,
+        )
+    if new:
+        # Only forward: a concurrent sync that got further must not be moved back.
+        moved_at, moved_id = new[-1].created_at, new[-1].id
+        CoachConnection.objects.filter(pk=connection.pk).filter(
+            Q(tasks_checked_at__isnull=True) | Q(tasks_checked_at__lt=moved_at)
+            | Q(tasks_checked_at=moved_at, tasks_checked_id__lt=moved_id) | Q(tasks_checked_at=moved_at, tasks_checked_id__isnull=True),
+        ).update(tasks_checked_at=moved_at, tasks_checked_id=moved_id)
 
 
 def _sync_inactivity(connection, last_workout, now) -> None:
@@ -138,16 +176,51 @@ def sync_tasks(connections) -> None:
         .values('owner_id').annotate(last=Max('started_at')).values_list('owner_id', 'last')
     )
     for connection in connections:
-        _sync_workouts(connection, now)
+        _sync_workouts(connection)
         _sync_inactivity(connection, last.get(connection.client_id), now)
 
 
-def visible_tasks(coach, now=None):
-    """The coach's tasks for active collaborations: open, snoozed, and recently done."""
+def reconcile_workout(session_id) -> None:
+    """After a client corrects a workout: its tasks get the current facts, or go if no longer true.
+
+    The coach's action (done, snoozed) stays on a task that still applies. Workouts not turned
+    into tasks yet are left to the sync.
+    """
+    session = _with_details(WorkoutSession.objects.filter(pk=session_id)).first()
+    if session is None:
+        remove_workout_tasks(session_id)
+        return
+    for connection in CoachConnection.objects.filter(client_id=session.owner_id, ended_at__isnull=True):
+        existing = {t.kind: t for t in CoachTask.objects.filter(connection=connection, key=str(session.id), kind__in=WORKOUT_KINDS)}
+        if not existing:
+            continue
+        wanted = {t.kind: t for t in _workout_tasks(connection, session)} if session.finished_at >= connection.created_at else {}
+        for kind, task in existing.items():
+            if kind in wanted:
+                task.data, task.event_at = wanted[kind].data, wanted[kind].event_at
+                task.save(update_fields=['data', 'event_at', 'updated_at'])
+            else:
+                task.delete()
+        CoachTask.objects.bulk_create([t for kind, t in wanted.items() if kind not in existing], ignore_conflicts=True)
+
+
+def remove_workout_tasks(session_id) -> None:
+    """A deleted workout leaves nothing about it in any inbox."""
+    CoachTask.objects.filter(key=str(session_id), kind__in=WORKOUT_KINDS).delete()
+
+
+def visible_tasks(coach, now=None) -> list:
+    """The coach's tasks for active collaborations: every open one first (never crowded out by
+    others), then snoozed and recently done ones."""
     now = now or timezone.now()
-    rows = CoachTask.objects.filter(
-        connection__coach=coach, connection__ended_at__isnull=True,
-    ).filter(
-        Q(status=CoachTask.Status.OPEN) | Q(resolved_at__gte=now - timedelta(days=14), auto_resolved=False),
+    rows = CoachTask.objects.filter(connection__coach=coach, connection__ended_at__isnull=True).exclude(
+        # Defence in depth: readiness tasks only while that consent is given.
+        kind=CoachTask.Kind.LOW_READINESS, connection__share_readiness=False,
     ).select_related('connection__client__profile')
-    return rows
+    is_open = Q(status=CoachTask.Status.OPEN)
+    not_snoozed = Q(snoozed_until__isnull=True) | Q(snoozed_until__lte=now)
+    return [
+        *rows.filter(is_open & not_snoozed)[:MAX_OPEN_TASKS],
+        *rows.filter(is_open, snoozed_until__gt=now)[:MAX_OTHER_TASKS],
+        *rows.filter(status=CoachTask.Status.DONE, auto_resolved=False, resolved_at__gte=now - timedelta(days=14))[:MAX_OTHER_TASKS],
+    ]
