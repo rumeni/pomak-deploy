@@ -608,3 +608,37 @@ class LegacyTransitionTests(PushTestCase):
         self.assertEqual(response.status_code, 200)  # an unknown account: nothing to do, no error
         self.assertFalse(PushRevocation.objects.exists())
         self.assertEqual(DeviceRemoveView.throttle_scope, 'push_revoke')
+
+
+class LegacyOverwriteTests(PushTestCase):
+    def test_a_late_legacy_registration_never_overwrites_a_newer_one(self):
+        token = 'https://fcm.googleapis.com/fcm/send/same-device'
+        attempt = uuid4()
+        keys = {'p256dh': push.b64url(self.ua_public), 'auth': push.b64url(self.auth_secret)}
+        self.as_user(self.ana)
+        self.client.post('/api/push/devices/', {'kind': 'web', 'token': token, 'attempt': str(attempt), **keys}, format='json')
+        before = PushDevice.objects.get()
+        # A delayed request from the old version of the app (no attempt), same token, even as
+        # another account: accepted, but it changes nothing.
+        for user in (self.ana, self.coach):
+            self.as_user(user)
+            other_keys = {'p256dh': push.b64url(keypair()[1]), 'auth': push.b64url(os.urandom(16))}
+            response = self.client.post('/api/push/devices/', {'kind': 'web', 'token': token, **other_keys}, format='json')
+            self.assertEqual(response.status_code, 201)
+        after = PushDevice.objects.get()
+        self.assertEqual((after.attempt, after.user_id, after.p256dh, after.auth, after.updated_at),
+                         (attempt, self.ana.pk, before.p256dh, before.auth, before.updated_at))
+        # The newer registration is still revocable by its attempt.
+        self.client.force_authenticate(user=None)
+        self.client.post('/api/push/devices/remove/', {'attempt': str(attempt), 'user_id': str(self.ana.pk)}, format='json')
+        self.assertFalse(PushDevice.objects.exists())
+
+    def test_a_legacy_registration_still_updates_a_legacy_row(self):
+        token = 'https://fcm.googleapis.com/fcm/send/old-only'
+        keys = {'p256dh': push.b64url(self.ua_public), 'auth': push.b64url(self.auth_secret)}
+        self.as_user(self.ana)
+        self.client.post('/api/push/devices/', {'kind': 'web', 'token': token, **keys}, format='json')
+        self.as_user(self.coach)
+        self.client.post('/api/push/devices/', {'kind': 'web', 'token': token, **keys}, format='json')
+        device = PushDevice.objects.get()
+        self.assertEqual((device.user_id, device.attempt), (self.coach.pk, None))

@@ -16,12 +16,19 @@ def _lock(attempt):
 def register(user, attempt, **fields) -> bool:
     """Register (or move) the device for this attempt; False if the attempt was already revoked
     (its sign-out or abort arrived first). `attempt` None: an older app (a legacy row)."""
+    token = fields.pop('token')
     with transaction.atomic():
         if attempt is not None:
             _lock(attempt)
             if PushRevocation.objects.filter(attempt=attempt).exists():
                 return False
-        PushDevice.objects.update_or_create(token=fields.pop('token'), defaults={'user': user, 'attempt': attempt, **fields})
+        else:
+            # A legacy registration (an older app, possibly a delayed request) never replaces one
+            # made with an attempt: that newer registration stays exactly as it is.
+            existing = PushDevice.objects.select_for_update().filter(token=token).first()
+            if existing is not None and existing.attempt is not None:
+                return True
+        PushDevice.objects.update_or_create(token=token, defaults={'user': user, 'attempt': attempt, **fields})
     return True
 
 

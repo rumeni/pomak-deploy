@@ -385,6 +385,8 @@ klijenta iz T1.
   - To uklanjanje nikad ne briše noviju registraciju sa ID-jem pokušaja, čak ni sa istim
     tokenom.
   - Starija aplikacija koja ne šalje ID pokušaja i dalje se registruje kao „legacy“.
+  - „Legacy“ registracija nikad ne prepisuje registraciju sa ID-jem pokušaja. Zakasneli zahtev
+    stare verzije za isti token se prihvata, ali ne menja ništa.
   - **Nadogradnja.** Novija aplikacija posle prijave staru registraciju odmah registruje
     ponovo, sa ID-jem pokušaja, i kad se token nije promenio.
   - **Odjava pre nadogradnje.** Imenuje stari token u (prijavljenom) zahtevu za odjavu. Na webu
