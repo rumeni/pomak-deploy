@@ -87,6 +87,9 @@ class CoachMessage(TimeStampedModel):
     # A comment on a workout is a message about it: one record, shown in the conversation and
     # with the workout. If the workout is deleted the message stays, without the link.
     workout = models.ForeignKey('training.WorkoutSession', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    # Immutable message context. Keep the original workout ID even when that workout is deleted,
+    # so a retry cannot reuse this message ID for another workout.
+    workout_context_id = models.UUIDField(null=True, blank=True)
     # A comment on a week (its Monday): seen in the conversation and on the week's review.
     week_start = models.DateField(null=True, blank=True)
 

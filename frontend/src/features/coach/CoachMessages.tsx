@@ -54,6 +54,9 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
   useLayoutEffect(() => {
     if (lastConversation.current !== conversationKey) {
       lastConversation.current = conversationKey
+      // A lost-response retry belongs to its original workout/week, never to a new conversation.
+      pendingMessage.current = null
+      setText('')
       previousCount.current = 0
       previousNewestId.current = null
       readerNearBottom.current = true
@@ -92,6 +95,8 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
     pendingMessage.current = body
     send.mutate(body, {
       onSuccess: () => {
+        // An old request may finish after navigation; don't clear the new conversation's draft.
+        if (pendingMessage.current?.id !== body.id) return
         pendingMessage.current = null
         setText((current) => current.trim() === message ? '' : current)
       },
