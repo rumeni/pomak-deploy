@@ -1,6 +1,7 @@
 """Workout review, comments on workouts, client statistics and a coach-set nutrition target (T2b)."""
 
 from datetime import timedelta
+from uuid import uuid4
 
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -114,6 +115,61 @@ class WorkoutCommentTests(ReviewTestCase):
         self.workout.delete()
         message = self.client.get('/api/coach/messages/', {'client_id': str(self.ana.pk)}).data[-1]
         self.assertEqual((message['text'], message['workout']), ('About this one', None))
+
+    def test_message_retry_cannot_switch_workouts_or_weeks(self):
+        self.as_user(self.coach)
+        other = self.session(self.ana)
+        url = '/api/coach/messages/'
+        message_id = str(uuid4())
+        original = {
+            'id': message_id, 'text': 'Same words', 'client_id': str(self.ana.pk),
+            'workout_id': str(self.workout.pk),
+        }
+        self.assertEqual(self.client.post(url, original, format='json').status_code, 201)
+        self.assertEqual(self.client.post(url, original, format='json').status_code, 200)
+        for different in (
+            {'workout_id': str(other.pk)},
+            {'workout_id': None},
+            {'workout_id': str(self.workout.pk), 'week': timezone.localdate().isoformat()},
+        ):
+            response = self.client.post(url, {**original, **different}, format='json')
+            self.assertEqual(response.status_code, 400, different)
+        self.assertEqual(CoachMessage.objects.count(), 1)
+
+        # A week is normalized to its Monday; another day of that week is the same destination.
+        monday = timezone.localdate() - timedelta(days=timezone.localdate().weekday())
+        week_id = str(uuid4())
+        weekly = {'id': week_id, 'text': 'Weekly note', 'client_id': str(self.ana.pk), 'week': monday.isoformat()}
+        self.assertEqual(self.client.post(url, weekly, format='json').status_code, 201)
+        self.assertEqual(self.client.post(url, {**weekly, 'week': (monday + timedelta(days=2)).isoformat()}, format='json').status_code, 200)
+        self.assertEqual(self.client.post(url, {**weekly, 'week': (monday - timedelta(days=7)).isoformat()}, format='json').status_code, 400)
+        self.assertEqual(self.client.post(url, {**weekly, 'week': None}, format='json').status_code, 400)
+        self.assertEqual(CoachMessage.objects.count(), 2)
+
+    def test_deleted_workout_retry_preserves_original_destination(self):
+        self.as_user(self.coach)
+        other = self.session(self.ana)
+        old_id = self.workout.pk
+        message_id = str(uuid4())
+        url = '/api/coach/messages/'
+        original = {
+            'id': message_id, 'text': 'Workout feedback', 'client_id': str(self.ana.pk),
+            'workout_id': str(old_id),
+        }
+        self.assertEqual(self.client.post(url, original, format='json').status_code, 201)
+        self.workout.delete()
+        saved = CoachMessage.objects.get(pk=message_id)
+        self.assertIsNone(saved.workout_id)
+        self.assertEqual(saved.workout_context_id, old_id)
+        # This is a real retry, despite the deleted linked workout.
+        retry = self.client.post(url, original, format='json')
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertIsNone(retry.data['workout'])
+        # Another workout with the same message ID is NOT a retry.
+        self.assertEqual(self.client.post(
+            url, {**original, 'workout_id': str(other.pk)}, format='json',
+        ).status_code, 400)
+        self.assertEqual(CoachMessage.objects.count(), 1)
 
 
 class ClientStatsTests(ReviewTestCase):
