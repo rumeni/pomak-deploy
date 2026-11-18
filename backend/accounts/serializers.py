@@ -115,7 +115,6 @@ class RegisterSerializer(serializers.Serializer):
         user.profile.language = validated_data['language']
         user.profile.save()
         if settings.ACCOUNT_EMAIL_ENABLED:
-            from django.db import transaction
             from .email_security import send_verification_email_safe
 
             user.email_verification_required = True
