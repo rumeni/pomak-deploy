@@ -1,5 +1,8 @@
 import datetime
 import uuid
+from unittest import mock
+
+from django.db import IntegrityError
 
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -70,6 +73,13 @@ class GoalTests(Base):
                 response = self.post(kind=kind, start_value=start, target_value=target)
                 self.assertEqual(response.status_code, 201, response.data)
                 self.assertTrue(Measurement.objects.filter(user=self.user, kind=kind).exists())
+
+    def test_new_goal_and_its_initial_measurement_are_atomic(self):
+        with mock.patch('progress.serializers.Measurement.objects.create', side_effect=IntegrityError('test failure')):
+            with self.assertRaises(IntegrityError):
+                self.post(kind='arm', target_value='40', start_value='36')
+        self.assertFalse(Goal.objects.filter(user=self.user, kind='arm').exists())
+        self.assertFalse(Measurement.objects.filter(user=self.user, kind='arm').exists())
 
     def test_workouts_goal_counts_this_week_and_recent_weeks(self):
         monday = TODAY() - datetime.timedelta(days=TODAY().weekday())
