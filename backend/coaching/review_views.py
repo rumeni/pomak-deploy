@@ -5,6 +5,7 @@ its own consent, the nutrition target only when the client let the coach guide n
 """
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers, status
@@ -14,13 +15,13 @@ from rest_framework.views import APIView
 
 from core.views import require_object_body
 from nutrition.models import NutritionTarget
-from training.models import WorkoutSession
+from training.models import Exercise, WorkoutSession
 from training.stats import PERIODS, training_stats
 
-from .models import CoachMessage, CoachTask
+from .models import CoachMessage, CoachTask, ExerciseInstruction
 from .plan_views import active_connection_for
 from .errors import workout_not_found
-from .views import access_facts, message_summary, readiness_summary
+from .views import access_facts, instruction_summary, message_summary, readiness_summary
 
 
 def _workout(connection, workout_id):
@@ -249,4 +250,39 @@ class ClientWeekView(APIView):
             nutrition=connection.share_nutrition, readiness=connection.share_readiness, coach_connection=connection,
         )
         return Response({**review, 'access': access_facts(connection)})
+
+
+class InstructionSerializer(BoundSerializer):
+    exercise_id = serializers.UUIDField()
+    # Empty: remove the instruction.
+    text = serializers.CharField(max_length=500, allow_blank=True, trim_whitespace=True)
+
+
+class ClientInstructionsView(APIView):
+    """The coach's standing instructions for this client's exercises."""
+
+    def get(self, request, client_id):
+        connection = active_connection_for(request, client_id)
+        return Response(self.listing(connection))
+
+    @transaction.atomic
+    def put(self, request, client_id):
+        serializer = InstructionSerializer(data=require_object_body(request))
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        connection = active_connection_for(request, client_id, lock=True, expected=data['connection_id'])
+        # A library exercise, or the client's own; never another person's.
+        exercise = Exercise.objects.filter(Q(owner__isnull=True) | Q(owner_id=connection.client_id), pk=data['exercise_id']).first()
+        if exercise is None:
+            raise ValidationError({'exercise_id': _('That exercise is not available to this client.')})
+        if data['text']:
+            ExerciseInstruction.objects.update_or_create(connection=connection, exercise=exercise, defaults={'text': data['text']})
+        else:
+            ExerciseInstruction.objects.filter(connection=connection, exercise=exercise).delete()
+        return Response(self.listing(connection))
+
+    @staticmethod
+    def listing(connection):
+        rows = ExerciseInstruction.objects.filter(connection=connection).select_related('exercise')
+        return {'access': access_facts(connection), 'results': [instruction_summary(x) for x in rows]}
 

@@ -158,6 +158,11 @@ function ClientItem({ row, selected }: { row: ClientRow; selected: boolean }) {
             {row.status === 'paused' ? t('coachSpace.clients.pausedStatus') : `${lastText} · ${t('coachSpace.clients.thisWeek', { count: row.workouts_7d })}`}
           </span>
         </span>
+        {!!row.unread_messages && (
+          <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand-dark" aria-label={t('coach.unread', { count: row.unread_messages })}>
+            ✉ {row.unread_messages}
+          </span>
+        )}
         {row.open_tasks > 0 && (
           <span className="min-w-7 rounded-full bg-accent px-2 py-0.5 text-center text-xs font-bold text-white" aria-label={t('coachSpace.clients.openTasks', { count: row.open_tasks })}>
             {row.open_tasks}

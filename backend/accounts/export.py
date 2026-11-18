@@ -13,7 +13,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from nutrition.models import Food, MealEntry, NutritionDay, NutritionTarget, SavedMeal
-from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile
+from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile, ExerciseInstruction
 from progress.models import Goal, Measurement, WeeklyCheckIn
 from training.models import Exercise, Routine, SessionExercise, WorkoutSession
 
@@ -67,6 +67,10 @@ def collect(user) -> dict:
                 for m in CoachMessage.objects.filter(connection__in=connections).select_related('connection').order_by('created_at')
             ],
             'assigned_routines': list(CoachAssignment.objects.filter(connection__client=user).values('routine__name', 'created_at')),
+            # Written for the client, or by the coach.
+            'exercise_instructions': list(ExerciseInstruction.objects.filter(connection__in=connections).order_by('created_at').values(
+                'exercise__name', 'text', 'created_at', 'updated_at',
+            )),
         },
         'account': {'email': user.email, 'date_joined': user.date_joined, 'profile': {f: getattr(profile, f) for f in PROFILE_FIELDS}},
         'measurements': list(Measurement.objects.filter(user=user).order_by('measured_on').values('kind', 'value', 'measured_on', 'note')),

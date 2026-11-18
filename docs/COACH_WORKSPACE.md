@@ -299,3 +299,44 @@ klijenta iz T1.
 
 
 - Povlačenje deljenja nedeljnog osvrta uklanja njegov zadatak i povećava verziju pristupa, u istoj transakciji kao čuvanje osvrta. Zakasneli zadatak ne može se ponovo napraviti dok je osvrt privatan. Prethodno učitani osvrt i zadatak se sakrivaju kada aplikacija sazna za noviju verziju; bez veze opoziv nije trenutno vidljiv.
+
+## T3a: nepročitane poruke i uputstva za vežbe
+
+### Nepročitane poruke
+
+- **Oznaka pročitanosti.** Svaka strana saradnje ima svoju oznaku: poslednju pročitanu poruku
+  (vreme i ID). Nepročitane su poruke druge strane posle nje. Oznaka se pomera samo napred, pa
+  stariji ekran ili zakasneli zahtev ne mogu ponovo da označe poruke kao nepročitane.
+- **Kada je poruka pročitana.** Kad je ceo razgovor na ekranu i aplikacija je vidljiva.
+  Komentari na treningu ili nedelji ne pomeraju oznaku, jer ne prikazuju ceo razgovor.
+  Arhivirani razgovor može da se pročita.
+- **Gde se vidi.**
+  - broj na kartici Poruke (trener) i Trener (klijent);
+  - broj uz razgovor i uz klijenta na listi;
+  - kartica „N nepročitanih poruka“ na Pregledu, sa imenima klijenata.
+- **API.**
+  - `POST /api/coach/messages/read/ {message_id}` pomera oznaku do te poruke. Strani razgovor
+    vraća 404.
+  - `GET /api/coach/unread/` vraća ukupan broj za navigaciju, uz osvežavanje na 30 sekundi.
+  - Dashboard i lista razgovora dobijaju nova polja `unread_messages` i `unread`; stara polja
+    ostaju, pa starije Android verzije rade kao do sada.
+- **Nepročitane poruke nisu zadatak.** Broj se računa uživo i nestaje čim se razgovor pročita,
+  pa nema zadatka koji bi trebalo ručno zatvoriti.
+
+### Uputstva za vežbe
+
+- **Šta je uputstvo.** Trenerova stalna napomena za jednu vežbu jednog klijenta (tehnika, tempo,
+  na šta da pazi). Po vežbi postoji najviše jedno uputstvo; novo zamenjuje staro, a prazno ga
+  briše.
+- **Gde ga trener piše.** U pregledu treninga, uz svaku urađenu vežbu, i na listi u tabu Plan.
+  Upis nosi ID saradnje, kao i ostali upisi iz T2 (409 `collaboration_changed` za staru saradnju).
+- **Koje vežbe.** Samo vežbe iz zajedničke biblioteke ili klijentove lične vežbe, nikad tuđe.
+- **Šta klijent vidi.** Uputstvo stoji na kartici te vežbe tokom treninga („Trener: …“), i to
+  samo od trenutnog trenera. Posle prekida saradnje se ne prikazuje.
+- **Izvoz podataka.** Uputstva su u izvozu i klijenta i trenera.
+- **Bez interneta.** Uputstva se učitavaju na početku treninga i ostaju dok je aplikacija
+  otvorena. Ako se aplikacija pokrene bez interneta, trening radi normalno, samo bez uputstava.
+
+### Uvođenje na produkciju
+
+- Migracija `coaching.0005_coach_inbox_instructions`.

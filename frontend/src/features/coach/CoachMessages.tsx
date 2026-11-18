@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
@@ -7,6 +7,7 @@ import { errorMessage } from '../../lib/api'
 import { getFormatLocale } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { useCoachMessages, useSendCoachMessage } from './api'
+import { useMarkRead } from './inboxApi'
 import { mergeCoachMessagePages } from './messages'
 import { planDate } from './plans'
 import { chatScrollTop, nearChatBottom } from './chatScroll'
@@ -78,6 +79,26 @@ export function CoachMessages({ selfId, clientId, connectionId, workoutId, weekS
     previousNewestId.current = newestId
     restoreScroll.current = null
   }, [items.length, messages.data, conversationKey, newestId])
+
+  // The whole conversation is on screen (not only a workout's or a week's comments): what the
+  // other side wrote up to the newest message is read, once the app is actually visible.
+  const markRead = useMarkRead()
+  const markedId = useRef<string | null>(null)
+  const newestFromOther = items.length > 0 && items.some((m) => m.sender_id !== selfId)
+  const fullConversation = !workoutId && !weekStart
+  useEffect(() => {
+    if (!fullConversation || !newestId || !newestFromOther) return
+    const mark = () => {
+      if (document.visibilityState !== 'visible' || markedId.current === newestId) return
+      markedId.current = newestId
+      markRead.mutate(newestId)
+    }
+    mark()
+    document.addEventListener('visibilitychange', mark)
+    return () => document.removeEventListener('visibilitychange', mark)
+    // markRead is a stable mutation object; only the newest message matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newestId, fullConversation, newestFromOther])
 
   const loadOlder = () => {
     const box = listRef.current

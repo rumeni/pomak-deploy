@@ -7,6 +7,8 @@ import { formatDecimal, getFormatLocale } from '../../lib/format'
 import { useAuth } from '../../lib/auth'
 import { CoachMessages } from './CoachMessages'
 import { isAccessRevoked, isMissingResource } from './access'
+import { useClientInstructions, type ExerciseInstruction } from './inboxApi'
+import { InstructionEditor } from './Instructions'
 import { useClientGuard } from './guard'
 import { useClientWorkout, useMarkReviewed, type ClientWorkout, type ReviewSet } from './reviewApi'
 import { describePlannedSets } from './review'
@@ -23,6 +25,7 @@ export function WorkoutReviewPage() {
     key: ['coach-client-workout', id, workoutId], redact: (d) => ({ ...d, readiness: null }),
   })
   const reviewed = useMarkReviewed(id, workoutId)
+  const instructions = useClientInstructions(id)
   const back = () => navigate(`/trener/klijenti/${id}?tab=progress`)
 
   if (workout.isLoading) return <LoadingScreen />
@@ -69,7 +72,7 @@ export function WorkoutReviewPage() {
             <FormError message={reviewed.error ? errorMessage(reviewed.error) : null} />
           </div>
         </Card>
-        <PlannedVsDone workout={data} />
+        <PlannedVsDone workout={data} clientId={id} instructions={instructions.data?.results} />
         {me && (
           <CoachMessages selfId={me.id} clientId={id} workoutId={workoutId} title={t('coachSpace.review.comments')} />
         )}
@@ -89,11 +92,12 @@ function doneSet(set: ReviewSet, t: (key: string) => string): string {
 }
 
 /** Per exercise: the planned sets (from the plan the workout started with) and the sets done. */
-function PlannedVsDone({ workout }: { workout: ClientWorkout }) {
+function PlannedVsDone({ workout, clientId, instructions }: { workout: ClientWorkout; clientId: string; instructions?: ExerciseInstruction[] }) {
   const { t } = useTranslation()
   const planned = workout.plan?.exercises ?? []
   const doneIds = new Set(workout.exercises.map((e) => e.exercise_id))
   const skipped = planned.filter((p) => p.exercise?.id && !doneIds.has(p.exercise.id))
+  const current = (exerciseId: string) => instructions?.find((x) => x.exercise_id === exerciseId)?.text ?? ''
   return (
     <Card title={t('coachSpace.review.plannedVsDone')}>
       {!workout.plan && <p className="mb-2 text-sm text-muted">{t('coachSpace.review.noPlan')}</p>}
@@ -108,6 +112,12 @@ function PlannedVsDone({ workout }: { workout: ClientWorkout }) {
               )}
               <p className="text-sm">{t('coachSpace.review.done')}: {exercise.sets.map((s) => doneSet(s, t)).join(', ')}</p>
               {exercise.notes && <p className="text-xs text-muted">„{exercise.notes}“</p>}
+              {instructions && (
+                <InstructionEditor
+                  key={`${exercise.exercise_id}:${current(exercise.exercise_id)}`} clientId={clientId}
+                  connectionId={workout.access.connection_id} exerciseId={exercise.exercise_id} current={current(exercise.exercise_id)}
+                />
+              )}
             </li>
           )
         })}

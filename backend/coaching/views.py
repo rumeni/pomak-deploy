@@ -28,9 +28,11 @@ from training.readiness import readiness_answers, readiness_score
 from core.views import require_object_body
 
 from .models import (
+    ExerciseInstruction,
     CoachAssignment, CoachConnection, CoachInvitation, CoachMessage, CoachNote, CoachProfile, CoachTask,
 )
 from .plans import assignable_routine, copy_routine
+from .inbox import mark_read, unread_counts
 from .tasks import lock_active, sync_tasks, visible_tasks
 
 
@@ -341,8 +343,9 @@ def profile_response(user, profile):
     return {**data, 'name': display_name(user), 'specialty_choices': list(CoachProfile.SPECIALTIES)}
 
 
-def coach_client_rows(connections, now):
-    """Client list rows: status, last workout, workouts this week and open tasks."""
+def coach_client_rows(connections, now, unread=None):
+    """Client list rows: status, last workout, workouts this week, open tasks and unread messages."""
+    unread = unread or {}
     client_ids = [c.client_id for c in connections]
     last = dict(
         WorkoutSession.objects.filter(owner_id__in=client_ids).values('owner_id')
@@ -363,6 +366,7 @@ def coach_client_rows(connections, now):
             'last_workout_at': last.get(c.client_id),
             'workouts_7d': week.get(c.client_id, 0),
             'open_tasks': open_tasks.get(c.id, 0),
+            'unread_messages': unread.get(c.id, 0),
         }
         for c in connections
     ]
@@ -386,10 +390,13 @@ class DashboardView(APIView):
             )
             profile = CoachProfile.objects.filter(user=request.user).first()
             day_start = timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
+            unread = unread_counts(request.user)
             return Response({
                 'role': 'coach',
                 'invitations': [invitation_summary(i) for i in invitations],
-                'clients': coach_client_rows(connections, now),
+                'clients': coach_client_rows(connections, now, unread),
+                # In every conversation, archived ones included.
+                'unread_messages': sum(unread.values()),
                 'archived_clients': [connection_summary(c) for c in archived],
                 'profile_completed': bool(profile and profile.completed_at),
                 # When this list was true on the server: a collaboration that began before it and is
@@ -416,6 +423,7 @@ class DashboardView(APIView):
             ] if connection else [],
             'assignments': [assignment_summary(x) for x in assignments if x.routine.archived_at is None],
             'archived': [connection_summary(c) for c in archived],
+            'unread_messages': sum(unread_counts(request.user).values()),
         })
 
 
@@ -754,8 +762,10 @@ class ConversationsView(APIView):
             m.connection_id: m for m in CoachMessage.objects.filter(connection__in=rows)
             .order_by('connection_id', '-created_at', '-id').distinct('connection_id')
         }
+        unread = unread_counts(request.user, rows)
         result = [
-            {**connection_summary(c), 'last_message': message_summary(last[c.id]) if c.id in last else None}
+            {**connection_summary(c), 'last_message': message_summary(last[c.id]) if c.id in last else None,
+             'unread': unread.get(c.id, 0)}
             for c in rows
         ]
 
@@ -874,3 +884,50 @@ class TaskView(APIView):
         task.auto_resolved = False
         task.save(update_fields=['status', 'resolved_at', 'auto_resolved', 'snoozed_until', 'updated_at'])
         return Response(task_summary(task, now))
+
+
+class MessageReadSerializer(serializers.Serializer):
+    message_id = serializers.UUIDField()
+
+
+class MessagesReadView(APIView):
+    """The user has seen the conversation up to this message (any of his, active or archived)."""
+
+    def post(self, request):
+        serializer = MessageReadSerializer(data=require_object_body(request))
+        serializer.is_valid(raise_exception=True)
+        message = CoachMessage.objects.filter(
+            Q(connection__coach=request.user) | Q(connection__client=request.user),
+            pk=serializer.validated_data['message_id'],
+        ).first()
+        if message is None:
+            raise NotFound()
+        return Response({'connection_id': str(message.connection_id), 'unread': mark_read(request.user, message)})
+
+
+class UnreadView(APIView):
+    """Unread messages in all of the user's conversations: a light poll for the navigation badge."""
+
+    def get(self, request):
+        counts = unread_counts(request.user)
+        return Response({'total': sum(counts.values()), 'by_connection': {str(k): v for k, v in counts.items()}})
+
+
+def instruction_summary(item):
+    return {
+        'exercise_id': str(item.exercise_id), 'exercise_name': item.exercise.name,
+        'text': item.text, 'updated_at': item.updated_at,
+    }
+
+
+class MyInstructionsView(APIView):
+    """The client's instructions from the coach he has now (none after the collaboration ends)."""
+
+    def get(self, request):
+        if request.user.profile.is_coach:
+            return Response([])
+        rows = ExerciseInstruction.objects.filter(
+            connection__client=request.user, connection__ended_at__isnull=True,
+        ).select_related('exercise')
+        return Response([instruction_summary(x) for x in rows])
+

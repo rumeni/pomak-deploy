@@ -225,4 +225,5 @@ SR = {
     'Change the plan': 'Izmena plana',
     'That workout no longer exists.': 'Taj trening više ne postoji.',
     'The collaboration changed. Reload and try again.': 'Saradnja se promenila. Osveži i pokušaj ponovo.',
+    'That exercise is not available to this client.': 'Ta vežba nije dostupna ovom klijentu.',
 }

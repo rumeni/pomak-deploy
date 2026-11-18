@@ -836,3 +836,6 @@ msgstr "Taj trening više ne postoji."
 
 msgid "The collaboration changed. Reload and try again."
 msgstr "Saradnja se promenila. Osveži i pokušaj ponovo."
+
+msgid "That exercise is not available to this client."
+msgstr "Ta vežba nije dostupna ovom klijentu."

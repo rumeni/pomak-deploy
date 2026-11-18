@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { NavLink, useLocation } from 'react-router-dom'
 
+import { useUnreadTotal } from '../features/coach/inboxApi'
 import { isCoachSpacePath } from '../features/coach/workspace'
 import { useAuth } from '../lib/auth'
 
@@ -35,7 +36,11 @@ function useTabs(): { tabs: Tab[]; coachSpace: boolean } {
 /** Same destinations: mobile floating dock / desktop sidebar. Also used by Capacitor Android. */
 export function TabBar() {
   const { t } = useTranslation()
+  const { me } = useAuth()
   const { tabs, coachSpace } = useTabs()
+  const unread = useUnreadTotal(!!me).data?.total ?? 0
+  // Where conversations live: the coach space's messages, or the client's coach tab.
+  const inboxTab = coachSpace ? '/trener/poruke' : me?.profile.is_coach ? null : '/trener'
   return (
     <nav className="app-nav" aria-label={t('common.appName')}>
       <div className="app-nav-brand" aria-hidden>
@@ -54,6 +59,9 @@ export function TabBar() {
                 <path d={tab.icon} />
               </svg>
               <span>{t(tab.label)}</span>
+              {tab.to === inboxTab && unread > 0 && (
+                <span className="app-nav-badge" aria-label={t('coach.unread', { count: unread })}>{unread > 99 ? '99+' : unread}</span>
+              )}
             </NavLink>
           </li>
         ))}

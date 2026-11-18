@@ -26,6 +26,7 @@ export interface ClientRow extends Connection {
   last_workout_at: string | null
   workouts_7d: number
   open_tasks: number
+  unread_messages?: number
 }
 
 /** What the client lets the coach see beyond workouts; each is its own revocable consent. */
@@ -84,6 +85,7 @@ export interface CoachNote {
 
 export interface Conversation extends Connection {
   last_message: CoachMessage | null
+  unread?: number
 }
 
 export interface CoachAssignment {
@@ -102,6 +104,7 @@ export type CoachDashboard =
     profile_completed?: boolean
     workouts_today?: number
     server_time?: string
+    unread_messages?: number
   }
   | {
     role: 'client'
@@ -110,6 +113,7 @@ export type CoachDashboard =
     shared_notes?: CoachNote[]
     assignments: CoachAssignment[]
     archived?: Connection[]
+    unread_messages?: number
   }
 
 export interface CoachClientDetails {

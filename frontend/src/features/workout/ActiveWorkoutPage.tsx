@@ -37,6 +37,8 @@ import {
 import { loadPrevious } from './previous'
 import { cancelRestEnd, restEndedFeedback, restNotificationAction, scheduleRestEnd } from './restNotification'
 import { usePersistentWorkout } from './store'
+import { useMyInstructions } from '../coach/inboxApi'
+import { useAuth } from '../../lib/auth'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 import { ReadinessRow, ReadinessStep } from './ReadinessCard'
 import { formatRpe, parseRpe } from './rpe'
@@ -309,6 +311,9 @@ function WorkoutExerciseCard({
     if (window.confirm(question)) update((w) => removeExercise(w, item.key))
   }
 
+  const { me } = useAuth()
+  const instruction = useMyInstructions(!!me && !me.profile.is_coach).data?.get(exercise.id)
+
   const planText = plan && [
     plan.warmups ? `${plan.warmups} ${warmup}` : null,
     ...plan.groups.map((g) =>
@@ -337,6 +342,12 @@ function WorkoutExerciseCard({
           </svg>
         </button>
       </div>
+
+      {instruction && (
+        <p className="mt-2 whitespace-pre-wrap rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand-dark">
+          <span className="font-semibold">{t('workout.coachInstruction')}:</span> {instruction}
+        </p>
+      )}
 
       {(planText || rpeDriven) && (
         <div className="mt-2 flex flex-col gap-0.5 rounded-xl bg-surface px-3 py-2 text-xs">

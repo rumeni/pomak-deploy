@@ -69,6 +69,12 @@ class CoachConnection(TimeStampedModel):
     # in that order, have not been turned into tasks yet.
     tasks_checked_at = models.DateTimeField(null=True, blank=True)
     tasks_checked_id = models.UUIDField(null=True, blank=True)
+    # Read cursors, one per side: the other side's messages after (read_at, read_id), in message
+    # order, are unread. They only move forward.
+    coach_read_at = models.DateTimeField(null=True, blank=True)
+    coach_read_id = models.UUIDField(null=True, blank=True)
+    client_read_at = models.DateTimeField(null=True, blank=True)
+    client_read_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -96,6 +102,19 @@ class CoachMessage(TimeStampedModel):
     class Meta:
         ordering = ['created_at', 'id']
         indexes = [models.Index(fields=['connection', '-created_at'], name='coach_msg_recent_idx')]
+
+
+class ExerciseInstruction(TimeStampedModel):
+    """The coach's standing instruction for one exercise of one client (technique, tempo, cues),
+    shown to the client on that exercise during a workout while the collaboration is active."""
+
+    connection = models.ForeignKey(CoachConnection, on_delete=models.CASCADE, related_name='instructions')
+    exercise = models.ForeignKey('training.Exercise', on_delete=models.CASCADE, related_name='+')
+    text = models.CharField(max_length=500)
+
+    class Meta:
+        ordering = ['-updated_at', 'id']
+        constraints = [models.UniqueConstraint(fields=['connection', 'exercise'], name='coach_one_instruction_per_exercise')]
 
 
 class CoachAssignment(TimeStampedModel):
