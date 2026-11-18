@@ -8,7 +8,7 @@ from uuid import uuid4
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from PIL import Image
-from rest_framework.test import APITestCase
+from rest_framework.test import APITestCase, APITransactionTestCase
 
 from accounts.models import User
 from coaching.media import delete_orphan_images
@@ -168,4 +168,49 @@ class PictureRaceTests(MediaTestCase):
         with mock.patch.object(views, 'MAX_DAILY_IMAGE_BYTES', 1):
             self.assertEqual(self.upload(self.ana).status_code, 400)
         self.assertFalse(MessageImage.objects.exists())
+
+
+class ParallelQuotaTests(APITransactionTestCase):
+    """Two uploads of one person at the same moment: the daily quota still holds."""
+
+    def test_parallel_uploads_cannot_both_pass_the_daily_limit(self):
+        import threading
+
+        from django.db import connections
+        from rest_framework.test import APIClient
+
+        from coaching import views
+
+        coach = User.objects.create_user('pq-coach@example.test', 'a-strong-secret')
+        coach.profile.is_coach = True
+        coach.profile.save()
+        ana = User.objects.create_user('pq-ana@example.test', 'a-strong-secret')
+        CoachConnection.objects.create(coach=coach, client=ana)
+        files = [picture(size=(400, 300)).read() for _ in range(2)]
+        both_decoded = threading.Barrier(2, timeout=20)
+        real = views.process_image
+        results = []
+
+        def decode_then_wait(upload, side):
+            out = real(upload, side)
+            both_decoded.wait()  # both requests reach the quota check together
+            return out
+
+        def upload(raw):
+            try:
+                client = APIClient()
+                client.force_authenticate(user=ana)
+                file = SimpleUploadedFile('p.jpg', raw, content_type='image/jpeg')
+                results.append(client.post('/api/coach/images/', {'file': file}, format='multipart').status_code)
+            finally:
+                connections.close_all()
+
+        with mock.patch.object(views, 'MAX_DAILY_IMAGES', 1), mock.patch('coaching.views.process_image', decode_then_wait):
+            threads = [threading.Thread(target=upload, args=(raw,)) for raw in files]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(30)
+        self.assertEqual(sorted(results), [201, 400])
+        self.assertEqual(MessageImage.objects.count(), 1)
 

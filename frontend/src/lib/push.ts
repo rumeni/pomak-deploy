@@ -16,7 +16,7 @@ import { Capacitor } from '@capacitor/core'
 
 import { api, scopeIsCurrent, type AuthScope, type ScopedRequestConfig } from './api'
 import { getCurrentUserId } from './currentUser'
-import { pendingPushRemoval, setPendingPushRemoval } from './pushPending'
+import { addPushRemoval, flushPushRemovals, pendingPushRemoval, recoverPushRemovals, settlePushRegistration } from './pushPending'
 import { tokens } from './tokens'
 
 const STORAGE = 'pomak.push.device'
@@ -137,10 +137,23 @@ async function nativeToken(check: () => void): Promise<string | null> {
 
 async function register(scope: AuthScope, body: Record<string, unknown>, token: string, check: () => void) {
   const config: ScopedRequestConfig = { __pomakScope: scope }
-  await api.post('/push/devices/', body, config)
-  check() // signed out while the request was on its way: the sign-out removal covers it
+  const item = { token, ownerId: scope.ownerId }
+  // Until the request is answered it may still land on the server: remembered "in flight", so a
+  // sign-out meanwhile undoes it afterwards instead of racing it.
+  addPushRemoval({ ...item, inflight: true })
+  try {
+    await api.post('/push/devices/', body, config)
+    check()
+  } catch (error) {
+    // Signed out or switched account meanwhile, or an unknown outcome: remove it as soon as
+    // possible (as that account, with the device's own token).
+    settlePushRegistration(item, true)
+    void flushPushRemovals()
+    throw error
+  }
   const previous = registration()
   write(STORAGE, JSON.stringify({ ownerId: scope.ownerId, token } satisfies Registration))
+  settlePushRegistration(item, false)
   // A rotated token: the old one must not keep a registration.
   if (previous && previous.ownerId === scope.ownerId && previous.token !== token) {
     await api.post('/push/devices/remove/', { token: previous.token }, config).catch(() => undefined)
@@ -222,9 +235,20 @@ export function pushSignOut(): string | null {
   epoch += 1
   const mine = registration()
   write(STORAGE, null)
-  if (mine) setPendingPushRemoval(mine.token)
+  if (mine) addPushRemoval({ token: mine.token, ownerId: mine.ownerId })
   void serial(unsubscribeLocally)
+  // Also without a session or network: retried at start-up and when the device is online again.
+  void flushPushRemovals()
   return mine?.token ?? pendingPushRemoval()
+}
+
+/** At start-up: finish removals left by an offline sign-out or a closed app, and retry online. */
+export function startPushRecovery() {
+  recoverPushRemovals(registration())
+  void flushPushRemovals()
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('online', () => void flushPushRemovals())
+  }
 }
 
 /**

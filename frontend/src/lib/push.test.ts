@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ userId: 'user-a' as string | null, current: true }))
-const post = vi.hoisted(() => vi.fn(async () => ({ data: {} })))
+const post = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ data: {} })))
+const rawPost = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ data: {} })))
 
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false } }))
-vi.mock('./api', () => ({ api: { post }, scopeIsCurrent: () => state.current }))
+vi.mock('./api', () => ({ api: { post, defaults: { baseURL: '/api' } }, scopeIsCurrent: () => state.current }))
+vi.mock('axios', () => ({ default: { post: rawPost, isAxiosError: (e: unknown) => !!(e as { isAxiosError?: boolean })?.isAxiosError } }))
 vi.mock('./currentUser', () => ({ getCurrentUserId: () => state.userId }))
 vi.mock('./tokens', () => ({ tokens: { session: () => ({ id: 's1' }) } }))
 
 import { applicationServerKey, enablePush, PushAborted, pushSignOut, pushStatus } from './push'
-import { pendingPushRemoval } from './pushPending'
+import { flushPushRemovals, pendingPushRemoval, pushRemovals } from './pushPending'
 
 const store = new Map<string, string>()
 const subscription = {
@@ -21,7 +23,10 @@ let permission: ((value: NotificationPermission) => void) | null = null
 
 beforeEach(() => {
   store.clear()
-  post.mockClear()
+  post.mockReset()
+  post.mockImplementation(async () => ({ data: {} }))
+  rawPost.mockReset()
+  rawPost.mockImplementation(async () => ({ data: {} }))
   permission = null
   state.userId = 'user-a'
   state.current = true
@@ -74,5 +79,39 @@ describe('push', () => {
     expect(pushSignOut()).toBe(subscription.endpoint)
     expect(pendingPushRemoval()).toBe(subscription.endpoint)
     expect(await pushStatus(config, 'user-a')).toBe('off')
+  })
+
+  it('signing out while the first registration is on its way removes it once it landed', async () => {
+    let answer: (value: { data: object }) => void = () => undefined
+    post.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
+    const enabling = enablePush(config)
+    await vi.waitFor(() => expect(permission).not.toBeNull())
+    permission!('granted')
+    await vi.waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    pushSignOut()
+    state.userId = 'user-b'
+    await Promise.resolve()
+    // Not before the registration is answered: a removal must never overtake it.
+    expect(rawPost).not.toHaveBeenCalled()
+    answer({ data: {} })
+    await expect(enabling).rejects.toBeInstanceOf(PushAborted)
+    await vi.waitFor(() => expect(rawPost).toHaveBeenCalledWith(
+      '/api/push/devices/remove/', { token: subscription.endpoint, user_id: 'user-a' }, expect.anything(),
+    ))
+    await vi.waitFor(() => expect(pushRemovals()).toEqual([]))
+    expect(await pushStatus(config, 'user-b')).toBe('off')
+  })
+
+  it('a removal that failed offline is kept and sent again later', async () => {
+    const enabling = enablePush(config)
+    await vi.waitFor(() => expect(permission).not.toBeNull())
+    permission!('granted')
+    await enabling
+    rawPost.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { isAxiosError: true }))
+    pushSignOut()
+    await vi.waitFor(() => expect(rawPost).toHaveBeenCalledTimes(1))
+    await flushPushRemovals()
+    expect(rawPost).toHaveBeenCalledTimes(2)
+    expect(pushRemovals()).toEqual([])
   })
 })

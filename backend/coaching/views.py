@@ -11,6 +11,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
+from django.db import connection as connection_db
 from django.http import HttpResponse
 from django.db.models import Count, Max, Q, Sum
 from django.utils import timezone
@@ -987,6 +988,13 @@ class MyInstructionsView(APIView):
 IMAGE_HEADERS = {'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
                  'Content-Security-Policy': "default-src 'none'", 'Cross-Origin-Resource-Policy': 'same-site'}
 MAX_PENDING_IMAGES = 20
+UPLOAD_LOCK = 7301  # advisory lock class: picture uploads of one person
+
+
+def user_lock_key(user_id):
+    """A 32-bit key for the user's advisory lock (collisions only make two people wait)."""
+    value = user_id.int & 0xFFFFFFFF
+    return value - (1 << 32) if value >= (1 << 31) else value
 # Per person and day: protects the database (pictures live there) and the decoding work.
 MAX_DAILY_IMAGES = 60
 MAX_DAILY_IMAGE_BYTES = 20 * 1024 * 1024
@@ -1012,6 +1020,10 @@ class MessageImagesView(APIView):
         # The slow part (decoding) runs before taking any lock.
         data, width, height = process_image(request.FILES.get('file'), MESSAGE_SIDE)
         with transaction.atomic():
+            # One upload of this person at a time (before the collaboration lock, always in this
+            # order): parallel uploads cannot all pass the daily quota.
+            with connection_db.cursor() as cursor:
+                cursor.execute('SELECT pg_advisory_xact_lock(%s, %s)', [UPLOAD_LOCK, user_lock_key(request.user.pk)])
             # Re-checked under the collaboration lock: an end that committed meanwhile wins.
             connection = CoachConnection.objects.select_for_update().filter(pk=relation.pk).first()
             if connection is None or connection.ended_at is not None:

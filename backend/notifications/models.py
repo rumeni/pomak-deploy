@@ -34,6 +34,8 @@ class PushMessage(TimeStampedModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
     payload = models.JSONField()
     attempts = models.PositiveSmallIntegerField(default=0)
+    # On a retry: only the devices that have not got it yet (null: all of the user's devices).
+    devices = models.JSONField(null=True, blank=True)
     # A worker is delivering it until then (a crashed worker's claim simply expires).
     claimed_until = models.DateTimeField(null=True, blank=True)
 

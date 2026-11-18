@@ -1,6 +1,7 @@
 """Push devices, Web Push encryption and VAPID, FCM, and what a notification may contain (T3b)."""
 
 import json
+import time
 from datetime import timedelta
 import os
 from uuid import uuid4
@@ -13,7 +14,8 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from django.test import override_settings
-from rest_framework.test import APITestCase
+from rest_framework.test import APITestCase, APITransactionTestCase
+from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import User
@@ -250,44 +252,6 @@ class OutboxTests(PushTestCase):
                 pass
         self.assertFalse(PushMessage.objects.exists())
 
-    @mock.patch.dict(os.environ, VAPID_ENV)
-    def test_many_notifications_one_drain_slow_providers_never_fail_the_request(self):
-        from coaching.models import ProgramTemplate, ProgramTemplateDay
-        from training.models import Exercise, Routine, RoutineExercise, RoutineSet
-
-        clients = [self.ana] + [self.user(f'push-c{i}@example.test') for i in range(3)]
-        for c in clients[1:]:
-            CoachConnection.objects.create(coach=self.coach, client=c)
-        for i, c in enumerate(clients):
-            self.subscribe(c, f'https://fcm.googleapis.com/fcm/send/c{i}')
-        bench = Exercise.objects.create(owner=None, slug='push-bench', name='Bench', equipment=Exercise.Equipment.BARBELL,
-                                        measurement=Exercise.Measurement.WEIGHT_REPS, muscle=Exercise.Muscle.CHEST)
-        routine = Routine.objects.create(owner=self.coach, name='Upper')
-        item = RoutineExercise.objects.create(routine=routine, exercise=bench, position=0)
-        RoutineSet.objects.create(routine_exercise=item, position=0, set_type=RoutineSet.SetType.WORKING, reps_min=8, reps_max=8)
-        template = ProgramTemplate.objects.create(coach=self.coach, name='Program', weeks=4)
-        ProgramTemplateDay.objects.create(template=template, weekday=0, routine=routine)
-        calls = []
-
-        def slow(request, timeout):
-            calls.append(timeout)
-            self.assertLessEqual(timeout, push.TIMEOUT)
-            raise TimeoutError('provider is slow')
-
-        from django.utils import timezone
-        self.as_user(self.coach)
-        connections = [str(c.pk) for c in CoachConnection.objects.filter(coach=self.coach, ended_at__isnull=True)]
-        with mock.patch('notifications.push.http_post', slow), mock.patch('notifications.push.drain', wraps=push.drain) as drain, \
-                self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(f'/api/coach/templates/{template.pk}/assign/', {
-                'connection_ids': connections, 'start_date': timezone.localdate().isoformat(), 'request_id': str(uuid4()),
-            }, format='json')
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(all(r['ok'] for r in response.data['results']))
-        self.assertEqual(drain.call_count, 1)  # one kick per request, not one per client
-        self.assertEqual(len(calls), 4)  # every client's device was tried, each with a short timeout
-        self.assertFalse(PushMessage.objects.exists())
-
     def test_stale_device_is_removed_only_if_not_registered_again(self):
         device = PushDevice.objects.create(user=self.ana, kind='web', token='https://fcm.googleapis.com/fcm/send/z',
                                            p256dh=push.b64url(self.ua_public), auth=push.b64url(self.auth_secret))
@@ -325,4 +289,114 @@ class LogoutTests(PushTestCase):
         response = self.client.post('/api/auth/logout/', {'refresh': str(refresh), 'push_token': 'https://fcm.googleapis.com/fcm/send/sub-1'}, format='json')
         self.assertEqual(response.status_code, 204)
         self.assertEqual(list(PushDevice.objects.values_list('token', flat=True)), ['https://fcm.googleapis.com/fcm/send/other-device'])
+
+    def test_signed_out_removal_needs_the_token_and_its_account(self):
+        self.subscribe(self.ana)
+        self.client.force_authenticate(user=None)
+        url = '/api/push/devices/remove/'
+        token = 'https://fcm.googleapis.com/fcm/send/sub-1'
+        self.assertEqual(self.client.post(url, {'token': token}, format='json').status_code, 400)
+        self.client.post(url, {'token': token, 'user_id': str(self.coach.pk)}, format='json')
+        self.assertTrue(PushDevice.objects.exists())  # someone else's account: nothing happens
+        self.assertEqual(self.client.post(url, {'token': token, 'user_id': str(self.ana.pk)}, format='json').status_code, 200)
+        self.assertFalse(PushDevice.objects.exists())
+
+
+class RetryTests(PushTestCase):
+    def device(self, user, name):
+        return PushDevice.objects.create(user=user, kind='web', token=f'https://fcm.googleapis.com/fcm/send/{name}',
+                                         p256dh=push.b64url(self.ua_public), auth=push.b64url(self.auth_secret))
+
+    @mock.patch.dict(os.environ, VAPID_ENV)
+    def test_a_temporary_failure_is_retried_only_for_that_device_and_at_most_three_times(self):
+        phone, laptop = self.device(self.ana, 'phone'), self.device(self.ana, 'laptop')
+        sent = []
+
+        def provider(request, timeout):
+            sent.append(request.full_url.rsplit('/', 1)[1])
+            if request.full_url.endswith('phone'):
+                raise HTTPError(request.full_url, 503, 'Unavailable', {}, None)
+            return Response()
+
+        with mock.patch('notifications.push.kick'):
+            push.notify(self.ana, title='x', body='y', url='/', tag='t')
+        with mock.patch('notifications.push.http_post', provider):
+            push.drain(5)
+            self.assertEqual(sorted(sent), ['laptop', 'phone'])
+            message = PushMessage.objects.get()
+            self.assertEqual(message.devices, [str(phone.pk)])
+            self.assertGreater(message.claimed_until, timezone.now())  # a little later, not at once
+            for _ in range(3):
+                PushMessage.objects.update(claimed_until=timezone.now() - timedelta(seconds=1))
+                push.drain(5)
+        self.assertEqual(sent.count('laptop'), 1)  # never delivered twice
+        self.assertEqual(sent.count('phone'), 3)  # three attempts in all, then given up
+        self.assertFalse(PushMessage.objects.exists())
+
+    @mock.patch.dict(os.environ, VAPID_ENV)
+    def test_a_final_refusal_is_not_retried(self):
+        self.device(self.ana, 'phone')
+
+        def refuse(request, timeout):
+            raise HTTPError(request.full_url, 400, 'Bad', {}, None)
+
+        with mock.patch('notifications.push.kick'):
+            push.notify(self.ana, title='x', body='y', url='/', tag='t')
+        with mock.patch('notifications.push.http_post', refuse):
+            push.drain(5)
+        self.assertFalse(PushMessage.objects.exists())
+
+
+class GroupAssignTests(APITransactionTestCase):
+    """Real commits (one per client, as in production), not one test transaction."""
+
+    def user(self, email, *, coach=False):
+        user = User.objects.create_user(email, 'a-strong-secret')
+        user.profile.is_coach = coach
+        user.profile.save()
+        return user
+
+    @mock.patch.dict(os.environ, VAPID_ENV)
+    def test_assigning_a_program_to_many_clients_kicks_once_and_stays_quick(self):
+        from coaching.models import ProgramTemplate, ProgramTemplateDay
+        from training.models import Exercise, Routine, RoutineExercise, RoutineSet
+
+        coach = self.user('group-coach@example.test', coach=True)
+        ua_private, ua_public = keypair()
+        connections = []
+        for i in range(6):
+            client = self.user(f'group-c{i}@example.test')
+            connections.append(str(CoachConnection.objects.create(coach=coach, client=client).pk))
+            PushDevice.objects.create(user=client, kind='web', token=f'https://fcm.googleapis.com/fcm/send/g{i}',
+                                      p256dh=push.b64url(ua_public), auth=push.b64url(os.urandom(16)))
+        bench = Exercise.objects.create(owner=None, slug='group-bench', name='Bench', equipment=Exercise.Equipment.BARBELL,
+                                        measurement=Exercise.Measurement.WEIGHT_REPS, muscle=Exercise.Muscle.CHEST)
+        routine = Routine.objects.create(owner=coach, name='Upper')
+        item = RoutineExercise.objects.create(routine=routine, exercise=bench, position=0)
+        RoutineSet.objects.create(routine_exercise=item, position=0, set_type=RoutineSet.SetType.WORKING, reps_min=8, reps_max=8)
+        template = ProgramTemplate.objects.create(coach=coach, name='Program', weeks=4)
+        ProgramTemplateDay.objects.create(template=template, weekday=0, routine=routine)
+
+        def down(request, timeout):  # QStash and the push services are both unreachable
+            raise TimeoutError('down')
+
+        self.client.force_authenticate(user=coach)
+        qstash = {'PUSH_WORKER_URL': 'https://api.example.test/api/internal/push-deliver/'}
+        with override_settings(QSTASH_TOKEN='t', QSTASH_CURRENT_SIGNING_KEY='a', QSTASH_NEXT_SIGNING_KEY='b'), \
+                mock.patch.dict(os.environ, qstash), \
+                mock.patch('notifications.push.urllib.request.urlopen', side_effect=TimeoutError('down')) as publish, \
+                mock.patch('notifications.push.http_post', down), \
+                mock.patch('notifications.push.kick', wraps=push.kick) as kick:
+            started = time.monotonic()
+            response = self.client.post(f'/api/coach/templates/{template.pk}/assign/', {
+                'connection_ids': connections, 'start_date': timezone.localdate().isoformat(), 'request_id': str(uuid4()),
+            }, format='json')
+            elapsed = time.monotonic() - started
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(all(r['ok'] for r in response.data['results']))
+        self.assertEqual(kick.call_count, 1)  # once for the request, not once per client
+        self.assertEqual(publish.call_count, 1)
+        self.assertLess(elapsed, push.KICK_BUDGET + 3)  # bounded even with everything down
+        # Nothing lost: whatever was not sent waits in the outbox for the worker or the next drain.
+        self.assertEqual(PushMessage.objects.count(), 6)
 

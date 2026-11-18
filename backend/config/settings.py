@@ -51,6 +51,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Push notifications queued by the request are handed over once, at its end.
+    'notifications.middleware.PushKickMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'

@@ -362,6 +362,12 @@ klijenta iz T1.
   - Pretplata na uređaju se odmah poništava, a već prikazana obaveštenja se brišu.
   - Server briše registraciju kroz sam zahtev za odjavu. Na webu se taj zahtev ponavlja dok ne
     uspe.
+  - Uz to uređaj pamti registracije koje treba ukloniti. Šalje ih bez prijave, samo sa svojim
+    tokenom i nalogom kome je registracija pripadala (`POST /api/push/devices/remove/`).
+    Ponavlja ih pri pokretanju aplikacije i kad se vrati internet, pa uklanjanje radi i posle
+    odjave bez interneta na Androidu.
+  - Registracija koja je još na putu kad se korisnik odjavi zapamćena je kao „u toku“. Uklanja
+    se tek kad server odgovori, pa uklanjanje nikad ne stigne pre registracije koju poništava.
   - Obaveštenje koje je sistem već primio pre odjave i dalje može da se pojavi.
 - **Nova pretplata ili token.** Posle prijave aplikacija osvežava registraciju ako je pregledač
   obnovio pretplatu ili je Firebase promenio token.
@@ -386,7 +392,13 @@ klijenta iz T1.
   - Obaveštenje starije od sat vremena se odbacuje.
   - Uređaj koji servis prijavi kao nepostojeći briše se samo ako u međuvremenu nije ponovo
     registrovan.
-  - Dodela programa za 50 klijenata pokreće jedno pražnjenje reda, ne 50.
+  - Upisi tokom zahteva samo beleže da ima posla. Isporuka se pokreće jednom, na kraju zahteva
+    (`PushKickMiddleware`). Dodela programa za 50 klijenata ima 50 upisa, ali jedno pokretanje.
+  - Ceo taj korak traje najviše 3 s, i kad QStash ili push servisi ne rade; ono što ne stigne
+    ostaje u redu.
+  - Privremena greška (timeout, 429, 5xx) pokušava se ponovo, najviše tri puta, sa razmakom
+    od 30 s pa 60 s. Ponovo se šalje samo uređajima koji obaveštenje nisu dobili, pa niko ne
+    dobije duplikat. Konačno odbijanje (ostali 4xx) se ne ponavlja.
   - Greška u slanju nikad ne obara zahtev.
 - **Samo pravi push servisi.** Web pretplata se prihvata samo za push servise pregledača:
   Google (FCM), Mozilla, Apple i Microsoft.
@@ -419,6 +431,8 @@ klijenta iz T1.
   (dnevni cron). Brisanje ide pod istim zaključavanjem kao slanje poruke, pa se slika koja se
   upravo šalje nikad ne obriše.
 - **Ograničenja po korisniku.** Najviše 20 neposlatih slika, a dnevno najviše 60 slika i 20 MB.
+  Slike jedne osobe upisuju se jedna po jedna (zaključavanje po korisniku), pa paralelni zahtevi
+  ne mogu zajedno da pređu limit.
 - **Izvoz podataka.** Izvoz za sada samo označava da je poruka imala sliku. Kako korisnik može da
   preuzme svoje slike, treba odlučiti pre šireg puštanja.
 - **Poruka sa slikom.** Tekst može da bude prazan. Ponovljeno slanje proverava i sliku, pa isti ID
@@ -427,7 +441,7 @@ klijenta iz T1.
 ### Uvođenje na produkciju
 
 - **Migracije:** `coaching.0006_coach_photos_images` i `notifications.0001_initial`
-  (`PushDevice`, `PushMessage`).
+  (`PushDevice`, `PushMessage`), zatim `notifications.0002_push_retry_devices`.
 - **Nove biblioteke:** `requirements.txt` dobija `cryptography` i `Pillow`.
 - **Isporuka preko QStash-a.** Postavi `PUSH_WORKER_URL` na
   `https://<api>/api/internal/push-deliver/`; QStash ključevi su isti kao za mejlove. Bez toga

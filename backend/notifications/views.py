@@ -3,6 +3,7 @@ from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from rest_framework import serializers
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -46,6 +47,8 @@ class DeviceSerializer(serializers.Serializer):
 
 class RemoveSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=2000)
+    # Without a session (after sign-out): the account the device was registered for.
+    user_id = serializers.UUIDField(required=False)
 
 
 class DevicesView(APIView):
@@ -64,11 +67,23 @@ class DevicesView(APIView):
 
 
 class DeviceRemoveView(APIView):
+    """Turn push off for a device. Signed in: the user's own token. Signed out (a sign-out that was
+    offline, or a registration that finished after it): the token itself and the account it was
+    for. Only the device has its token, so this can only ever switch that device off."""
+
+    permission_classes = [AllowAny]
+
     def post(self, request):
-        """Turn push off for this device (also on sign-out). Only the user's own token."""
         serializer = RemoveSerializer(data=require_object_body(request))
         serializer.is_valid(raise_exception=True)
-        PushDevice.objects.filter(user=request.user, token=serializer.validated_data['token']).delete()
+        data = serializer.validated_data
+        if request.user.is_authenticated:
+            owner = request.user.pk
+        elif data.get('user_id'):
+            owner = data['user_id']
+        else:
+            return Response({'user_id': ['Required without a session.']}, status=400)
+        PushDevice.objects.filter(user_id=owner, token=data['token']).delete()
         return Response({'ok': True})
 
 
