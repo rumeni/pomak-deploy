@@ -11,6 +11,8 @@ export interface Connection {
   share_nutrition: boolean
   // Older servers did not send it; treat missing as not shared.
   share_readiness?: boolean
+  /** The coach may set the client's nutrition target (its own consent). */
+  coach_sets_nutrition?: boolean
   // Server-made: +1 on every consent change and on the end (see access.ts).
   access_version?: number
   connected_at: string
@@ -31,6 +33,7 @@ export interface Sharing {
   share_measurements: boolean
   share_nutrition: boolean
   share_readiness: boolean
+  coach_sets_nutrition: boolean
 }
 
 export interface CoachInvitation {
@@ -133,6 +136,8 @@ export interface CoachMessage {
   sender_id: string
   text: string
   created_at: string
+  /** A comment on a workout (null for a plain message, or once the workout is deleted). */
+  workout?: { id: string; name: string; started_at: string } | null
 }
 
 const DASHBOARD = ['coach-dashboard']
@@ -159,11 +164,14 @@ const CHAT_PAGE_SIZE = 80
 type MessageCursor = { before: string; before_id: string } | null
 
 /** Which conversation: the coach's with a client, the client's own, or any one (also archived) by ID. */
-export type ChatTarget = { clientId?: string; connectionId?: string }
+export type ChatTarget = { clientId?: string; connectionId?: string; workoutId?: string }
 
-const chatKey = ({ clientId, connectionId }: ChatTarget) => (connectionId ? `c:${connectionId}` : clientId ?? 'own')
-const chatParams = ({ clientId, connectionId }: ChatTarget) =>
-  connectionId ? { connection_id: connectionId } : clientId ? { client_id: clientId } : {}
+const chatKey = ({ clientId, connectionId, workoutId }: ChatTarget) =>
+  `${connectionId ? `c:${connectionId}` : clientId ?? 'own'}${workoutId ? `:w:${workoutId}` : ''}`
+const chatParams = ({ clientId, connectionId, workoutId }: ChatTarget) => ({
+  ...(connectionId ? { connection_id: connectionId } : clientId ? { client_id: clientId } : {}),
+  ...(workoutId ? { workout_id: workoutId } : {}),
+})
 
 export function useCoachMessages(target: ChatTarget = {}, { live = true }: { live?: boolean } = {}) {
   return useInfiniteQuery({
@@ -256,8 +264,10 @@ export function useSendCoachMessage(target: ChatTarget = {}) {
     mutationFn: async ({ id, text }: { id: string; text: string }) =>
       (await api.post<CoachMessage>('/coach/messages/', { id, text, ...chatParams(target) })).data,
     onSuccess: () => Promise.all([
-      qc.invalidateQueries({ queryKey: ['coach-messages', chatKey(target)] }),
+      // A comment shows in the conversation and with the workout: refresh both.
+      qc.invalidateQueries({ queryKey: ['coach-messages'] }),
       qc.invalidateQueries({ queryKey: CONVERSATIONS }),
+      ...(target.workoutId ? [qc.invalidateQueries({ queryKey: ['coach-client-workout'] })] : []),
     ]),
   })
 }

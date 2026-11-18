@@ -21,6 +21,8 @@ vi.mock('@tanstack/react-query', async (original) => ({
 }))
 vi.mock('../training/api', () => ({ useRoutines: () => ({ data: [] }) }))
 vi.mock('../../lib/api', () => ({ errorMessage: (error: unknown) => String(error) }))
+vi.mock('./ClientTabs', () => ({ ClientStats: () => null, ClientTargetPanel: () => null, WorkoutLinks: () => null }))
+vi.mock('./PlanPanel', () => ({ PlanPanel: () => null }))
 vi.mock('./api', () => {
   const idle = { mutate: vi.fn(), isPending: false, error: null, reset: vi.fn() }
   return {
@@ -79,7 +81,7 @@ const task = (id: string, kind: CoachTask['kind'], version = 1, connection = 'co
   connection: { id: connection, access_version: version, connected_at: CONNECTED },
 })
 
-const render = (tab = 'progress') => renderToStaticMarkup(<MemoryRouter initialEntries={[`/x?tab=${tab}`]}><ClientDetail clientId="client-1" /></MemoryRouter>)
+const render = (tab = 'overview') => renderToStaticMarkup(<MemoryRouter initialEntries={[`/x?tab=${tab}`]}><ClientDetail clientId="client-1" /></MemoryRouter>)
 const show = (client: Record<string, unknown>, dashboard?: Record<string, unknown>, tasks: CoachTask[] = []) => {
   state.client = { isLoading: false, isError: false, error: null, ...client }
   state.dashboard = dashboard
@@ -128,7 +130,7 @@ describe('coach access follows the highest server version seen from any source',
     expect(view.data?.recent_workouts[0].name).toBe('SECRET WORKOUT')
     expect(view.refresh).toBe(true)
     show({ data: detail({ version: 1 }) }, dashboardData([row({ access_version: 2, share_readiness: false, share_measurements: false })]))
-    const html = render()
+    const html = render('progress')
     expect(html).not.toContain('74.2')
     expect(html).not.toContain('Spremnost')
   })
@@ -174,7 +176,7 @@ describe('coach access follows the highest server version seen from any source',
     expect(view.data).not.toBeNull()
     state.qc = new QueryClient()
     show({ isError: true, error: httpError(), data: detail() }, undefined)
-    const html = render()
+    const html = render('overview')
     expect(html).toContain('SECRET WORKOUT')
     expect(html).toContain('coachSpace.offlineShowingSaved')
   })

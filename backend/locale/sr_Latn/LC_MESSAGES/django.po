@@ -797,3 +797,15 @@ msgstr "Rutina mora da ima bar jednu vežbu."
 
 msgid "This routine uses private exercises. Use shared exercises before assigning."
 msgstr "Ova rutina koristi tvoje privatne vežbe. Pre dodele zameni ih vežbama iz zajedničke biblioteke."
+
+msgid "That workout is not part of this collaboration."
+msgstr "Taj trening nije deo ove saradnje."
+
+msgid "Choose one of the offered periods."
+msgstr "Izaberi neki od ponuđenih perioda."
+
+msgid "A new target applies from today on; earlier days keep theirs."
+msgstr "Novi cilj važi od danas; raniji dani zadržavaju svoj."
+
+msgid "The client has not let you set the nutrition target."
+msgstr "Klijent ti nije dozvolio da postavljaš cilj ishrane."

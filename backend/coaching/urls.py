@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import plan_views, views
+from . import plan_views, review_views, views
 
 urlpatterns = [
     path('dashboard/', views.DashboardView.as_view(), name='coach-dashboard'),
@@ -24,4 +24,8 @@ urlpatterns = [
     path('clients/<uuid:client_id>/plan/', plan_views.ClientPlanView.as_view(), name='coach-client-plan'),
     path('clients/<uuid:client_id>/plan/versions/', plan_views.ClientPlanVersionsView.as_view(), name='coach-client-plan-versions'),
     path('plan/', plan_views.MyPlanView.as_view(), name='coach-my-plan'),
+    path('clients/<uuid:client_id>/workouts/<uuid:workout_id>/', review_views.ClientWorkoutView.as_view(), name='coach-client-workout'),
+    path('clients/<uuid:client_id>/workouts/<uuid:workout_id>/reviewed/', review_views.WorkoutReviewedView.as_view(), name='coach-client-workout-reviewed'),
+    path('clients/<uuid:client_id>/stats/', review_views.ClientStatsView.as_view(), name='coach-client-stats'),
+    path('clients/<uuid:client_id>/nutrition-target/', review_views.ClientNutritionTargetView.as_view(), name='coach-client-nutrition-target'),
 ]

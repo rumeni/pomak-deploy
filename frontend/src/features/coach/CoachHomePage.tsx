@@ -111,7 +111,12 @@ function TaskItem({ task }: { task: CoachTask }) {
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Link to={`/trener/klijenti/${task.client.id}`} className="app-button inline-flex min-h-10 items-center justify-center bg-brand-soft px-4 text-sm text-brand-dark">{t('coachSpace.openClient')}</Link>
+        <Link
+          to={task.data.workout_id ? `/trener/klijenti/${task.client.id}/trening/${task.data.workout_id}` : `/trener/klijenti/${task.client.id}`}
+          className="app-button inline-flex min-h-10 items-center justify-center bg-brand-soft px-4 text-sm text-brand-dark"
+        >
+          {task.data.workout_id ? t('coachSpace.review.open') : t('coachSpace.openClient')}
+        </Link>
         {task.state !== 'done' ? (
           <>
             <Button size="sm" disabled={action.isPending} onClick={() => act({ id: task.id, action: 'done' })}>{t('coachSpace.markDone')}</Button>

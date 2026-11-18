@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useContext, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -8,6 +8,7 @@ import { Card, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { formatDecimal, getFormatLocale } from '../../lib/format'
 import { formatRpe, LEVEL_SET, readinessBand, readinessScore, SCALE_FIELDS, sleepLabel, type ScaleField } from '../workout/rpe'
 import { useStats } from './api'
+import { StatsLinksContext } from './statsLinks'
 import {
   answerCount,
   average,
@@ -76,21 +77,36 @@ export function StatsPage() {
 
         {isLoading && <LoadingScreen />}
         {isError && <p className="py-6 text-center text-danger">{t('progress.loadFailed')}</p>}
-        {data && (data.totals.sessions === 0 ? (
-          <Card><p className="text-muted">{t('stats.empty')}</p></Card>
-        ) : (
-          <>
-            <Totals data={data} />
-            <Weekly data={data} />
-            <Muscles data={data} />
-            <TopLifts data={data} />
-          </>
-        ))}
-        {data && <ReadinessSection data={data} />}
+        {data && <StatsSections data={data} />}
         {data && <HowItIsCounted />}
       </div>
     </div>
   )
+}
+
+/** Totals, weeks, muscles, top lifts and readiness of one period (also shown to a coach). */
+export function StatsSections({ data }: { data: TrainingStats }) {
+  const { t } = useTranslation()
+  return (
+    <>
+      {data.totals.sessions === 0 ? (
+        <Card><p className="text-muted">{t('stats.empty')}</p></Card>
+      ) : (
+        <>
+          <Totals data={data} />
+          <Weekly data={data} />
+          <Muscles data={data} />
+          <TopLifts data={data} />
+        </>
+      )}
+      <ReadinessSection data={data} />
+    </>
+  )
+}
+
+/** A link, or plain content when there is nowhere to go. */
+function MaybeLink({ to, className, children }: { to: string | null; className: string; children: ReactNode }) {
+  return to ? <Link to={to} className={className}>{children}</Link> : <div className={className}>{children}</div>
 }
 
 function Totals({ data }: { data: TrainingStats }) {
@@ -206,6 +222,7 @@ function Muscles({ data }: { data: TrainingStats }) {
 
 function TopLifts({ data }: { data: TrainingStats }) {
   const { t } = useTranslation()
+  const links = useContext(StatsLinksContext)
   if (!data.top_lifts.length) return null
   return (
     <Card>
@@ -213,7 +230,7 @@ function TopLifts({ data }: { data: TrainingStats }) {
       <ul className="mt-2 flex flex-col">
         {data.top_lifts.map((lift) => (
           <li key={lift.exercise_id} className="border-b border-line last:border-0">
-            <Link to={`/napredak/vezba/${lift.exercise_id}`} className="flex min-h-14 items-center gap-3 py-2 active:bg-brand-soft">
+            <MaybeLink to={links.exercise(lift.exercise_id)} className="flex min-h-14 items-center gap-3 py-2 active:bg-brand-soft">
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{lift.exercise}</span>
                 <span className="block text-xs text-muted tabular-nums">
@@ -226,7 +243,7 @@ function TopLifts({ data }: { data: TrainingStats }) {
               <span className="font-display text-xl tabular-nums">
                 {formatDecimal(Number(lift.e1rm))} <span className="text-xs font-normal text-muted">kg{lift.per_side ? ` ${t('stats.perSide')}` : ''}</span>
               </span>
-            </Link>
+            </MaybeLink>
           </li>
         ))}
       </ul>
@@ -335,6 +352,7 @@ function ReadinessSection({ data }: { data: TrainingStats }) {
 
 function RecentCheckIns({ data }: { data: TrainingStats }) {
   const { t } = useTranslation()
+  const links = useContext(StatsLinksContext)
   const recent = [...data.readiness].reverse().slice(0, 5)
   return (
     <Card>
@@ -344,7 +362,7 @@ function RecentCheckIns({ data }: { data: TrainingStats }) {
           const score = readinessScore(e.readiness)
           return (
             <li key={e.session_id} className="border-b border-line last:border-0">
-              <Link to={`/trening/istorija/${e.session_id}`} className="flex min-h-12 items-center gap-3 py-2 active:bg-brand-soft">
+              <MaybeLink to={links.session(e.session_id)} className="flex min-h-12 items-center gap-3 py-2 active:bg-brand-soft">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{e.name}</span>
                   <span className="block text-xs text-muted tabular-nums">
@@ -359,7 +377,7 @@ function RecentCheckIns({ data }: { data: TrainingStats }) {
                     {score}%
                   </span>
                 )}
-              </Link>
+              </MaybeLink>
             </li>
           )
         })}

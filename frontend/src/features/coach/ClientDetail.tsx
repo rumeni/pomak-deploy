@@ -17,6 +17,7 @@ import { Avatar } from './Avatar'
 import { CoachNutritionDays } from './CoachNutritionDays'
 import { formatCoachSet } from './formatCoach'
 import { PlanPanel } from './PlanPanel'
+import { ClientStats, ClientTargetPanel, WorkoutLinks } from './ClientTabs'
 import { readinessReasons } from './workspace'
 
 const TABS = ['overview', 'plan', 'progress', 'nutrition', 'notes'] as const
@@ -120,13 +121,16 @@ export function ClientDetail({ clientId }: { clientId: string }) {
 
       {tab === 'overview' && <OverviewTab data={data} />}
       {tab === 'plan' && <><PlanPanel clientId={clientId} /><PlanTab clientId={clientId} data={data} /></>}
-      {tab === 'progress' && <ProgressTab data={data} />}
+      {tab === 'progress' && <ProgressTab clientId={clientId} data={data} />}
       {tab === 'nutrition' && (
-        <Card title={t('coach.nutrition')}>
-          {data.nutrition_days === null ? <p className="text-muted">{t('coach.notShared')}</p>
-            : data.nutrition_days.length === 0 ? <p className="text-muted">{t('coach.noNutrition')}</p>
-              : <CoachNutritionDays days={data.nutrition_days} />}
-        </Card>
+        <>
+          <ClientTargetPanel clientId={clientId} />
+          <Card title={t('coach.nutrition')}>
+            {data.nutrition_days === null ? <p className="text-muted">{t('coach.notShared')}</p>
+              : data.nutrition_days.length === 0 ? <p className="text-muted">{t('coach.noNutrition')}</p>
+                : <CoachNutritionDays days={data.nutrition_days} />}
+          </Card>
+        </>
       )}
       {tab === 'notes' && <NotesPanel connectionId={connection.id} />}
 
@@ -166,7 +170,12 @@ function OverviewTab({ data }: { data: CoachClientDetails }) {
           <ul className="flex flex-col gap-2">
             {open.map((task) => {
               const text = taskText(task, t, i18n.language === 'en', now)
-              return <li key={task.id} className="text-sm"><span className="font-semibold">{text.title}</span>{text.detail && <span className="text-muted"> · {text.detail}</span>}</li>
+              const body = <><span className="font-semibold">{text.title}</span>{text.detail && <span className="text-muted"> · {text.detail}</span>}</>
+              return (
+                <li key={task.id} className="text-sm">
+                  {task.data.workout_id ? <Link to={`/trener/klijenti/${task.client.id}/trening/${task.data.workout_id}`} className="underline-offset-2 hover:underline">{body}</Link> : body}
+                </li>
+              )
             })}
           </ul>
           <Link to="/trener" className="mt-3 inline-block text-sm font-semibold underline">{t('coachSpace.client.toOverview')}</Link>
@@ -225,16 +234,12 @@ function WorkoutSummary({ workout }: { workout: CoachClientDetails['recent_worko
   )
 }
 
-function ProgressTab({ data }: { data: CoachClientDetails }) {
+function ProgressTab({ clientId, data }: { clientId: string; data: CoachClientDetails }) {
   const { t } = useTranslation()
   return (
     <>
-      <Card title={t('coach.recentWorkouts')}>
-        {data.recent_workouts.length === 0 && <p className="text-muted">{t('coach.noWorkouts')}</p>}
-        <div className="flex flex-col divide-y divide-line">
-          {data.recent_workouts.map((w) => <div key={w.id} className="py-2"><WorkoutSummary workout={w} /></div>)}
-        </div>
-      </Card>
+      <WorkoutLinks clientId={clientId} workouts={data.recent_workouts} />
+      <ClientStats clientId={clientId} />
       <Card title={t('coach.measurements')}>
         {data.measurements === null ? <p className="text-muted">{t('coach.notShared')}</p> : (
           data.measurements.length === 0 ? <p className="text-muted">{t('coach.noMeasurements')}</p> :

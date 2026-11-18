@@ -53,6 +53,9 @@ class CoachConnection(TimeStampedModel):
     # The pre-workout check-in (sleep, stress, soreness...) and its score: subjective recovery
     # data, shared only with its own consent, never implied by sharing workouts.
     share_readiness = models.BooleanField(default=False)
+    # Lets the coach set the client's calorie/macro target (taking over nutrition guidance is
+    # confirmed separately from sharing the diary).
+    coach_sets_nutrition = models.BooleanField(default=False)
     # Server-made version of what the coach may see: +1 on every consent change and on the end.
     # Clients order access facts by it, never by when a response happened to arrive.
     access_version = models.PositiveIntegerField(default=1)
@@ -81,6 +84,9 @@ class CoachMessage(TimeStampedModel):
     connection = models.ForeignKey(CoachConnection, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='coaching_messages')
     text = models.CharField(max_length=800)
+    # A comment on a workout is a message about it: one record, shown in the conversation and
+    # with the workout. If the workout is deleted the message stays, without the link.
+    workout = models.ForeignKey('training.WorkoutSession', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
 
     class Meta:
         ordering = ['created_at', 'id']

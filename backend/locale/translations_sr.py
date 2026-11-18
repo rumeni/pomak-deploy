@@ -212,4 +212,8 @@ SR = {
     'Select one of your active routines.': 'Izaberi neku od svojih aktivnih rutina.',
     'A routine must contain at least one exercise.': 'Rutina mora da ima bar jednu vežbu.',
     'This routine uses private exercises. Use shared exercises before assigning.': 'Ova rutina koristi tvoje privatne vežbe. Pre dodele zameni ih vežbama iz zajedničke biblioteke.',
+    'That workout is not part of this collaboration.': 'Taj trening nije deo ove saradnje.',
+    'Choose one of the offered periods.': 'Izaberi neki od ponuđenih perioda.',
+    'A new target applies from today on; earlier days keep theirs.': 'Novi cilj važi od danas; raniji dani zadržavaju svoj.',
+    'The client has not let you set the nutrition target.': 'Klijent ti nije dozvolio da postavljaš cilj ishrane.',
 }

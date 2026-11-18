@@ -129,6 +129,7 @@ def connection_summary(connection):
         'share_measurements': connection.share_measurements,
         'share_nutrition': connection.share_nutrition,
         'share_readiness': connection.share_readiness,
+        'coach_sets_nutrition': connection.coach_sets_nutrition,
         'access_version': connection.access_version,
         'connected_at': connection.created_at,
         'status': connection_status(connection),
@@ -166,9 +167,12 @@ def assignment_summary(item):
 
 
 def message_summary(item):
+    workout = item.workout if item.workout_id else None
     return {
         'id': str(item.id), 'sender_id': str(item.sender_id), 'text': item.text,
         'created_at': item.created_at,
+        # The workout it is about (a comment), or null; never a link to something deleted.
+        'workout': {'id': str(workout.id), 'name': workout.name, 'started_at': workout.started_at} if workout else None,
     }
 
 
@@ -209,6 +213,7 @@ class InviteSerializer(serializers.Serializer):
     share_measurements = serializers.BooleanField(default=False)
     share_nutrition = serializers.BooleanField(default=False)
     share_readiness = serializers.BooleanField(default=False)
+    coach_sets_nutrition = serializers.BooleanField(default=False)
 
     def validate_code(self, value):
         value = value.strip().upper()
@@ -225,6 +230,7 @@ class SharingSerializer(serializers.Serializer):
     share_measurements = serializers.BooleanField(required=False)
     share_nutrition = serializers.BooleanField(required=False)
     share_readiness = serializers.BooleanField(required=False)
+    coach_sets_nutrition = serializers.BooleanField(required=False)
 
 
 class ClientStatusSerializer(serializers.Serializer):
@@ -238,6 +244,8 @@ class AssignSerializer(serializers.Serializer):
 class MessageSerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False)
     text = serializers.CharField(max_length=800, trim_whitespace=True, allow_blank=False)
+    # A comment on one of the client's workouts.
+    workout_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class NoteSerializer(serializers.Serializer):
@@ -482,6 +490,7 @@ class ConnectView(APIView):
                         share_measurements=serializer.validated_data['share_measurements'],
                         share_nutrition=serializer.validated_data['share_nutrition'],
                         share_readiness=serializer.validated_data['share_readiness'],
+                        coach_sets_nutrition=serializer.validated_data['coach_sets_nutrition'],
                     )
             except IntegrityError:
                 raise ValidationError({'detail': 'You already have a coach.'}) from None
@@ -645,8 +654,11 @@ class AssignRoutineView(APIView):
 class MessagesView(APIView):
     def get(self, request):
         connection = connection_for_messages(request)
-        rows = CoachMessage.objects.filter(connection=connection)
+        rows = CoachMessage.objects.filter(connection=connection).select_related('workout')
         params = request.query_params
+        if params.get('workout_id'):
+            # The comments on one workout: the same messages, seen from the workout.
+            rows = rows.filter(workout_id=parse_uuid(params['workout_id'], 'workout_id'))
         if 'before' in params or 'before_id' in params:
             raw_date, raw_id = params.get('before', ''), params.get('before_id', '')
             try:
@@ -684,12 +696,17 @@ class MessagesView(APIView):
                 if existing.text != text:
                     raise ValidationError({'id': 'This message ID has different content.'})
                 return Response(message_summary(existing), status=status.HTTP_200_OK)
+        workout = None
+        if serializer.validated_data.get('workout_id'):
+            workout = WorkoutSession.objects.filter(pk=serializer.validated_data['workout_id'], owner_id=connection.client_id).first()
+            if workout is None:
+                raise ValidationError({'workout_id': _('That workout is not part of this collaboration.')})
         # Checked under the lock: an end that committed meanwhile wins.
         if connection.ended_at is not None:
             raise CollaborationEnded()
         message = CoachMessage.objects.create(
             **({'id': message_id} if message_id else {}),
-            connection=connection, sender=request.user, text=text,
+            connection=connection, sender=request.user, text=text, workout=workout,
         )
         return Response(message_summary(message), status=status.HTTP_201_CREATED)
 

@@ -107,7 +107,10 @@ function ConversationView({ conversation, selfId }: { conversation: Conversation
         {isCoach && !ended && <Link to={`/trener/klijenti/${conversation.client.id}`} className="text-sm font-semibold underline">{t('coachSpace.inbox.openClient')}</Link>}
       </div>
       {ended && <p className="text-sm text-muted">{t('coachSpace.archive.endedNotice', { date: conversation.ended_at ? new Date(conversation.ended_at).toLocaleDateString(getFormatLocale()) : '' })}</p>}
-      <CoachMessages selfId={selfId} connectionId={conversation.id} readOnly={ended} />
+      <CoachMessages
+        selfId={selfId} connectionId={conversation.id} readOnly={ended}
+        workoutLink={ended ? undefined : isCoach ? (w) => `/trener/klijenti/${conversation.client.id}/trening/${w}` : (w) => `/trening/istorija/${w}`}
+      />
     </section>
   )
 }

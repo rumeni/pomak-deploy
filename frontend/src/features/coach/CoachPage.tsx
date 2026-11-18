@@ -59,6 +59,10 @@ function SharingOptions({ values, onChange }: { values: Sharing; onChange: (valu
         <input type="checkbox" checked={values.share_readiness} onChange={(e) => onChange({ ...values, share_readiness: e.target.checked })} className="size-5 accent-brand" />
         {t('coach.shareReadiness')}
       </label>
+      <label className="flex items-center gap-3 text-sm">
+        <input type="checkbox" checked={values.coach_sets_nutrition} onChange={(e) => onChange({ ...values, coach_sets_nutrition: e.target.checked })} className="size-5 accent-brand" />
+        {t('coach.coachSetsNutrition')}
+      </label>
       <p className="text-xs text-muted">{t('coach.shareTrainingNotice')}</p>
     </fieldset>
   )
@@ -73,7 +77,7 @@ function ConnectFlow() {
   const [checking, setChecking] = useState<string | null>(fromLink)
   const preview = useInvitePreview(checking)
   const connect = useConnectCoach()
-  const [sharing, setSharing] = useState<Sharing>({ share_measurements: false, share_nutrition: false, share_readiness: false })
+  const [sharing, setSharing] = useState<Sharing>({ share_measurements: false, share_nutrition: false, share_readiness: false, coach_sets_nutrition: false })
 
   const onCheck = (e: FormEvent) => {
     e.preventDefault()
@@ -150,10 +154,10 @@ function Collaboration({ connection, coach, notes, assignments }: {
         ))}
         <p className="mt-2 text-xs text-muted">{t('coach.routinesInTraining')}</p>
       </Card>
-      <CoachMessages key={connection.id} selfId={connection.client.id} />
+      <CoachMessages key={connection.id} selfId={connection.client.id} workoutLink={(w) => `/trening/istorija/${w}`} />
       <Card title={t('coach.sharingTitle')}>
         <ConnectedSharingSettings
-          key={`${connection.id}:${connection.share_measurements}:${connection.share_nutrition}:${connection.share_readiness}`}
+          key={`${connection.id}:${connection.access_version ?? 0}:${connection.share_measurements}:${connection.share_nutrition}:${connection.share_readiness}:${connection.coach_sets_nutrition}`}
           connection={connection}
         />
         <p className="mt-2 text-xs text-muted">{t('coach.revokeAnytime')}</p>
@@ -197,6 +201,7 @@ function ConnectedSharingSettings({ connection }: { connection: Connection }) {
     share_measurements: connection.share_measurements,
     share_nutrition: connection.share_nutrition,
     share_readiness: connection.share_readiness ?? false,
+    coach_sets_nutrition: connection.coach_sets_nutrition ?? false,
   })
   return (
     <>

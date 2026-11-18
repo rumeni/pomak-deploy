@@ -188,3 +188,44 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
   Postojećim vezama se „aktivan od“ postavlja na datum povezivanja.
 - **Starije Android verzije** rade i dalje: postojeća polja API odgovora nisu menjana, samo su
   dodata nova.
+
+## T2a: programi i planovi
+
+- **Program (šablon)** je raspored trenerovih rutina po danima u nedelji, sa trajanjem u nedeljama
+  ili bez kraja. Koristi samo trenerove rutine sa vežbama iz zajedničke biblioteke, jer klijent
+  ne vidi trenerove privatne vežbe.
+- **Dodela u tri koraka:** program, klijenti, datum početka (danas ili kasnije).
+  - Svaki klijent dobija plan od tog dana, sa svojim kopijama rutina. Kasnija izmena programa ne
+    menja postojeće planove.
+  - Ponovljen zahtev (isti `request_id`) ne pravi ništa dvaput.
+- **Plan klijenta je niz verzija.** Izmena je nova verzija koja važi od danas ili kasnije, uz
+  opcioni razlog koji klijent vidi.
+  - Za svaki dan trener bira jedno od tri: zadržava rutinu iz plana, kopira svoju rutinu ili
+    pravi rutinu prilagođenu klijentu (težine, ponavljanja, RPE, broj serija).
+  - Verzija bez dana pauzira plan.
+  - Nova verzija za isti datum zamenjuje staru. Kopije koje više nijedna verzija ne koristi se
+    arhiviraju.
+  - Započeti i završeni treninzi se ne menjaju, jer trening pamti plan sa kojim je počeo.
+- **Klijent:**
+  - na kartici Trener vidi „Plan od trenera“ (ova nedelja, sledeća verzija) i obaveštenje o
+    izmeni iz poslednjih 7 dana;
+  - na ekranu Danas vidi „Po planu trenera danas“, ako tog dana još nije trenirao. Može da trenira
+    i van plana.
+- **Pojedinačna dodela rutine** (iz T1) i dalje postoji.
+
+## T2b: pregled treninga, napredak i ishrana
+
+- **Pregled treninga:** trener otvara trening klijenta (iz zadatka ili sa kartice Napredak) i vidi
+  planirano (plan sa kojim je trening počeo) i urađeno po vežbi, uključujući preskočene vežbe.
+  - Spremnost se prikazuje samo uz dozvolu.
+  - „Označi kao pregledano“ zatvara zadatak tog treninga.
+- **Komentar na trening je poruka** vezana za taj trening (jedan zapis):
+  - vidi se u razgovoru (sa linkom na trening), na pregledu treninga kod trenera i na ekranu
+    treninga kod klijenta, gde klijent može i da odgovori;
+  - ako se trening obriše, poruka ostaje bez linka.
+- **Napredak klijenta:** ista statistika koju klijent vidi kod sebe (zbirovi, nedelje, mišići,
+  najbolja dizanja), bez podataka o spremnosti ako nisu podeljeni. Treninzi vode na pregled.
+- **Kalorijski cilj od trenera:** posebna dozvola klijenta („Trener može da mi postavlja
+  kalorijski cilj i makroe“), odvojena od deljenja dnevnika.
+  - Cilj važi od danas ili kasnije, jedan cilj po datumu; raniji dani zadržavaju svoj.
+  - Klijent ga vidi kao „Postavio trener“, uz napomenu, i može da ga promeni.
