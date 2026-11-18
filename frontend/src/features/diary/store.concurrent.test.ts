@@ -38,6 +38,16 @@ afterEach(() => {
   vi.resetModules()
 })
 
+describe('recent food freshness', () => {
+  it('uses current server nutrition for an older locally recent food, without losing recency order', async () => {
+    const { mergeRecentFoods } = await import('./store')
+    const old = { id: 'a', name: 'Bread', kcal: '250' }
+    const fresh = { id: 'a', name: 'Bread', kcal: '300' }
+    const other = { id: 'b', name: 'Milk', kcal: '50' }
+    expect(mergeRecentFoods([old, other] as never[], [fresh] as never[])).toEqual([fresh, other])
+  })
+})
+
 describe('atomic offline diary ordering across independent tabs', () => {
   it('saves a complete meal in one transaction and requests sync once', async () => {
     const { first } = await separateTabs()

@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { isAxiosError } from 'axios'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
@@ -33,10 +34,13 @@ export function EntryPage() {
   // the offline fallback. Editing an existing entry keeps its own snapshot.
   const lookupId = foodId ?? (entryId ? (day?.entries.find((e) => e.id === entryId)?.food_id ?? null) : null)
   const local = useLiveQuery(async () => (me && lookupId ? ((await cachedFood(me.id, lookupId)) ?? null) : null), [me?.id, lookupId])
-  const remote = useFood(lookupId ?? undefined)
+  const remote = useFood(lookupId ?? undefined, !entryId)
+  const missingOnServer = remote.isError && isAxiosError(remote.error)
+    && [403, 404].includes(remote.error.response?.status ?? 0)
   const food = entryId
     ? (remote.data ?? local ?? undefined)
-    : (remote.isFetching && navigator.onLine ? undefined : remote.data ?? local ?? undefined)
+    : missingOnServer ? undefined
+      : (remote.isFetching && navigator.onLine ? undefined : remote.data ?? local ?? undefined)
 
   if (entryId) {
     if (!day) return <LoadingScreen />
@@ -46,7 +50,7 @@ export function EntryPage() {
     return <EntryForm key={`${entry.id}:${food?.id ?? ''}`} date={date} meal={entry.meal} entry={entry} food={food} />
   }
   if (!food) {
-    return local === undefined || remote.isFetching ? <LoadingScreen /> : <NotFound />
+    return !missingOnServer && (local === undefined || remote.isFetching) ? <LoadingScreen /> : <NotFound />
   }
   const meal = (MEALS.includes(params.get('obrok') as MealKey) ? params.get('obrok') : 'snack') as MealKey
   return <EntryForm key={food.id} date={date} meal={meal} food={food} />
