@@ -72,9 +72,10 @@ class ConnectionTeardownConcurrencyTests(TransactionTestCase):
         self.assertFalse(delete_thread.is_alive())
         self.assertFalse(problems, problems)
         self.assertEqual(outcomes, [204])
-        self.assertFalse(CoachConnection.objects.filter(pk=self.connection.pk).exists())
-        self.assertEqual(CoachMessage.objects.count(), 0)
-        self.assertEqual(CoachAssignment.objects.count(), 0)
+        # Ending archives the collaboration after the in-flight write: that write is kept, readable.
+        self.assertIsNotNone(CoachConnection.objects.get(pk=self.connection.pk).ended_at)
+        self.assertEqual(CoachMessage.objects.count(), 1 if write_message else 0)
+        self.assertEqual(CoachAssignment.objects.count(), 0 if write_message else 1)
         if not write_message:
             self.assertEqual(Routine.objects.filter(owner=self.trainee).count(), 1)
 
