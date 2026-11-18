@@ -642,3 +642,52 @@ class LegacyOverwriteTests(PushTestCase):
         self.client.post('/api/push/devices/', {'kind': 'web', 'token': token, **keys}, format='json')
         device = PushDevice.objects.get()
         self.assertEqual((device.user_id, device.attempt), (self.coach.pk, None))
+
+
+class ParallelFirstRegistrationTests(APITransactionTestCase):
+    """The old and the new app register the same device for the first time at the same moment."""
+
+    def test_the_old_apps_request_never_wins_over_the_new_one(self):
+        import threading
+
+        from django.db import connections
+        from rest_framework.test import APIClient
+
+        ana = User.objects.create_user('parallel-ana@example.test', 'a-strong-secret')
+        token = 'https://fcm.googleapis.com/fcm/send/first-time'
+        ua_private, ua_public = keypair()
+        keys = {'p256dh': push.b64url(ua_public), 'auth': push.b64url(os.urandom(16))}
+        attempt = uuid4()
+        real = PushDevice.objects.update_or_create
+        legacy_writing = threading.Event()
+
+        def slow_legacy_write(*args, **kwargs):
+            # The old app's write is the slow one: without a shared lock the new registration
+            # would be stored meanwhile, and then overwritten by this one.
+            if kwargs.get('defaults', {}).get('attempt') is None:
+                legacy_writing.set()
+                time.sleep(0.6)
+            return real(*args, **kwargs)
+
+        def post(body, delay=0.0):
+            try:
+                if delay:
+                    legacy_writing.wait(5)
+                    time.sleep(delay)
+                client = APIClient()
+                client.force_authenticate(user=ana)
+                client.post('/api/push/devices/', body, format='json')
+            finally:
+                connections.close_all()
+
+        with mock.patch.object(PushDevice.objects, 'update_or_create', side_effect=slow_legacy_write):
+            threads = [
+                threading.Thread(target=post, args=({'kind': 'web', 'token': token, **keys},)),
+                threading.Thread(target=post, args=({'kind': 'web', 'token': token, 'attempt': str(attempt), **keys}, 0.1)),
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(30)
+        device = PushDevice.objects.get(token=token)
+        self.assertEqual(device.attempt, attempt)  # the new registration stands, revocable by its attempt

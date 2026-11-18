@@ -387,6 +387,9 @@ klijenta iz T1.
   - Starija aplikacija koja ne šalje ID pokušaja i dalje se registruje kao „legacy“.
   - „Legacy“ registracija nikad ne prepisuje registraciju sa ID-jem pokušaja. Zakasneli zahtev
     stare verzije za isti token se prihvata, ali ne menja ništa.
+  - Sve registracije istog tokena (i stare i nove verzije) idu jedna po jedna, kroz zajedničko
+    zaključavanje po tokenu uređaja. Zaštita važi i kad se obe verzije istovremeno prvi put
+    registruju na istom uređaju.
   - **Nadogradnja.** Novija aplikacija posle prijave staru registraciju odmah registruje
     ponovo, sa ID-jem pokušaja, i kad se token nije promenio.
   - **Odjava pre nadogradnje.** Imenuje stari token u (prijavljenom) zahtevu za odjavu. Na webu
