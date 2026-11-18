@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import i18n, { toServerLanguage, type Language } from '../i18n'
 import { tokens, type TokenSession } from './tokens'
 import { getCurrentUserId } from './currentUser'
-import { completePushRemoval, pendingPushRemoval } from './pushPending'
+import { legacyLogoutToken, pendingPushRemoval, setLegacyLogoutToken } from './pushPending'
 
 export interface AuthScope { ownerId: string; session: TokenSession }
 export type ScopedRequestConfig = AxiosRequestConfig & { __pomakScope?: AuthScope }
@@ -33,13 +33,20 @@ export function withAuthLock<T>(fn: () => Promise<T>): Promise<T> {
 export async function revokePendingWebLogout(legacyRefresh: string | null = null): Promise<void> {
   const marker = tokens.pendingWebLogout()
   if (!marker || Capacitor.isNativePlatform()) return
-  const pushToken = pendingPushRemoval()
+  const pushAttempt = pendingPushRemoval()
+  const legacyPush = legacyLogoutToken()
   await axios.post(`${api.defaults.baseURL}/auth/logout/`,
-    { ...(legacyRefresh ? { refresh: legacyRefresh } : {}), ...(pushToken ? { push_token: pushToken } : {}) },
+    {
+      ...(legacyRefresh ? { refresh: legacyRefresh } : {}),
+      ...(pushAttempt ? { push_attempt: pushAttempt } : {}),
+      ...(legacyPush ? { push_token: legacyPush } : {}),
+    },
     { headers: webHeaders(), timeout: 5000 },
   )
   tokens.completeWebLogout(marker)
-  completePushRemoval(pushToken)
+  if (legacyPush && legacyLogoutToken() === legacyPush) setLegacyLogoutToken(null)
+  // Not acknowledged here: the cookie may already be gone (then nothing was revoked); the
+  // session-free revocation request confirms it.
 }
 
 export const api = axios.create({

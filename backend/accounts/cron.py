@@ -27,5 +27,12 @@ def cleanup_auth_throttle_cron(request):
 
     delete_orphan_images()
     drain(5.0)  # delivers what is left and drops what is too old
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from notifications.models import PushRevocation
+
+    PushRevocation.objects.filter(created_at__lt=timezone.now() - timedelta(days=7)).delete()
     return JsonResponse({'status': 'ok', 'deleted': deleted, 'more_expired': more})
 

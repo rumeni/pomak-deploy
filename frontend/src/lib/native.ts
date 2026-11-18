@@ -2,10 +2,13 @@ import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { StatusBar, Style } from '@capacitor/status-bar'
 
-import { listenForNativePushTaps } from './push'
+import { listenForNativePushTaps, startPushRecovery } from './push'
 
 /** Podešavanja koja važe samo u Android aplikaciji; u pregledaču registruje service worker. */
 export async function setupNative(): Promise<void> {
+  // Push registrations left to remove (an offline sign-out, an app closed mid-request).
+  startPushRecovery()
+
   if (!Capacitor.isNativePlatform()) {
     // U APK-u su fajlovi već na telefonu; service worker bi tamo samo usporio start
     // i mogao da posluži stari kod posle ažuriranja aplikacije.

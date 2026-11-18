@@ -362,6 +362,40 @@ klijenta iz T1.
   - Pretplata na uređaju se odmah poništava, a već prikazana obaveštenja se brišu.
   - Server briše registraciju kroz sam zahtev za odjavu. Na webu se taj zahtev ponavlja dok ne
     uspe.
+  - **Svaka registracija je zaseban pokušaj, sa slučajnim ID-jem koji pravi uređaj.**
+    - Opoziv (`POST /api/push/devices/remove/` sa `attempt` i `user_id`, bez prijave) ukida
+      tačno taj pokušaj za taj nalog i server ga pamti nedelju dana. Registracija tog pokušaja
+      koja stigne kasnije se odbija (409 `push_revoked`).
+    - Zato redosled nije bitan: opoziv sme da stigne i pre registracije.
+    - Kasnije novo uključivanje (novi pokušaj, čak i sa istim tokenom uređaja) ostaje važeće.
+    - Push token se nikad ne šalje bez prijave; ID pokušaja zna samo uređaj.
+  - **Uređaj pamti opozive koji nisu potvrđeni.** Ponavlja ih pri pokretanju aplikacije i kad se
+    vrati internet, pa i odjava bez interneta na Androidu na kraju ukine registraciju.
+  - **Odjava dok je registracija na putu.** Ta registracija se odmah opoziva.
+  - **Izgubljen odgovor.** Pokušaj sa izgubljenim odgovorom (timeout) se takođe opoziva.
+  - **Pokušaji iz drugog taba.** Pri pokretanju se diraju samo pokušaji „u toku“ stariji od
+    minut. Mlađi mogu pripadati drugom tabu koji se upravo registruje.
+  - **Rani restart.** Pokušaj ostavljen „u toku“ zbog ranog restarta ponovo se proverava posle
+    tog minuta: uz tajmer, kad se aplikacija vrati u prvi plan i kad se vrati internet.
+  - **Opoziv bez prijave je ograničen.** Najviše 120 zahteva na sat po klijentu. Nepoznat nalog
+    se ignoriše, a zapisi o opozivu ističu posle nedelju dana.
+- **Prelaz sa #75 (registracije bez ID-ja pokušaja).**
+  - Stari red na serveru (`attempt` prazno) važi kao „legacy“. Briše ga samo uklanjanje po
+    tokenu: odjava sa `push_token` ili isključivanje iz starije aplikacije.
+  - To uklanjanje nikad ne briše noviju registraciju sa ID-jem pokušaja, čak ni sa istim
+    tokenom.
+  - Starija aplikacija koja ne šalje ID pokušaja i dalje se registruje kao „legacy“.
+  - „Legacy“ registracija nikad ne prepisuje registraciju sa ID-jem pokušaja. Zakasneli zahtev
+    stare verzije za isti token se prihvata, ali ne menja ništa.
+  - Sve registracije istog tokena (i stare i nove verzije) idu jedna po jedna, kroz zajedničko
+    zaključavanje po tokenu uređaja. Zaštita važi i kad se obe verzije istovremeno prvi put
+    registruju na istom uređaju.
+  - **Nadogradnja.** Novija aplikacija posle prijave staru registraciju odmah registruje
+    ponovo, sa ID-jem pokušaja, i kad se token nije promenio.
+  - **Odjava pre nadogradnje.** Imenuje stari token u (prijavljenom) zahtevu za odjavu. Na webu
+    se taj zahtev ponavlja dok ne uspe.
+  - **Android bez interneta pre nadogradnje.** Oslanja se na lokalnu odjavu kod Firebase-a:
+    kad FCM javi `UNREGISTERED`, server briše uređaj. Token se bez prijave nikad ne šalje.
   - Obaveštenje koje je sistem već primio pre odjave i dalje može da se pojavi.
 - **Nova pretplata ili token.** Posle prijave aplikacija osvežava registraciju ako je pregledač
   obnovio pretplatu ili je Firebase promenio token.
@@ -386,7 +420,26 @@ klijenta iz T1.
   - Obaveštenje starije od sat vremena se odbacuje.
   - Uređaj koji servis prijavi kao nepostojeći briše se samo ako u međuvremenu nije ponovo
     registrovan.
-  - Dodela programa za 50 klijenata pokreće jedno pražnjenje reda, ne 50.
+  - Upisi tokom zahteva samo beleže da ima posla. Isporuka se pokreće jednom, na kraju zahteva
+    (`PushKickMiddleware`). Dodela programa za 50 klijenata ima 50 upisa, ali jedno pokretanje.
+  - **Sa QStash-om** zahtev samo predaje posao workeru (najviše 2 s) i nikad sam ne zove push
+    servise ni Firebase OAuth. Ako predaja ne uspe, obaveštenja ostaju u redu: preuzima ih
+    sledeći događaj, osvežavanje broja nepročitanih poruka (za ono što čeka duže od minut) ili
+    dnevni cron.
+  - **Bez QStash-a** (razvoj, ili dok nije podešen) red se prazni u samom zahtevu.
+    - Rok od 3 s važi za ceo put: čekanje na zaključavanje, Firebase OAuth i svako slanje.
+    - Ono što ne stigne ostaje u redu.
+    - Ovo je samo rezervni režim. Pouzdana isporuka u roku traži QStash.
+  - **Privremena greška** (timeout, 429, 5xx) pokušava se ponovo, najviše tri puta, sa razmakom
+    od 30 s pa 60 s.
+    - Ponovo se šalje samo uređajima koji nisu potvrdili prijem.
+    - Worker sam zakazuje sledeći QStash poziv za trenutak kad pokušaj dospeva, pa nije potreban
+      novi događaj.
+    - Ako to zakazivanje ne uspe, worker vraća grešku i QStash ponavlja poziv.
+    - Konačno odbijanje (ostali 4xx) se ne ponavlja.
+  - **Isporuka je najbolji pokušaj i „bar jednom“, ne „tačno jednom“.** Ako se izgubi odgovor
+    push servisa, ili worker stane posle slanja, a pre upisa ishoda, obaveštenje može da stigne
+    dvaput.
   - Greška u slanju nikad ne obara zahtev.
 - **Samo pravi push servisi.** Web pretplata se prihvata samo za push servise pregledača:
   Google (FCM), Mozilla, Apple i Microsoft.
@@ -419,6 +472,8 @@ klijenta iz T1.
   (dnevni cron). Brisanje ide pod istim zaključavanjem kao slanje poruke, pa se slika koja se
   upravo šalje nikad ne obriše.
 - **Ograničenja po korisniku.** Najviše 20 neposlatih slika, a dnevno najviše 60 slika i 20 MB.
+  Slike jedne osobe upisuju se jedna po jedna (zaključavanje po korisniku), pa paralelni zahtevi
+  ne mogu zajedno da pređu limit.
 - **Izvoz podataka.** Izvoz za sada samo označava da je poruka imala sliku. Kako korisnik može da
   preuzme svoje slike, treba odlučiti pre šireg puštanja.
 - **Poruka sa slikom.** Tekst može da bude prazan. Ponovljeno slanje proverava i sliku, pa isti ID
@@ -427,7 +482,7 @@ klijenta iz T1.
 ### Uvođenje na produkciju
 
 - **Migracije:** `coaching.0006_coach_photos_images` i `notifications.0001_initial`
-  (`PushDevice`, `PushMessage`).
+  (`PushDevice`, `PushMessage`), zatim `notifications.0002_push_retry_revocation`.
 - **Nove biblioteke:** `requirements.txt` dobija `cryptography` i `Pillow`.
 - **Isporuka preko QStash-a.** Postavi `PUSH_WORKER_URL` na
   `https://<api>/api/internal/push-deliver/`; QStash ključevi su isti kao za mejlove. Bez toga

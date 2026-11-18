@@ -51,6 +51,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Push notifications queued by the request are handed over once, at its end.
+    'notifications.middleware.PushKickMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -140,6 +142,7 @@ REST_FRAMEWORK = {
         'anon': '200/day',
         'user': '5000/day',
         'auth': '10/min',
+        'push_revoke': '120/hour',
     },
 }
 

@@ -21,15 +21,17 @@ redirects), so a registered "subscription" can never make this server call anywh
 """
 
 import base64
+import contextvars
 import json
 import logging
+import math
 import os
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import timedelta
 
 import jwt
@@ -48,7 +50,9 @@ logger = logging.getLogger(__name__)
 TIMEOUT = 4
 MAX_AGE = timedelta(hours=1)
 MAX_ATTEMPTS = 3
-INLINE_BUDGET = 3.0
+RETRY_DELAY = timedelta(seconds=30)
+# The whole hand-off after a request (publish to QStash, or a short drain here) stays under this.
+KICK_BUDGET = 3.0
 WORKER_BUDGET = 7.0
 
 # The push services of real browsers. A web push endpoint must be https on the default port at
@@ -169,10 +173,18 @@ def vapid_header(endpoint: str) -> str:
     return f'vapid t={token}, k={vapid_public_key()}'
 
 
-def send_web(device, payload: dict, timeout: float) -> bool:
-    """False when the subscription is gone or not allowed (the device is removed)."""
+DELIVERED, GONE, RETRY = 'delivered', 'gone', 'retry'
+
+
+def _http_outcome(code: int) -> str:
+    """Rate limits and server errors are temporary; other refusals are final (no retry)."""
+    return RETRY if code == 429 or code >= 500 else DELIVERED
+
+
+def send_web(device, payload: dict, deadline: float) -> str:
+    """GONE when the subscription is gone or not allowed (the device is removed)."""
     if not allowed_endpoint(device.token) or not valid_keys(device.p256dh, device.auth):
-        return False
+        return GONE
     body = encrypt(json.dumps(payload).encode(), device.p256dh, device.auth)
     request = urllib.request.Request(device.token, data=body, method='POST', headers={
         'Authorization': vapid_header(device.token), 'Content-Encoding': 'aes128gcm',
@@ -180,12 +192,13 @@ def send_web(device, payload: dict, timeout: float) -> bool:
         'Topic': ''.join(c for c in payload.get('tag', '') if c.isalnum() or c in '-_')[:32] or 'pomak',
     })
     try:
-        http_post(request, timeout).close()
+        http_post(request, min(TIMEOUT, time_left(deadline))).close()
     except urllib.error.HTTPError as error:
         if error.code in (404, 410):
-            return False
+            return GONE
         logger.warning('web push failed: %s', error.code)
-    return True
+        return _http_outcome(error.code)
+    return DELIVERED
 
 
 # ---- FCM ------------------------------------------------------------------------------------
@@ -194,8 +207,22 @@ _fcm_token = {'value': None, 'expires': 0.0}
 _fcm_lock = threading.Lock()
 
 
-def fcm_access_token(account) -> str:
-    with _fcm_lock:
+class DeadlinePassed(Exception):
+    """No time left for this attempt: it is retried later, never waited for."""
+
+
+def time_left(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0.05:
+        raise DeadlinePassed()
+    return remaining
+
+
+def fcm_access_token(account, deadline: float) -> str:
+    # Waiting for another thread's token request counts against the same deadline.
+    if not _fcm_lock.acquire(timeout=time_left(deadline)):
+        raise DeadlinePassed()
+    try:
         if _fcm_token['value'] and _fcm_token['expires'] > time.time() + 60:
             return _fcm_token['value']
         now = int(time.time())
@@ -205,120 +232,197 @@ def fcm_access_token(account) -> str:
             'aud': token_uri, 'iat': now, 'exp': now + 3600,
         }, account['private_key'], algorithm='RS256')
         body = urllib.parse.urlencode({'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion': assertion}).encode()
-        with http_post(urllib.request.Request(token_uri, data=body, method='POST'), TIMEOUT) as response:
+        request = urllib.request.Request(token_uri, data=body, method='POST')
+        with http_post(request, min(TIMEOUT, time_left(deadline))) as response:
             data = json.load(response)
         _fcm_token.update(value=data['access_token'], expires=time.time() + int(data.get('expires_in', 3600)))
         return _fcm_token['value']
+    finally:
+        _fcm_lock.release()
 
 
-def send_fcm(device, payload: dict, timeout: float) -> bool:
+def send_fcm(device, payload: dict, deadline: float) -> str:
     account = fcm_account()
     if account is None:
-        return True
+        return DELIVERED
     message = {'message': {
         'token': device.token,
         'notification': {'title': payload['title'], 'body': payload['body']},
         'data': {'url': payload['url']},
         'android': {'priority': 'high', 'ttl': '3600s', 'notification': {'tag': payload.get('tag', 'pomak')}},
     }}
+    access = fcm_access_token(account, deadline)
     request = urllib.request.Request(
         f"https://fcm.googleapis.com/v1/projects/{urllib.parse.quote(str(account['project_id']), safe='')}/messages:send",
         data=json.dumps(message).encode(), method='POST',
-        headers={'Authorization': f'Bearer {fcm_access_token(account)}', 'Content-Type': 'application/json'},
+        headers={'Authorization': f'Bearer {access}', 'Content-Type': 'application/json'},
     )
     try:
-        http_post(request, timeout).close()
+        http_post(request, min(TIMEOUT, time_left(deadline))).close()
     except urllib.error.HTTPError as error:
         if error.code == 404 or b'UNREGISTERED' in (error.read() or b''):
-            return False
+            return GONE
         logger.warning('fcm push failed: %s', error.code)
-    return True
+        return _http_outcome(error.code)
+    return DELIVERED
 
 
 # ---- delivery -------------------------------------------------------------------------------
+#
+# Best effort, at least once: a retry goes only to the devices without a confirmed delivery, but
+# a lost provider answer (or a worker stopped after sending) can still repeat a notification.
 
-def _send_one(device, payload, timeout):
+def _send_one(device, payload, deadline) -> str:
     try:
         if device.kind == PushDevice.Kind.WEB and web_push_enabled():
-            return send_web(device, payload, timeout)
+            return send_web(device, payload, deadline)
         if device.kind == PushDevice.Kind.FCM and fcm_enabled():
-            return send_fcm(device, payload, timeout)
-    except OSError as error:  # timeouts, refused connections: try again with the next message
+            return send_fcm(device, payload, deadline)
+    except DeadlinePassed:
+        return RETRY
+    except OSError as error:  # timeouts, refused connections, the token service down: temporary
         logger.warning('push delivery failed: %s', type(error).__name__)
-    except Exception:  # one device never breaks the others
+        return RETRY
+    except Exception:  # one device never breaks the others; a bug is not retried
         logger.exception('push delivery failed')
-    return True
+    return DELIVERED
 
 
-def deliver(user_id, payload: dict, timeout: float = TIMEOUT) -> None:
-    """Send to all of the user's devices at once; remove the ones the service says are gone,
-    unless they were registered again meanwhile."""
-    devices = list(PushDevice.objects.filter(user_id=user_id))
+def deliver(user_id, payload: dict, deadline: float, device_ids=None) -> list:
+    """Send to the user's devices at once (only `device_ids` on a retry), never past `deadline`
+    (a monotonic time); remove the ones the service says are gone, unless they were registered
+    again meanwhile. Returns the IDs of the devices to try again."""
+    devices = PushDevice.objects.filter(user_id=user_id)
+    if device_ids is not None:
+        devices = devices.filter(pk__in=device_ids)
+    devices = list(devices)
     if not devices:
-        return
-    with ThreadPoolExecutor(max_workers=len(devices)) as pool:
-        alive = list(pool.map(lambda d: _send_one(d, payload, timeout), devices))
-    for device, ok in zip(devices, alive):
-        if not ok:
+        return []
+    pool = ThreadPoolExecutor(max_workers=len(devices))
+    futures = [pool.submit(_send_one, d, payload, deadline) for d in devices]
+    done, _pending = wait(futures, timeout=max(0.0, deadline - time.monotonic()))
+    pool.shutdown(wait=False, cancel_futures=True)
+    # Not answered in time: tried again later (the socket timeouts end those threads anyway).
+    outcomes = [f.result() if f in done else RETRY for f in futures]
+    for device, outcome in zip(devices, outcomes):
+        if outcome == GONE:
             PushDevice.objects.filter(pk=device.pk, token=device.token, updated_at=device.updated_at).delete()
+    return [str(d.pk) for d, outcome in zip(devices, outcomes) if outcome == RETRY]
 
 
-def drain(budget: float) -> bool:
-    """Deliver queued messages until the deadline; True if some are left."""
+def next_due():
+    """When the queue next has work: None if empty, now if something can go right away."""
+    now = timezone.now()
+    if PushMessage.objects.filter(Q(claimed_until__isnull=True) | Q(claimed_until__lte=now)).exists():
+        return now
+    return PushMessage.objects.order_by('claimed_until').values_list('claimed_until', flat=True).first()
+
+
+def drain(budget: float):
+    """Deliver queued messages, never past `budget` seconds from now. Returns `next_due()`."""
     deadline = time.monotonic() + budget
     PushMessage.objects.filter(created_at__lt=timezone.now() - MAX_AGE).delete()
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining < 1.0:
-            return PushMessage.objects.exists()
+    while deadline - time.monotonic() >= 1.0:
         now = timezone.now()
         with transaction.atomic():
             item = (PushMessage.objects.select_for_update(skip_locked=True)
-                    .filter(Q(claimed_until__isnull=True) | Q(claimed_until__lt=now)).order_by('created_at').first())
+                    .filter(Q(claimed_until__isnull=True) | Q(claimed_until__lte=now)).order_by('created_at').first())
             if item is None:
-                return False
+                break
             # Claimed, not held: the slow network part runs outside the transaction.
             item.claimed_until = now + timedelta(seconds=60)
             item.attempts += 1
             item.save(update_fields=['claimed_until', 'attempts'])
         try:
-            deliver(item.user_id, item.payload, timeout=min(TIMEOUT, max(0.5, remaining - 0.5)))
+            retry = deliver(item.user_id, item.payload, deadline=min(deadline, time.monotonic() + TIMEOUT + 0.5),
+                            device_ids=item.devices)
         except Exception:
             logger.exception('push drain failed')
-            if item.attempts < MAX_ATTEMPTS:
-                PushMessage.objects.filter(pk=item.pk).update(claimed_until=None)
-                continue
+            retry = item.devices if item.devices is not None else [
+                str(pk) for pk in PushDevice.objects.filter(user_id=item.user_id).values_list('pk', flat=True)]
+        if retry and item.attempts < MAX_ATTEMPTS:
+            # Only the devices that did not get it, a little later (the claim doubles as backoff).
+            PushMessage.objects.filter(pk=item.pk).update(
+                devices=retry, claimed_until=timezone.now() + RETRY_DELAY * item.attempts,
+            )
+            continue
         PushMessage.objects.filter(pk=item.pk).delete()
+    return next_due()
 
 
-def publish_drain() -> bool:
-    """Ask the QStash worker to drain the queue; False if that could not be done."""
-    request = urllib.request.Request(
-        'https://qstash.upstash.io/v2/publish/' + worker_url(), data=b'{}', method='POST',
-        headers={'Authorization': 'Bearer ' + settings.QSTASH_TOKEN, 'Content-Type': 'application/json', 'Upstash-Retries': '2'},
-    )
+def publish_drain(timeout: float = 3.0, delay: int = 0) -> bool:
+    """Ask the QStash worker to drain the queue (after `delay` seconds); False if not accepted."""
+    headers = {'Authorization': 'Bearer ' + settings.QSTASH_TOKEN, 'Content-Type': 'application/json', 'Upstash-Retries': '3'}
+    if delay > 0:
+        headers['Upstash-Delay'] = f'{int(delay)}s'
+    request = urllib.request.Request('https://qstash.upstash.io/v2/publish/' + worker_url(), data=b'{}', method='POST', headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=3) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return 200 <= response.status < 300
     except (urllib.error.URLError, OSError):
         logger.warning('push queue publish failed')
         return False
 
 
-_kick = threading.local()
+def schedule_next(due) -> bool:
+    """Make sure the worker runs again when the queue next has work (a retry's backoff)."""
+    if due is None:
+        return True
+    delay = max(1, math.ceil((due - timezone.now()).total_seconds()))
+    return publish_drain(delay=delay)
 
 
-def kick(token=None) -> None:
-    """After a commit: hand the queue to the worker (or drain briefly here). Many notifications in
-    one transaction (a program assigned to 50 clients) cause one kick: only the last one runs."""
-    if token is not None and getattr(_kick, 'token', None) is not token:
-        return
+# During a request, commits only note that something was queued; the request hands the queue
+# over once at its end (PushKickMiddleware). A program assigned to 50 clients commits 50 times
+# but kicks once. Outside a request (commands, cron) a commit kicks right away.
+_request_state = contextvars.ContextVar('push_request_state', default=None)
+
+
+def begin_request():
+    return _request_state.set({'pending': False})
+
+
+def end_request(token) -> bool:
+    state = _request_state.get()
+    _request_state.reset(token)
+    return bool(state and state['pending'])
+
+
+def _committed():
+    state = _request_state.get()
+    if state is not None:
+        state['pending'] = True
+    else:
+        kick()
+
+
+def kick() -> None:
+    """Hand the queue over after a request, within KICK_BUDGET in total.
+
+    With the QStash worker configured this only publishes (no push service or OAuth call ever
+    runs in a user's request); if publishing fails, the messages stay queued for the next hand-off
+    (any later event, the unread poll) or the daily cron. Without a worker (development, or not
+    yet configured) a short drain runs here, bounded end to end by the same deadline."""
     try:
-        if queue_configured() and publish_drain():
+        if queue_configured():
+            publish_drain(timeout=min(2.0, KICK_BUDGET))
             return
-        drain(INLINE_BUDGET)
+        drain(KICK_BUDGET)
     except Exception:
         logger.exception('push kick failed')
+
+
+def poll_kick() -> None:
+    """From the unread poll (every 30 s while the app is open): pick up what a failed hand-off
+    left, without adding provider calls to every poll."""
+    stuck = PushMessage.objects.filter(created_at__lt=timezone.now() - timedelta(seconds=60)).filter(
+        Q(claimed_until__isnull=True) | Q(claimed_until__lte=timezone.now()))
+    if not stuck.exists():
+        return
+    if queue_configured():
+        publish_drain(timeout=1.0)
+    else:
+        drain(1.5)
 
 
 def notify(user, *, title, body, url, tag) -> None:
@@ -333,5 +437,4 @@ def notify(user, *, title, body, url, tag) -> None:
     with translation.override(language):
         payload = {'title': str(title)[:120], 'body': str(body)[:200], 'url': url, 'tag': tag}
     PushMessage.objects.create(user=user, payload=payload)
-    token = _kick.token = object()
-    transaction.on_commit(lambda: kick(token))
+    transaction.on_commit(_committed)
