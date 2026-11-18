@@ -19,11 +19,16 @@ export function DeleteAccountPage() {
   const remove = useMutation({
     mutationFn: async () => api.post('/auth/me/delete/', { password }),
     onSuccess: async () => {
-      if (me) {
-        await clearLocalData(me.id, true)
-        forgetLanguagePreference(me.id)
+      try {
+        if (me) {
+          await clearLocalData(me.id, true)
+          forgetLanguagePreference(me.id)
+        }
+      } finally {
+        // The server already deleted this account. A blocked IndexedDB must
+        // never leave an authenticated, unusable session on this device.
+        logout()
       }
-      logout()
     },
   })
 

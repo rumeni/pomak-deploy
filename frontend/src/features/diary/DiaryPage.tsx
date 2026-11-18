@@ -55,7 +55,9 @@ export function DiaryPage() {
                 {[...day.errors.entries()].map(([id, message]) => (
                   <p key={id} className="mt-1 text-muted">{message}</p>
                 ))}
-                <button type="button" className="mt-2 underline" onClick={() => void discardRejectedDayOps(me.id, date)}>
+                <button type="button" className="mt-2 underline" onClick={() => {
+                  void discardRejectedDayOps(me.id, date).catch((cause) => setNotice(errorMessage(cause)))
+                }}>
                   {t('diary.dismissRejected')}
                 </button>
               </div>
@@ -294,7 +296,12 @@ function StatusCard({ date, day, ownerId }: { date: string; day: DisplayDay; own
   const { t } = useTranslation()
   // Dan bez unosa i bez oznake se jasno razlikuje od dana "u toku".
   const status: DayStatus | 'none' = day.status ?? (day.entries.length ? 'in_progress' : 'none')
-  const set = (s: DayStatus) => ownerId && void setDayStatus(ownerId, date, s)
+  const [error, setError] = useState<string | null>(null)
+  const set = (s: DayStatus) => {
+    if (!ownerId) return
+    setError(null)
+    void setDayStatus(ownerId, date, s).catch((cause) => setError(errorMessage(cause)))
+  }
 
   return (
     <Card>
@@ -304,6 +311,7 @@ function StatusCard({ date, day, ownerId }: { date: string; day: DisplayDay; own
       </div>
       <p className="mt-2 text-sm text-muted">{t(status === 'complete' ? 'diary.completeDone' : 'diary.completeHint')}</p>
       <div className="mt-3 flex flex-col gap-2">
+        <FormError message={error} />
         {status !== 'complete' && <Button onClick={() => set('complete')}>{t('diary.markComplete')}</Button>}
         {status === 'in_progress' && (
           <Button variant="secondary" onClick={() => set('incomplete')}>
