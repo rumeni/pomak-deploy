@@ -10,6 +10,7 @@ import {
   loadPendingProgram,
   ProgramImportAuthChanged,
   programToRoutines,
+  programAlreadyAdded,
   type Program,
 } from './programs'
 
@@ -40,11 +41,23 @@ describe('suggested programs', () => {
       ['id-1', 'Celo telo A', 'Celo telo za početnike'],
       ['id-2', 'Celo telo B', 'Celo telo za početnike'],
     ])
+    expect(routines.map((r) => r.program_key)).toEqual([program.key, program.key])
     expect(routines[0].exercises[0]).toMatchObject({ exercise_id: 'e-bench', rest_seconds: 120 })
     expect(routines[0].exercises[0].sets).toHaveLength(3)
     expect(routines[0].exercises[0].sets[0]).toEqual(set)
     // A copy, not the same objects: editing the routine never changes the suggestion.
     expect(routines[0].exercises[0].sets[0]).not.toBe(set)
+  })
+
+  it('recognises an imported program after a language switch or routine rename', () => {
+    const translated = { ...program, name: 'Full body for beginners', routines: [
+      { ...program.routines[0], name: 'Full body A' },
+      { ...program.routines[1], name: 'Full body B' },
+    ] }
+    const imported = { name: 'My own A', notes: 'Celo telo za početnike', program_key: program.key }
+    expect(programAlreadyAdded(translated, [imported])).toBe(true)
+    expect(programAlreadyAdded(translated, [{ ...imported, program_key: 'other' }])).toBe(false)
+    expect(programAlreadyAdded(program, [{ name: 'Celo telo A', notes: program.name, program_key: '' }])).toBe(true)
   })
 
   it('describes the prescription for the preview', () => {

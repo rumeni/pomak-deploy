@@ -1,4 +1,4 @@
-import type { RoutineExercise, RoutinePayload } from './api'
+import type { Routine, RoutineExercise, RoutinePayload } from './api'
 
 export type ProgramLevel = 'beginner' | 'intermediate' | 'advanced'
 
@@ -20,6 +20,7 @@ export function programToRoutines(program: Program, newId: () => string): Routin
     id: newId(),
     name: routine.name,
     notes: program.name,
+    program_key: program.key,
     exercises: routine.exercises.map((item) => ({
       exercise_id: item.exercise.id,
       rest_seconds: item.rest_seconds,
@@ -27,6 +28,14 @@ export function programToRoutines(program: Program, newId: () => string): Routin
       sets: item.sets.map((s) => ({ ...s })),
     })),
   }))
+}
+
+/** Stable identity survives language switches and user edits; older imports use a name fallback. */
+export function programAlreadyAdded(program: Program, routines: readonly Pick<Routine, 'name' | 'notes' | 'program_key'>[] | undefined): boolean {
+  const names = new Set(program.routines.map((r) => r.name))
+  return !!routines?.some((routine) =>
+    routine.program_key === program.key
+    || (!routine.program_key && names.has(routine.name) && routine.notes === program.name))
 }
 
 /** "3 × 8–10 @ 6,5" for the program preview. */

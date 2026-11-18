@@ -60,6 +60,7 @@ export interface Routine {
   id: string
   name: string
   notes: string
+  program_key: string
   exercises: RoutineExercise[]
   created_at: string
   updated_at: string
@@ -69,6 +70,7 @@ export interface RoutinePayload {
   id?: string
   name: string
   notes: string
+  program_key?: string
   exercises: (Omit<RoutineExercise, 'exercise'> & { exercise_id: string })[]
 }
 
