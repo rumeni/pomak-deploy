@@ -440,15 +440,16 @@ klijenta iz T1.
     produkcioni deployment da bi ključ bio dostupan kodu.
 - **Android push (Firebase projekat `pomak-rs`):**
   1. Firebase Android aplikacija ima package ID `rs.pomak.app`.
-  2. Originalni `google-services.json` ne dodavati u Git repo. U GitHub repozitorijumu
-     `rumeni/pomak-deploy` otvoriti Settings → Secrets and variables → Actions →
-     New repository secret, pod nazivom **`ANDROID_GOOGLE_SERVICES_JSON`**.
-     Vrednost je **ceo tekst** iz `google-services.json` (ne base64).
-  3. Android CI na `push` u `main` učitava taj secret u
-     `frontend/android/app/google-services.json`, proverava `project_id=pomak-rs` i
-     `package_name=rs.pomak.app`, zatim automatski postavlja `VITE_FCM_ENABLED=1`.
-     Provere PR-a ne čitaju taj secret, da ga promenjeni PR kod ne bi mogao otkriti.
-     Ako secret ne postoji, CI pravi APK bez Firebase-a i bez Android push-a.
+  2. Za ovaj testni projekat Android klijentska konfiguracija
+     `frontend/android/app/google-services.json` je dodatа direktno na granu T3,
+     uz izričitu dozvolu vlasnika. **To nije servisni nalog**; Firebase Android konfiguracija
+     sadrži javni API ključ. Ključ ograničiti na potrebne Firebase API-je i odgovarajuću
+     Android aplikaciju u Google Cloud podešavanjima, naročito pre javne distribucije.
+     Nikad ne commitovati servisni nalog ili njegov privatni ključ.
+  3. Android CI proverava `project_id=pomak-rs` i `package_name=rs.pomak.app`
+     iz datoteke i automatski postavlja `VITE_FCM_ENABLED=1` i za PR i za
+     `main` build. Poseban GitHub Actions secret za ovaj testni klijentski fajl
+     više nije potreban. Ako datoteke nema, FCM ostaje isključen.
   4. U Firebase Console → Project settings → Service accounts → Generate new private key
      preuzeti serverski servisni nalog. Ceo njegov JSON uneti **direktno u Vercel**
      `pomak-api` Production kao šifrovanu osetljivu promenljivu `FCM_SERVICE_ACCOUNT`.
