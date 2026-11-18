@@ -120,6 +120,27 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: npm ci
+      # Firebase Android config is supplied as an Actions secret, not committed to the public repo.
+      # Do not expose repository secrets to unreviewed pull-request workflows.
+      - name: Configure Firebase for main Android builds
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "${ANDROID_GOOGLE_SERVICES_JSON}" ]; then
+            printf '%s' "${ANDROID_GOOGLE_SERVICES_JSON}" > android/app/google-services.json
+            node -e '
+              const fs = require("node:fs");
+              const cfg = JSON.parse(fs.readFileSync("android/app/google-services.json", "utf8"));
+              const valid = cfg.project_info?.project_id === "pomak-rs"
+                && cfg.client?.some(c => c.client_info?.android_client_info?.package_name === "rs.pomak.app");
+              if (!valid) throw Error("Firebase config does not match the Pomak project and Android package");
+              console.log("Pomak Firebase Android config verified");
+            '
+            echo 'VITE_FCM_ENABLED=1' >> "$GITHUB_ENV"
+          else
+            echo 'Firebase Android config not set; building without FCM'
+          fi
       - run: npm run build
       - name: Verify Secure Storage native wiring
         run: |
