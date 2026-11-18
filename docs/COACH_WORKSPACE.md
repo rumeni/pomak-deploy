@@ -385,15 +385,29 @@ klijenta iz T1.
 
 - **Migracije:** `coaching.0006_coach_photos_images` i `notifications.0001_initial`.
 - **Nove biblioteke:** `requirements.txt` dobija `cryptography` i `Pillow`.
-- **Web push**, na pomak-api kao šifrovane promenljive:
-  1. `python manage.py generate_vapid_keys` ispisuje novi par ključeva.
-  2. Postavi `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` i `WEB_PUSH_CONTACT`
-     (`mailto:` adresa).
-- **Android push (Firebase):**
-  1. Napravi Firebase projekat i dodaj Android aplikaciju sa ID-jem iz `capacitor.config`.
-  2. `google-services.json` stavi u `frontend/android/app/`. Fajl je u `.gitignore`; za CI ide
-     kroz GitHub secret.
-  3. Android build pravi se sa `VITE_FCM_ENABLED=1`. Bez Firebase-a registracija bi srušila
-     aplikaciju, pa je ova oznaka obavezna.
-  4. Servisni nalog (Project settings → Service accounts → Generate new private key) postavi
-     kao `FCM_SERVICE_ACCOUNT` na pomak-api: ceo JSON ili base64.
+- **Web push (VAPID)**, na Vercel projektu `pomak-api`, Production:
+  - `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` i `WEB_PUSH_CONTACT`.
+  - Ključevi su već postavljeni u Vercel Production 18.11.2026. Ne generisati novi par
+    bez plana za ponovno prijavljivanje postojećih browser pretplata.
+  - Kontakt može biti `mailto:` ili `https:` URL. Promena Vercel env zahteva novi
+    produkcioni deployment da bi ključ bio dostupan kodu.
+- **Android push (Firebase projekat `pomak-rs`):**
+  1. Firebase Android aplikacija ima package ID `rs.pomak.app`.
+  2. Originalni `google-services.json` ne dodavati u Git repo. U GitHub repozitorijumu
+     `rumeni/pomak-deploy` otvoriti Settings → Secrets and variables → Actions →
+     New repository secret, pod nazivom **`ANDROID_GOOGLE_SERVICES_JSON`**.
+     Vrednost je **ceo tekst** iz `google-services.json` (ne base64).
+  3. Android CI na `push` u `main` učitava taj secret u
+     `frontend/android/app/google-services.json`, proverava `project_id=pomak-rs` i
+     `package_name=rs.pomak.app`, zatim automatski postavlja `VITE_FCM_ENABLED=1`.
+     Provere PR-a ne čitaju taj secret, da ga promenjeni PR kod ne bi mogao otkriti.
+     Ako secret ne postoji, CI pravi APK bez Firebase-a i bez Android push-a.
+  4. U Firebase Console → Project settings → Service accounts → Generate new private key
+     preuzeti serverski servisni nalog. Ceo njegov JSON uneti **direktno u Vercel**
+     `pomak-api` Production kao šifrovanu osetljivu promenljivu `FCM_SERVICE_ACCOUNT`.
+     Ovo **nije** `google-services.json` i nikad ne ide u Git niti u PR komentar.
+     Uveriti se da je Firebase Cloud Messaging API (HTTP v1) omogućen.
+  5. Pošto PR sa `notifications` kodom bude mergovan, uraditi migracije
+     `coaching.0005`, `coaching.0006`, `notifications.0001` i objaviti API/web.
+     Na uređaju instalirati novi APK napravljen sa konfiguracijom i proveriti prijavu
+     tokena, odobrenje za notifikacije i prijem stvarnog FCM push-a.
