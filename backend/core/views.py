@@ -156,7 +156,9 @@ class IdempotentCreateMixin:
             with transaction.atomic():
                 return super().create(request, *args, **kwargs)
         except IntegrityError:
-            existing = self.find_existing(model, record_id)
+            # Re-read the committed row directly: the initial lookup may have been
+            # stale (or deliberately mocked stale in a concurrency regression).
+            existing = model.objects.filter(pk=record_id).first()
             if existing is None:
                 raise  # Unrelated constraint failure.
             if not self.created_by_user(existing, request.user):
