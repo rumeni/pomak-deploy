@@ -8,10 +8,21 @@ import { useCoachMessages, useSendCoachMessage } from './api'
 import { mergeCoachMessagePages } from './messages'
 import { chatScrollTop, nearChatBottom } from './chatScroll'
 
-export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?: string }) {
+/**
+ * One conversation. `connectionId` addresses any of the user's conversations (an ended one is a
+ * read-only archive: no polling, no input); otherwise the active one with `clientId` (coach) or
+ * the client's own.
+ */
+export function CoachMessages({ selfId, clientId, connectionId, readOnly = false }: {
+  selfId: string
+  clientId?: string
+  connectionId?: string
+  readOnly?: boolean
+}) {
   const { t } = useTranslation()
-  const messages = useCoachMessages(clientId)
-  const send = useSendCoachMessage(clientId)
+  const target = { clientId, connectionId }
+  const messages = useCoachMessages(target, { live: !readOnly })
+  const send = useSendCoachMessage(target)
   const [text, setText] = useState('')
   const items = mergeCoachMessagePages(messages.data?.pages ?? [])
   const newestId = items.at(-1)?.id ?? null
@@ -20,7 +31,7 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
   const previousCount = useRef(0)
   const previousNewestId = useRef<string | null>(null)
   const readerNearBottom = useRef(true)
-  const conversationKey = `${selfId}:${clientId ?? 'own'}`
+  const conversationKey = `${selfId}:${connectionId ?? clientId ?? 'own'}`
   const lastConversation = useRef(conversationKey)
 
   // Initial load shows the newest chat message. Polling follows new messages
@@ -90,12 +101,14 @@ export function CoachMessages({ selfId, clientId }: { selfId: string; clientId?:
           </div>
         ))}
       </div>
+      {readOnly ? <p className="text-sm text-muted">{t('coachSpace.archiveReadOnly')}</p> : (
       <form className="flex flex-col gap-2" onSubmit={submit}>
         <label htmlFor="coach-message" className="text-sm font-medium">{t('coach.newMessage')}</label>
         <textarea id="coach-message" value={text} onChange={(e) => setText(e.target.value)} maxLength={800} rows={3} className="w-full rounded-xl border border-line bg-card p-3 outline-none focus:border-brand" placeholder={t('coach.messagePlaceholder')} />
         <FormError message={send.error ? errorMessage(send.error) : null} />
         <Button disabled={send.isPending || !text.trim()}>{t('coach.sendMessage')}</Button>
       </form>
+      )}
     </Card>
   )
 }

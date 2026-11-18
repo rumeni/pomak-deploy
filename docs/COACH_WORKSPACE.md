@@ -1,0 +1,137 @@
+# POMAK COACH: trenerski prostor (specifikacija i odluke)
+
+Dopuna specifikacije (`POMAK_Specifikacija_aplikacije_za_Claude.pdf`, poglavlja 9–12) i predloga
+`POMAK_COACH_Predlog.pdf`. Odluke su usvojene 18.11.2026. Gde se ovaj dokument razlikuje od
+specifikacije, važi ovaj dokument. Tok saradnje (pozivnica, deljenje, prekid) i API opisani su u
+`COACH_COLLABORATION.md`.
+
+## Usvojene odluke
+
+1. **Paketi treninga** ulaze u T4 kao evidencija uplaćenih, iskorišćenih i preostalih termina,
+   bez online naplate.
+2. **Zakazivanje (T4):** klijent odmah rezerviše slobodan termin koji je trener otvorio. Trener u
+   podešavanjima bira automatsku ili ručnu potvrdu.
+3. **Prekid saradnje:** razgovor ostaje arhiviran, samo za čitanje. Ništa se ne briše.
+4. **„Nedelja“ (T2):** nedeljni izveštaj i check-in na jednom ekranu. Ekran je dostupan i
+   korisnicima bez trenera.
+5. **Spremnost:** prikazuje se procenat zajedno sa odgovorima koji su na njega uticali. Nema
+   medicinskih zaključaka i nema automatske promene opterećenja.
+
+## Trenerski prostor
+
+- Uloga trenera se dodaje nalogu. Trener i dalje ima svoj trening i ishranu.
+  - **Prekidač** „Trenerski deo / Moj trening“ je u gornjem uglu.
+  - Aplikacija se otvara u prostoru koji je trener poslednji koristio.
+- **Navigacija:** Pregled, Klijenti, Programi, Poruke. Kalendar se dodaje u T4. Prazne kartice
+  se ne prikazuju.
+- **Pregled je lista zadataka.**
+  - Zadatak može da se završi, odloži (1, 3 ili 7 dana) ili ponovo otvori.
+  - Isti događaj nikad ne pravi dva upozorenja.
+  - Tekst je činjenica („Nema treninga 9 dana“), nikad zaključak o klijentu.
+- **Statusi klijenata:** pozvan, aktivan, na pauzi, arhiviran. Klijent na pauzi ne pravi
+  upozorenja o neaktivnosti.
+- **Profil klijenta** ima kartice Pregled, Plan, Napredak, Ishrana i Beleške.
+  - Podaci koje klijent ne deli prikazuju se kao „nije podeljeno“.
+- **Beleške** su privatne (samo trener) ili vidljive klijentu. Razlika je jasno označena, a
+  deljenje beleške se potvrđuje.
+- **Računar:** od 980 px liste klijenata i razgovora su levo, a izabrani klijent ili razgovor
+  desno.
+- **Vizuelni identitet:** isti kao ostatak aplikacije. Trenerski deo je njen nastavak, ne
+  poseban proizvod.
+
+## Programi i saradnja (T2)
+
+- Koristi se postojeći editor rutina.
+- Dodela programa ima tri koraka: šablon, izbor klijenata, datum početka.
+- Šablon i individualni plan klijenta su odvojeni. Promena šablona ne menja automatski
+  postojeće planove.
+- Izmene plana važe samo za buduće treninge. Započeti i završeni treninzi ostaju netaknuti.
+- Komentar na trening i poruka su isti zapis (poruka vezana za trening), bez dupliranja.
+- Klijent može u svakom trenutku da promeni deljenje ili prekine saradnju. Sve dozvole se
+  proveravaju na serveru.
+
+## Faze
+
+| Faza | Sadržaj |
+|---|---|
+| **T1** | Trenerski prostor, profil i početna pitanja, navigacija, klijenti, pozivnice (kod, link, QR), zadaci, privatne beleške, arhiviranje razgovora |
+| T2 | Programi, verzije planova, pregled treninga, komentari, napredak, ishrana, „Nedelja“ |
+| T3 | Nepročitane poruke, push obaveštenja (Firebase i web push), slike, uputstva za vežbe, slika trenera |
+| T4 | Kalendar, rezervacije (zaštita od duplih rezervacija u bazi), vrste termina, paketi, podsetnici |
+
+Svaka faza ima zaseban PR sa testovima. Pre spajanja proveravaju se privatnost, Android i
+desktop prikaz i rad bez interneta.
+
+## T1: kako radi
+
+### Početna pitanja i profil trenera
+
+- **Kada:** pri prvom ulasku u trenerski deo, u tri kratka koraka:
+  1. iskustvo i oblasti rada;
+  2. gde i kako radi;
+  3. kvalifikacije i opis (opciono).
+- **Obavezno:** godine iskustva, bar jedna oblast i način rada. Za rad uživo obavezan je i grad.
+- **Kvalifikacije** se klijentu prikazuju uz napomenu da ih je trener sam naveo i da ih POMAK ne
+  proverava.
+- **Slika trenera** dolazi u T3, zajedno sa čuvanjem fajlova. Do tada se prikazuju inicijali.
+
+### Pozivnica
+
+- **Napomena „za koga“** je opciona i vidi je samo trener. Ona čini status „pozvan“.
+- **Kod, link i QR:**
+  - pozivnica se šalje kao kod, link (`/povezi/KOD`) ili QR kod;
+  - QR se crta u aplikaciji (biblioteka `@zxing/library`, koju već koristimo), bez spoljnog servisa;
+  - link otvara web aplikaciju; Android aplikacija ga za sada ne presreće.
+- **Pre prihvatanja** klijent vidi kartu trenera: ime, iskustvo, oblasti, teretanu i grad (sa
+  linkom na mapu), opis i kvalifikacije. Email trenera se nikad ne prikazuje.
+- **Bez prijave:** ako klijent otvori link neprijavljen, kod se pamti (samo u toj kartici
+  pregledača) i koristi se posle prijave, odnosno registracije i početnog podešavanja.
+
+### Zadaci na Pregledu
+
+Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene tokom saradnje**:
+
+| Zadatak | Kada | Ključ (jednom po događaju) |
+|---|---|---|
+| Završen trening | klijent je završio trening | trening |
+| Niska spremnost | spremnost pred trening ispod 50 % | trening |
+| Lični rekord | procenjeni 1RM bolji od svih ranijih treninga (prvi put nije rekord) | trening |
+| Nema treninga | 7 dana bez treninga (računa se od poslednjeg treninga ili od povezivanja/povratka sa pauze) | početak tog perioda |
+
+- **Kada se računaju:** pri otvaranju Pregleda ili liste klijenata. Treninzi se pronalaze po
+  vremenu kada su stigli na server, pa se računa i trening zabeležen bez interneta i poslat
+  kasnije.
+- **Duplikati:** sprečava ih jedinstveni ključ u bazi. Zato je provera bezbedna i kada se
+  pokrene više puta istovremeno.
+- **Upozorenje „nema treninga“** se samo zatvara kada klijent ponovo trenira ili ode na pauzu.
+  Takav zadatak se ne prikazuje kao trenerov završen zadatak.
+
+### Prekid saradnje
+
+- Veza dobija datum završetka i ostaje kao arhiva.
+- **Trener:**
+  - odmah gubi pristup podacima klijenta;
+  - zadržava razgovor i svoje beleške, samo za čitanje.
+- **Klijent:**
+  - zadržava razgovor i podeljene beleške, samo za čitanje;
+  - zadržava i dodeljene rutine.
+- Nove poruke i beleške se odbijaju (409).
+- Klijent kasnije može da se poveže ponovo, i sa istim trenerom. To je nova saradnja, a stara
+  arhiva ostaje odvojena.
+- U bazi važi pravilo da klijent ima najviše jednu aktivnu saradnju.
+
+### Bez interneta
+
+- Trenerski ekrani prikazuju poslednje učitane podatke, uz traku „Nema interneta…“.
+- Akcije trenera (zadatak, beleška, pozivnica, profil, poruka) traže vezu sa serverom.
+  - Bez veze odmah javljaju „Nema veze sa serverom“.
+  - Ne čekaju tiho u pozadini.
+
+### Uvođenje na produkciju
+
+- **Migracija:** `coaching.0002_coach_workspace` mora da se pokrene na produkciji:
+  `python manage.py migrate`.
+- **Šta migracija menja:** veza klijenta postaje „najviše jedna aktivna“ umesto „samo jedna“.
+  Postojećim vezama se „aktivan od“ postavlja na datum povezivanja.
+- **Starije Android verzije** rade i dalje: postojeća polja API odgovora nisu menjana, samo su
+  dodata nova.

@@ -26,6 +26,7 @@
 - Produkcioni error monitoring, zaštita Django admin prijave i operativni WAF/cron audit.
 - Preostali dizajn/UX detalji i dodatno mobilno testiranje.
 - U aktuelnoj radnoj grani uvode se korekcija formata trenerovih serija i uređivanje sopstvenih namirnica kroz UI.
+- Trenerski prostor (POMAK COACH) se radi u fazama T1–T4; odluke i stanje u `COACH_WORKSPACE.md`.
 
 ---
 

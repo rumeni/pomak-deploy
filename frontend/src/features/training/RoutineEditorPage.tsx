@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { Button, EmptyState, FormError, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
@@ -40,6 +40,10 @@ export function RoutineEditorPage() {
 function Editor({ initial }: { initial: RoutineDraft }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
+  // Opened from the coach space (Programs): go back there, not to the personal Training tab.
+  const from = (location.state as { from?: string } | null)?.from
+  const returnTo = from === '/trener/programi' ? from : '/trening'
   const [draft, setDraft] = useState(initial)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +76,7 @@ function Editor({ initial }: { initial: RoutineDraft }) {
     setError(null)
     try {
       const body = draftToPayload(draft)
-      save.mutate({ isNew: draft.isNew, body }, { onSuccess: () => navigate('/trening', { replace: true }) })
+      save.mutate({ isNew: draft.isNew, body }, { onSuccess: () => navigate(returnTo, { replace: true }) })
     } catch (e) {
       if (e instanceof DraftError) setError(t(`routine.errors.${e.key}`, e.params))
       else throw e
@@ -81,11 +85,11 @@ function Editor({ initial }: { initial: RoutineDraft }) {
 
   const onDelete = () => {
     if (!window.confirm(t('routine.confirmDelete', { name: draft.name }))) return
-    remove.mutate(draft.id, { onSuccess: () => navigate('/trening', { replace: true }) })
+    remove.mutate(draft.id, { onSuccess: () => navigate(returnTo, { replace: true }) })
   }
 
   const onDuplicate = () =>
-    duplicate.mutate(draft.id, { onSuccess: (copy) => navigate(`/trening/rutine/${copy.id}`, { replace: true }) })
+    duplicate.mutate(draft.id, { onSuccess: (copy) => navigate(`/trening/rutine/${copy.id}`, { replace: true, state: location.state }) })
 
   const serverError = save.error ?? remove.error ?? duplicate.error
 

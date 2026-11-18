@@ -1,83 +1,42 @@
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { LanguageMenu } from '../../components/LanguageMenu'
 import coachPhoto from '../../assets/photos/coach.webp'
 import { Button, Card, EmptyState, Field, FormError, PageHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { getFormatLocale } from '../../lib/format'
+import { CoachCardView } from './CoachCardView'
 import { CoachMessages } from './CoachMessages'
 import {
-  useCoachDashboard, useConnectCoach, useCreateCoachInvite, useDisconnectCoach,
-  useRevokeCoachInvite, useUpdateCoachSharing, type Connection,
+  useCoachDashboard, useConnectCoach, useDisconnectCoach, useInvitePreview, useUpdateCoachSharing,
+  type CoachAssignment, type CoachCard, type CoachNote, type Connection,
 } from './api'
+import { normalizeInviteCode } from './workspace'
 
 function dateLabel(value: string) {
   return new Date(value).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+/** The client's Coach tab: connect (seeing who the coach is first), or the collaboration. */
 export function CoachPage() {
   const { t } = useTranslation()
   const dashboard = useCoachDashboard()
+  const data = dashboard.data?.role === 'client' ? dashboard.data : null
   return (
     <>
       <PageHeader title={t('coach.title')} photo={coachPhoto} action={<LanguageMenu />} />
       <div className="flex flex-col gap-3 px-4 pb-8">
         {dashboard.isLoading && <p className="text-muted">{t('common.loading')}</p>}
-        {dashboard.isError && (
+        {dashboard.isError && !dashboard.data && (
           <Card><FormError message={t('errors.loadFailed')} /><Button variant="secondary" onClick={() => void dashboard.refetch()}>{t('common.retry')}</Button></Card>
         )}
-        {dashboard.data?.role === 'coach' && <CoachWorkspace invitations={dashboard.data.invitations} clients={dashboard.data.clients} />}
-        {dashboard.data?.role === 'client' && <ClientWorkspace connection={dashboard.data.connection} assignments={dashboard.data.assignments} />}
+        {data && (data.connection
+          ? <Collaboration connection={data.connection} coach={data.coach ?? null} notes={data.shared_notes ?? []} assignments={data.assignments} />
+          : <ConnectFlow />)}
+        {data && (data.archived?.length ?? 0) > 0 && <PastCollaborations rows={data.archived!} />}
       </div>
-    </>
-  )
-}
-
-function CoachWorkspace({ invitations, clients }: {
-  invitations: { id: string; code: string; expires_at: string }[]
-  clients: Connection[]
-}) {
-  const { t } = useTranslation()
-  const createInvite = useCreateCoachInvite()
-  const revoke = useRevokeCoachInvite()
-  return (
-    <>
-      <Card title={t('coach.inviteTitle')}>
-        <p className="mb-3 text-sm text-muted">{t('coach.inviteDescription')}</p>
-        {invitations.map((invite) => (
-          <div key={invite.id} className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line p-3">
-            <div>
-              <code className="block select-all font-semibold tracking-wide">{invite.code}</code>
-              <p className="text-xs text-muted">{t('coach.expires', { date: dateLabel(invite.expires_at) })}</p>
-            </div>
-            <div className="flex gap-1">
-              <Button size="sm" variant="secondary" onClick={() => void navigator.clipboard?.writeText(invite.code)}>
-                {t('coach.copy')}
-              </Button>
-              <Button size="sm" variant="ghost" disabled={revoke.isPending} onClick={() => revoke.mutate(invite.id)}>
-                {t('coach.revoke')}
-              </Button>
-            </div>
-          </div>
-        ))}
-        <FormError message={createInvite.error ? errorMessage(createInvite.error) : revoke.error ? errorMessage(revoke.error) : null} />
-        <Button className="mt-3 w-full" disabled={createInvite.isPending || invitations.length >= 5} onClick={() => createInvite.mutate()}>
-          {t('coach.createInvite')}
-        </Button>
-      </Card>
-      <Card title={t('coach.clientsTitle')}>
-        {clients.length === 0 && <p className="text-muted">{t('coach.noClients')}</p>}
-        <div className="flex flex-col gap-2">
-          {clients.map((connection) => (
-            <Link key={connection.id} to={`/trener/klijenti/${connection.client.id}`} className="flex min-h-14 items-center justify-between rounded-xl border border-line px-3 py-2 active:bg-brand-soft">
-              <span className="font-semibold">{connection.client.name}</span>
-              <span className="text-sm text-muted">{t('coach.openClient')} ›</span>
-            </Link>
-          ))}
-        </div>
-      </Card>
     </>
   )
 }
@@ -103,38 +62,93 @@ function SharingOptions({ values, onChange }: {
   )
 }
 
-function ClientWorkspace({ connection, assignments }: { connection: Connection | null; assignments: { id: string; name: string; routine_id: string }[] }) {
+/** Code (typed, or from an invite link) → who the coach is → what to share → accept. */
+function ConnectFlow() {
   const { t } = useTranslation()
-  const disconnect = useDisconnectCoach()
+  const [params, setParams] = useSearchParams()
+  const fromLink = normalizeInviteCode(params.get('kod') ?? '')
+  const [code, setCode] = useState(fromLink ?? '')
+  const [checking, setChecking] = useState<string | null>(fromLink)
+  const preview = useInvitePreview(checking)
   const connect = useConnectCoach()
-  const [code, setCode] = useState('')
-  // Until the invite is accepted, the client can choose initial sharing flags.
   const [sharing, setSharing] = useState({ share_measurements: false, share_nutrition: false })
-  const onConnect = (e: FormEvent) => {
+
+  const onCheck = (e: FormEvent) => {
     e.preventDefault()
-    connect.mutate({ code: code.trim().toUpperCase(), ...sharing })
+    setChecking(normalizeInviteCode(code))
+  }
+  const cancel = () => {
+    setChecking(null)
+    if (params.has('kod')) setParams({}, { replace: true })
   }
 
-  if (!connection) {
+  if (checking && preview.data) {
     return (
-      <>
-        <EmptyState title={t('coach.noCoachTitle')} text={t('coach.noCoachText')} />
-        <Card title={t('coach.enterInvite')}>
-          <form className="flex flex-col gap-3" onSubmit={onConnect}>
-            <Field label={t('coach.inviteCode')} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={16} autoCapitalize="characters" autoComplete="off" placeholder="ABCD1234EF567890" required />
-            <SharingOptions values={sharing} onChange={setSharing} />
-            <FormError message={connect.error ? errorMessage(connect.error) : null} />
-            <Button disabled={connect.isPending || code.trim().length !== 16}>{t('coach.connect')}</Button>
-          </form>
-        </Card>
-      </>
+      <Card title={t('coachSpace.connect.whoTitle')}>
+        <CoachCardView coach={preview.data.coach} />
+        <div className="mt-4 flex flex-col gap-3">
+          <SharingOptions values={sharing} onChange={setSharing} />
+          <FormError message={connect.error ? errorMessage(connect.error) : null} />
+          <Button disabled={connect.isPending} onClick={() => connect.mutate({ code: checking, ...sharing }, {
+            onSuccess: () => { if (params.has('kod')) setParams({}, { replace: true }) },
+          })}>{t('coach.connect')}</Button>
+          <Button variant="ghost" onClick={cancel}>{t('coachSpace.connect.notNow')}</Button>
+        </div>
+      </Card>
     )
   }
   return (
     <>
+      <EmptyState title={t('coach.noCoachTitle')} text={t('coach.noCoachText')} />
+      <Card title={t('coach.enterInvite')}>
+        <form className="flex flex-col gap-3" onSubmit={onCheck}>
+          <Field label={t('coach.inviteCode')} name="invite-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={16} autoCapitalize="characters" autoComplete="off" placeholder="ABCD1234EF567890" required />
+          <FormError message={checking && preview.error ? errorMessage(preview.error) : null} />
+          <Button disabled={preview.isFetching || !normalizeInviteCode(code)}>{preview.isFetching ? t('common.loading') : t('coachSpace.connect.check')}</Button>
+          <p className="text-xs text-muted">{t('coachSpace.connect.checkHint')}</p>
+        </form>
+      </Card>
+    </>
+  )
+}
+
+function Collaboration({ connection, coach, notes, assignments }: {
+  connection: Connection
+  coach: CoachCard | null
+  notes: CoachNote[]
+  assignments: CoachAssignment[]
+}) {
+  const { t } = useTranslation()
+  const disconnect = useDisconnectCoach()
+  return (
+    <>
       <Card title={t('coach.myCoach')}>
-        <p className="mb-3 text-lg font-semibold">{connection.coach.name}</p>
-        <p className="mb-3 text-sm text-muted">{t('coach.connectedAt', { date: dateLabel(connection.connected_at) })}</p>
+        {coach ? <CoachCardView coach={coach} /> : <p className="text-lg font-semibold">{connection.coach.name}</p>}
+        <p className="mt-3 text-sm text-muted">{t('coach.connectedAt', { date: dateLabel(connection.connected_at) })}</p>
+      </Card>
+      {notes.length > 0 && (
+        <Card title={t('coachSpace.connect.notesFromCoach')}>
+          <ul className="flex flex-col gap-2">
+            {notes.map((note) => (
+              <li key={note.id} className="rounded-xl bg-brand-soft/50 p-3 text-sm">
+                <p className="whitespace-pre-wrap">{note.text}</p>
+                <p className="mt-1 text-xs text-muted">{dateLabel(note.created_at)}</p>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      <Card title={t('coach.assignedRoutines')}>
+        {assignments.length === 0 && <p className="text-muted">{t('coach.noAssignments')}</p>}
+        {assignments.map((assignment) => (
+          <Link key={assignment.id} to={`/trening/rutine/${assignment.routine_id}`} className="block rounded-xl border border-line px-4 py-3 font-semibold active:bg-brand-soft">
+            {assignment.name} ›
+          </Link>
+        ))}
+        <p className="mt-2 text-xs text-muted">{t('coach.routinesInTraining')}</p>
+      </Card>
+      <CoachMessages key={connection.id} selfId={connection.client.id} />
+      <Card title={t('coach.sharingTitle')}>
         <ConnectedSharingSettings
           key={`${connection.id}:${connection.share_measurements}:${connection.share_nutrition}`}
           connection={connection}
@@ -147,20 +161,30 @@ function ClientWorkspace({ connection, assignments }: { connection: Connection |
         </Button>
         <FormError message={disconnect.error ? errorMessage(disconnect.error) : null} />
       </Card>
-      <Card title={t('coach.assignedRoutines')}>
-        {assignments.length === 0 && <p className="text-muted">{t('coach.noAssignments')}</p>}
-        {assignments.map((assignment) => (
-          <Link key={assignment.id} to={`/trening/rutine/${assignment.routine_id}`} className="block rounded-xl border border-line px-4 py-3 font-semibold active:bg-brand-soft">
-            {assignment.name} ›
-          </Link>
-        ))}
-        <p className="mt-2 text-xs text-muted">{t('coach.routinesInTraining')}</p>
-      </Card>
-      <CoachMessages key={connection.id} selfId={connection.client.id} />
     </>
   )
 }
 
+function PastCollaborations({ rows }: { rows: Connection[] }) {
+  const { t } = useTranslation()
+  return (
+    <Card title={t('coachSpace.connect.past')}>
+      <ul className="flex flex-col gap-2">
+        {rows.map((c) => (
+          <li key={c.id}>
+            <Link to={`/trener/arhiva/${c.id}`} className="flex min-h-12 items-center justify-between rounded-xl border border-line px-4 active:bg-brand-soft">
+              <span>
+                <span className="block font-semibold">{c.coach.name}</span>
+                <span className="block text-xs text-muted">{t('coachSpace.clients.endedOn', { date: c.ended_at ? dateLabel(c.ended_at) : '' })}</span>
+              </span>
+              <span className="text-muted" aria-hidden>›</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
 
 /** Keyed by the server's consent values so even A → B → A polls cannot reuse an old draft. */
 function ConnectedSharingSettings({ connection }: { connection: Connection }) {

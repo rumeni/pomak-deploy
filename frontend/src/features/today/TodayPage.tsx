@@ -24,6 +24,7 @@ import { usePendingSessions } from '../workout/outbox'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { nextRoutine, sessionsWithPending } from './next'
 import { progressDate, weekActivity, workoutCountWithPending } from './week'
+import { SpaceSwitch } from '../coach/SpaceSwitch'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
 const linkClass = 'flex min-h-11 items-center text-sm font-semibold text-brand-dark'
@@ -42,6 +43,7 @@ export function TodayPage() {
         subtitle={formatLongDate(new Date())}
         action={
           <>
+            <SpaceSwitch />
             <LanguageMenu />
             <Link
               to="/profil"
