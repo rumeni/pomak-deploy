@@ -219,4 +219,8 @@ SR = {
     'A check-in is for this week or one of the last eight.': 'Osvrt se piše za ovu ili neku od poslednjih osam nedelja.',
     'That week has not started yet.': 'Ta nedelja još nije počela.',
     'Weekly check-in': 'Nedeljni osvrt',
+    'This request ID was already used for different content.': 'Ovaj ID zahteva je već iskorišćen za drugačiji sadržaj.',
+    'Only workouts from this collaboration can be marked as reviewed.': 'Kao pregledan se označava samo trening iz ove saradnje.',
+    'Assign a program': 'Dodela programa',
+    'Change the plan': 'Izmena plana',
 }

@@ -197,7 +197,12 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Dodela u tri koraka:** program, klijenti, datum početka (danas ili kasnije).
   - Svaki klijent dobija plan od tog dana, sa svojim kopijama rutina. Kasnija izmena programa ne
     menja postojeće planove.
-  - Ponovljen zahtev (isti `request_id`) ne pravi ništa dvaput.
+  - **Potvrda zahteva:** svaki zahtev (dodela ili izmena plana) ima ID i trajnu potvrdu po
+    saradnji, odvojenu od verzija.
+    - Ponovljen zahtev ne pravi ništa dvaput, ni kad je ponovljen samo za deo klijenata, ni posle
+      datuma početka.
+    - Zakasneli ponovljeni zahtev ne vraća verziju koja je u međuvremenu zamenjena.
+    - Isti ID sa drugačijim sadržajem se odbija (409).
 - **Plan klijenta je niz verzija.** Izmena je nova verzija koja važi od danas ili kasnije, uz
   opcioni razlog koji klijent vidi.
   - Za svaki dan trener bira jedno od tri: zadržava rutinu iz plana, kopira svoju rutinu ili
@@ -206,11 +211,18 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
   - Nova verzija za isti datum zamenjuje staru. Kopije koje više nijedna verzija ne koristi se
     arhiviraju.
   - Započeti i završeni treninzi se ne menjaju, jer trening pamti plan sa kojim je počeo.
+  - **Recept je zamrznut:** za svaki dan se, u trenutku pravljenja verzije, čuva šta je trener
+    propisao. Klijent trenira sa svojom kopijom rutine i može da je menja, ali istorija plana se ne
+    menja. „Zadrži“ zadržava propisano, a ne klijentove izmene.
+  - **„Važi do“** je raniji od dva datuma: kraj trajanja ili dan pre sledeće verzije. Istorija se
+    zato ne preklapa.
+  - **Editor plana** polazi od plana koji važi danas. Kad postoji i budući plan, trener bira koji
+    menja.
 - **Klijent:**
   - na kartici Trener vidi „Plan od trenera“ (ova nedelja, sledeća verzija) i obaveštenje o
     izmeni iz poslednjih 7 dana;
-  - na ekranu Danas vidi „Po planu trenera danas“, ako tog dana još nije trenirao. Može da trenira
-    i van plana.
+  - na ekranu Danas vidi „Po planu trenera danas“, sve dok tog dana ne odradi baš tu rutinu
+    (drugi, lični trening se ne računa kao plan). Može da trenira i van plana.
 - **Pojedinačna dodela rutine** (iz T1) i dalje postoji.
 
 ## T2b: pregled treninga, napredak i ishrana
@@ -218,7 +230,8 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Pregled treninga:** trener otvara trening klijenta (iz zadatka ili sa kartice Napredak) i vidi
   planirano (plan sa kojim je trening počeo) i urađeno po vežbi, uključujući preskočene vežbe.
   - Spremnost se prikazuje samo uz dozvolu.
-  - „Označi kao pregledano“ zatvara zadatak tog treninga.
+  - „Označi kao pregledano“ zatvara zadatak tog treninga. Važi samo za treninge završene tokom
+    saradnje; stariji treninzi su istorija.
 - **Komentar na trening je poruka** vezana za taj trening (jedan zapis):
   - vidi se u razgovoru (sa linkom na trening), na pregledu treninga kod trenera i na ekranu
     treninga kod klijenta, gde klijent može i da odgovori;
@@ -243,12 +256,31 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 - **Osvrt korisnika:** energija, napredak, ishrana i (uz trenera) zadovoljstvo programom, na skali
   1–5, plus „šta je bilo najteže“ i napomena. Sve je opciono.
   - Piše se za ovu ili neku od poslednjih osam nedelja; ponovno čuvanje menja isti osvrt.
-  - Sa trenerom piše da trener vidi osvrt uz nedelju.
+  - **Vezan je za saradnju u trenutku čuvanja.** Sa trenerom forma kaže da ga trener vidi, i on ga
+    vidi; bez trenera je privatan.
+  - Kasniji (novi) trener ne nasleđuje ranije osvrte. Privatan osvrt trener vidi tek kad ga
+    korisnik ponovo sačuva uz trenera.
 - **Trener:**
   - kad klijent sačuva osvrt, trener dobija zadatak „Popunio/la nedeljni osvrt“ (jednom po
     nedelji), koji otvara nedelju klijenta;
   - vidi brojeve samo uz dozvole (težina uz merenja, kalorije uz ishranu, spremnost uz spremnost;
     inače „nije podeljeno“) i osvrt klijenta;
   - može da ostavi komentar.
+- **Planirani treninzi u prošlim nedeljama** računaju se po danu, iz plana saradnje koja je tog
+  dana važila (i kad je saradnja završena). Prekid ili nova saradnja ne menjaju prošlost. Daje se
+  samo broj, nikad tuđi plan.
 - **Komentar na nedelju je poruka vezana za tu nedelju** (isti model kao komentar uz trening).
   Vidi se u razgovoru, sa linkom na nedelju, i na ekranu nedelje kod oba korisnika.
+
+## Pristup na novim trenerovim ekranima (T2)
+
+Plan, pregled treninga, statistika, cilj ishrane i nedelja klijenta prate ista pravila kao profil
+klijenta iz T1.
+
+- **Podaci o pristupu:** uz svaki odgovor server šalje saradnju, verziju pristupa i dozvole.
+  Aplikacija ih upisuje u evidenciju naloga, koja čuva najvišu viđenu verziju.
+- **Opoziv:** posle 403/404 ili završene saradnje podaci se brišu iz keša i ne prikazuju se.
+- **Promenjena verzija:** delovi koji traže dozvolu (spremnost, merenja, ishrana, cilj) čekaju novo
+  učitavanje na trenutnoj verziji.
+- **Osvežavanje:** ovi ekrani se sami osvežavaju na 30 sekundi, pa i otvoren ekran primeti opoziv.
+

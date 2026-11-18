@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
+import type { ServerAccess } from '../coach/access'
 
 export interface WeekCheckIn {
   energy: number | null
@@ -10,6 +11,8 @@ export interface WeekCheckIn {
   hardest: string
   notes: string
   updated_at?: string
+  /** Own view only: saved for the current coach (otherwise a private note). */
+  shared_with_coach?: boolean
 }
 
 /** The week in review: its facts and the athlete's check-in. Null parts are not shared (coach) or not there. */
@@ -24,6 +27,8 @@ export interface WeekReview {
   readiness: { avg_score: number; checkins: number } | null
   shared: { measurements: boolean; nutrition: boolean; readiness: boolean }
   check_in: WeekCheckIn | null
+  /** Coach view only: the access it was read under. */
+  access?: ServerAccess
 }
 
 const weekKey = (monday: string) => ['week-review', monday]
@@ -49,5 +54,6 @@ export function useClientWeek(clientId: string, monday: string) {
     queryKey: ['coach-client-week', clientId, monday],
     queryFn: async () => (await api.get<WeekReview>(`/coach/clients/${clientId}/weeks/${monday}/`)).data,
     retry: false,
+    refetchInterval: 30_000,
   })
 }

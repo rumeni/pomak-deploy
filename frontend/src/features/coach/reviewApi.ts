@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { TrainingStats } from '../progress/stats'
+import type { ServerAccess } from './access'
 import type { CoachMessage } from './api'
 import type { PlanSet } from './plansApi'
 
@@ -21,6 +22,9 @@ export interface PlanSnapshot {
 }
 
 export interface ClientWorkout {
+  access: ServerAccess
+  /** Finished during this collaboration (only those are reviewed). */
+  reviewable: boolean
   id: string
   name: string
   started_at: string
@@ -40,6 +44,7 @@ export function useClientWorkout(clientId: string, workoutId: string) {
     queryKey: ['coach-client-workout', clientId, workoutId],
     queryFn: async () => (await api.get<ClientWorkout>(`/coach/clients/${clientId}/workouts/${workoutId}/`)).data,
     retry: false,
+    refetchInterval: 30_000,
   })
 }
 
@@ -59,8 +64,9 @@ export function useMarkReviewed(clientId: string, workoutId: string) {
 export function useClientStats(clientId: string, period: string) {
   return useQuery({
     queryKey: ['coach-client-stats', clientId, period],
-    queryFn: async () => (await api.get<TrainingStats>(`/coach/clients/${clientId}/stats/`, { params: { period } })).data,
+    queryFn: async () => (await api.get<TrainingStats & { access: ServerAccess }>(`/coach/clients/${clientId}/stats/`, { params: { period } })).data,
     retry: false,
+    refetchInterval: 30_000,
   })
 }
 
@@ -76,6 +82,7 @@ export interface CoachTarget {
 }
 
 export interface ClientTargets {
+  access: ServerAccess
   allowed: boolean
   can_set: boolean
   current: CoachTarget | null
@@ -87,6 +94,7 @@ export function useClientTargets(clientId: string) {
     queryKey: ['coach-client-targets', clientId],
     queryFn: async () => (await api.get<ClientTargets>(`/coach/clients/${clientId}/nutrition-target/`)).data,
     retry: false,
+    refetchInterval: 30_000,
   })
 }
 

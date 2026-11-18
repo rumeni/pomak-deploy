@@ -138,6 +138,17 @@ def connection_summary(connection):
     }
 
 
+def access_facts(connection):
+    """What a response about a client was read under: the collaboration, its access version and
+    the consents at that version. The app orders and redacts what it shows by these facts."""
+    return {
+        'connection_id': str(connection.id), 'client_id': str(connection.client_id),
+        'access_version': connection.access_version, 'connected_at': connection.created_at,
+        'share_measurements': connection.share_measurements, 'share_nutrition': connection.share_nutrition,
+        'share_readiness': connection.share_readiness, 'coach_sets_nutrition': connection.coach_sets_nutrition,
+    }
+
+
 def coach_card(user):
     """What a client may see about a coach: never the email or anything private."""
     profile = CoachProfile.objects.filter(user=user).first()

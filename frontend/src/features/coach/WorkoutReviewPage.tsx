@@ -7,6 +7,7 @@ import { formatDecimal, getFormatLocale } from '../../lib/format'
 import { useAuth } from '../../lib/auth'
 import { CoachMessages } from './CoachMessages'
 import { isAccessRevoked } from './access'
+import { useClientGuard } from './guard'
 import { useClientWorkout, useMarkReviewed, type ClientWorkout, type ReviewSet } from './reviewApi'
 import { describePlannedSets } from './review'
 import { readinessReasons } from './workspace'
@@ -18,11 +19,12 @@ export function WorkoutReviewPage() {
   const { id = '', workoutId = '' } = useParams()
   const { me } = useAuth()
   const workout = useClientWorkout(id, workoutId)
+  const guard = useClientGuard(id, workout)
   const reviewed = useMarkReviewed(id, workoutId)
   const back = () => navigate(`/trener/klijenti/${id}?tab=progress`)
 
   if (workout.isLoading) return <LoadingScreen />
-  if (!workout.data || (workout.isError && isAccessRevoked(workout.error))) {
+  if (!workout.data || guard.state === 'revoked' || (workout.isError && isAccessRevoked(workout.error))) {
     return (
       <div className="min-h-full">
         <ScreenHeader title={t('coachSpace.review.title')} onBack={back} />
@@ -30,7 +32,8 @@ export function WorkoutReviewPage() {
       </div>
     )
   }
-  const data = workout.data
+  // Access changed since this was read: no readiness until it is read again.
+  const data = guard.state === 'stale' ? { ...workout.data, readiness: null } : workout.data
   return (
     <div className="min-h-full pb-12">
       <ScreenHeader title={data.name} onBack={back} />
@@ -55,6 +58,8 @@ export function WorkoutReviewPage() {
           <div className="mt-3">
             {data.reviewed_at ? (
               <p className="text-sm font-semibold text-brand-dark">✓ {t('coachSpace.review.reviewed')}</p>
+            ) : !data.reviewable ? (
+              <p className="text-xs text-muted">{t('coachSpace.review.beforeCollaboration')}</p>
             ) : (
               <Button size="sm" disabled={reviewed.isPending} onClick={() => reviewed.mutate()}>{t('coachSpace.review.markReviewed')}</Button>
             )}

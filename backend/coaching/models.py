@@ -227,23 +227,44 @@ class ClientPlanVersion(TimeStampedModel):
     # Why the coach changed the plan; shown to the client with the change.
     reason = models.CharField(max_length=300, blank=True)
     template = models.ForeignKey(ProgramTemplate, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
-    # Client-made ID of the request, so a retried assignment does not create a second version.
-    request_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         ordering = ['valid_from', 'created_at']
         constraints = [
             models.UniqueConstraint(fields=['plan', 'valid_from'], name='plan_one_version_per_date'),
-            models.UniqueConstraint(fields=['plan', 'request_id'], name='plan_version_request_once'),
         ]
 
 
 class ClientPlanDay(TimeStampedModel):
     version = models.ForeignKey(ClientPlanVersion, on_delete=models.CASCADE, related_name='days')
     weekday = models.PositiveSmallIntegerField(validators=[MaxValueValidator(6)])
-    # The client's own routine (a copy made for him); deleting it only empties that day.
+    # The client's own routine to train with (a copy made for him, which he may edit); deleting
+    # it only empties that day for training.
     routine = models.ForeignKey('training.Routine', null=True, on_delete=models.SET_NULL, related_name='+')
+    # What the coach prescribed, frozen when the version was made: the plan's history never
+    # changes when the client edits his copy.
+    prescription = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ['weekday']
         constraints = [models.UniqueConstraint(fields=['version', 'weekday'], name='plan_day_one_routine_per_day')]
+
+
+class PlanRequest(TimeStampedModel):
+    """A durable receipt of a plan request (assignment or change), per collaboration.
+
+    Kept apart from the versions it made, so replacing a version later never lets a delayed
+    retry of the old request run again; a retry with different content is refused.
+    """
+
+    class Operation(models.TextChoices):
+        ASSIGN = 'assign', _('Assign a program')
+        CHANGE = 'change', _('Change the plan')
+
+    connection = models.ForeignKey(CoachConnection, on_delete=models.CASCADE, related_name='plan_requests')
+    request_id = models.UUIDField()
+    operation = models.CharField(max_length=10, choices=Operation.choices)
+    payload_hash = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['connection', 'request_id'], name='plan_request_once')]

@@ -22,22 +22,33 @@ CHECKIN_WEEKS_BACK = 8
 
 
 def _plan(user, monday):
-    """Planned workouts from the coach's plan in this week, if the athlete has one."""
-    from coaching.models import ClientPlan, CoachConnection
+    """Planned workouts in this week, day by day from the plan of the collaboration that was
+    active on that day (also an ended one: the past does not change when a coach goes or comes).
+    Only the count is given, never another coach's plan itself."""
+    from coaching.models import ClientPlan
     from coaching.plans import version_on
 
-    connection = CoachConnection.objects.filter(client=user, ended_at__isnull=True).first()
-    plan = ClientPlan.objects.filter(connection=connection).first() if connection else None
-    if plan is None:
+    plans = list(ClientPlan.objects.filter(connection__client=user).select_related('connection').order_by('connection__created_at'))
+    if not plans:
         return None
-    versions = list(plan.versions.prefetch_related('days').order_by('valid_from', 'created_at'))
-    planned = 0
+    versions = {plan.id: list(plan.versions.prefetch_related('days').order_by('valid_from', 'created_at')) for plan in plans}
+
+    def active_on(plan, day):
+        start = timezone.localtime(plan.connection.created_at).date()
+        end = timezone.localtime(plan.connection.ended_at).date() if plan.connection.ended_at else None
+        return start <= day and (end is None or day < end)
+
+    planned, covered = 0, False
     for offset in range(7):
         day = monday + datetime.timedelta(days=offset)
-        version = version_on(versions, day)
-        if version and any(d.weekday == day.weekday() and d.routine_id for d in version.days.all()):
+        plan = next((p for p in reversed(plans) if active_on(p, day)), None)
+        if plan is None:
+            continue
+        covered = True
+        version = version_on(versions[plan.id], day)
+        if version and any(d.weekday == day.weekday() and d.prescription for d in version.days.all()):
             planned += 1
-    return {'planned': planned}
+    return {'planned': planned} if covered else None
 
 
 def _readiness(sessions):
@@ -54,7 +65,10 @@ def checkin_summary(checkin):
     return {**{f: getattr(checkin, f) for f in CHECKIN_FIELDS}, 'updated_at': checkin.updated_at}
 
 
-def week_review(user, monday, *, measurements=True, nutrition=True, readiness=True):
+def week_review(user, monday, *, measurements=True, nutrition=True, readiness=True, coach_connection=None):
+    """For the athlete (no coach_connection): everything, and whether his check-in is shared with
+    his current coach. For a coach: only what is shared, and the check-in only if it was written
+    for this very collaboration (never a private note, never one meant for another coach)."""
     sunday = monday + datetime.timedelta(days=6)
     overview = week_overview(user, monday)
     sessions = _sessions(user, monday, sunday)
@@ -70,8 +84,20 @@ def week_review(user, monday, *, measurements=True, nutrition=True, readiness=Tr
         'nutrition': overview['nutrition'] if nutrition else None,
         'readiness': _readiness(sessions) if readiness else None,
         'shared': {'measurements': measurements, 'nutrition': nutrition, 'readiness': readiness},
-        'check_in': checkin_summary(WeeklyCheckIn.objects.filter(user=user, week_start=monday).first()),
+        'check_in': _checkin(user, monday, coach_connection),
     }
+
+
+def _checkin(user, monday, coach_connection):
+    checkin = WeeklyCheckIn.objects.filter(user=user, week_start=monday).first()
+    if checkin is None:
+        return None
+    if coach_connection is not None:
+        return checkin_summary(checkin) if checkin.shared_with_id == coach_connection.id else None
+    from coaching.models import CoachConnection
+
+    active = CoachConnection.objects.filter(client=user, ended_at__isnull=True).values_list('id', flat=True).first()
+    return {**checkin_summary(checkin), 'shared_with_coach': active is not None and checkin.shared_with_id == active}
 
 
 def can_check_in(monday) -> bool:

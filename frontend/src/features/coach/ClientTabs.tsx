@@ -9,6 +9,7 @@ import { StatsSections } from '../progress/StatsPage'
 import { StatsLinksContext } from '../progress/statsLinks'
 import { STATS_PERIODS, type StatsPeriod } from '../progress/stats'
 import { planDate } from './plans'
+import { useClientGuard } from './guard'
 import { useClientStats, useClientTargets, useSetClientTarget, type CoachTarget } from './reviewApi'
 
 /** The client's statistics, as he sees them (minus what he does not share); workouts open the review. */
@@ -16,6 +17,7 @@ export function ClientStats({ clientId }: { clientId: string }) {
   const { t } = useTranslation()
   const [period, setPeriod] = useState<StatsPeriod>('30')
   const stats = useClientStats(clientId, period)
+  const guard = useClientGuard(clientId, stats)
   const links = { exercise: () => null, session: (id: string) => `/trener/klijenti/${clientId}/trening/${id}` }
   return (
     <section className="flex flex-col gap-3" aria-label={t('stats.title')}>
@@ -29,9 +31,10 @@ export function ClientStats({ clientId }: { clientId: string }) {
       </div>
       {stats.isLoading && <p className="text-muted">{t('common.loading')}</p>}
       {stats.isError && !stats.data && <FormError message={t('errors.loadFailed')} />}
-      {stats.data && (
+      {stats.data && guard.state !== 'revoked' && (
         <StatsLinksContext.Provider value={links}>
-          <StatsSections data={stats.data} />
+          {/* Access changed since: no readiness until the statistics are read again. */}
+          <StatsSections data={guard.state === 'stale' ? { ...stats.data, readiness: [] } : stats.data} />
         </StatsLinksContext.Provider>
       )}
     </section>
@@ -86,11 +89,13 @@ const intOrNull = (text: string) => {
 export function ClientTargetPanel({ clientId }: { clientId: string }) {
   const { t } = useTranslation()
   const targets = useClientTargets(clientId)
+  const guard = useClientGuard(clientId, targets)
   const save = useSetClientTarget(clientId)
   const [form, setForm] = useState({ kcal: '', protein: '', carbs: '', fat: '', validFrom: toISODate(new Date()), note: '' })
   const [error, setError] = useState<string | null>(null)
   const today = toISODate(new Date())
-  const data = targets.data
+  // Targets need a nutrition consent: nothing of them once access is gone or has changed since.
+  const data = guard.state === 'ok' ? targets.data : undefined
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setError(null)
@@ -104,7 +109,7 @@ export function ClientTargetPanel({ clientId }: { clientId: string }) {
   }
   return (
     <Card title={t('coachSpace.target.title')}>
-      {targets.isLoading && <p className="text-muted">{t('common.loading')}</p>}
+      {(targets.isLoading || guard.state === 'stale') && <p className="text-muted">{t('common.loading')}</p>}
       {targets.isError && !data && <FormError message={t('errors.loadFailed')} />}
       {data && !data.allowed && <p className="text-muted">{t('coach.notShared')}</p>}
       {data?.allowed && (

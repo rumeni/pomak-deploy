@@ -89,6 +89,9 @@ class WeeklyCheckIn(TimeStampedModel):
     satisfaction = models.PositiveSmallIntegerField(null=True, blank=True, validators=SCALE)
     hardest = models.CharField(max_length=500, blank=True)
     notes = models.CharField(max_length=1000, blank=True)
+    # The collaboration it was written for (the athlete was told the coach sees it). Null: a
+    # private note, never shown to any coach, also not to a later one.
+    shared_with = models.ForeignKey('coaching.CoachConnection', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['user', 'week_start'], name='one_checkin_per_week')]

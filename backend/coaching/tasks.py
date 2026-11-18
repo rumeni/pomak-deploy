@@ -299,11 +299,8 @@ def visible_tasks(coach, now=None) -> list:
     ]
 
 
-def weekly_checkin_task(client, monday) -> None:
-    """The client wrote his week's check-in: one task for his coach (never repeated for the week)."""
-    connection_id = CoachConnection.objects.filter(client=client, ended_at__isnull=True).values_list('id', flat=True).first()
-    if connection_id is None:
-        return
+def weekly_checkin_task(connection_id, monday) -> None:
+    """The client wrote his week's check-in for this coach: one task (never repeated for the week)."""
     with transaction.atomic():
         connection = lock_active(connection_id)
         if connection is None:

@@ -8,20 +8,37 @@ A client plan is a history of versions. A change is a new version valid from tod
 what already happened never changes (a started workout keeps its own snapshot of the plan).
 A version for a date that already has one replaces it; the routine copies only that replaced
 version used are archived (hidden from the client's list, kept for workouts that point at them).
+
+What the coach prescribed is frozen on each day (`prescription`) when the version is made, apart
+from the client's copy he trains with and may edit: the plan's history never changes.
+
+Every request carries a client-made ID with a durable receipt per collaboration (PlanRequest),
+kept apart from the versions: a delayed retry never runs again after its version was replaced,
+and the same ID with different content is refused.
 """
+
+import hashlib
+import json
 
 from datetime import timedelta
 
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from rest_framework.exceptions import ValidationError
+from rest_framework import status
+from rest_framework.exceptions import APIException, ValidationError
 
 from training.models import Routine, RoutineExercise, RoutineSet
 from training.serializers import RoutineSerializer
 
-from .models import ClientPlan, ClientPlanDay, ClientPlanVersion, CoachAssignment
+from .models import ClientPlan, ClientPlanDay, ClientPlanVersion, CoachAssignment, PlanRequest
 
 MAX_PLAN_DAYS_AHEAD = 366
+
+
+class RequestConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = _('This request ID was already used for different content.')
+    default_code = 'request_conflict'
 PAST_VERSIONS_SHOWN = 5
 
 
@@ -103,9 +120,9 @@ def plan_routine_ids(plan) -> set:
     return set(ClientPlanDay.objects.filter(version__plan=plan).exclude(routine__isnull=True).values_list('routine_id', flat=True))
 
 
-def save_version(connection, *, valid_from, weeks, name, reason, template, request_id, days):
-    """Create a plan version. `days`: [(weekday, client routine or None)]. Call with the
-    collaboration locked. A retry with the same request_id returns the version it made."""
+def save_version(connection, *, valid_from, weeks, name, reason, template, days):
+    """Create a plan version. `days`: [(weekday, client routine, prescription)]. Call with the
+    collaboration locked."""
     plan, _created = ClientPlan.objects.get_or_create(connection=connection)
     replaced = set()
     old = plan.versions.filter(valid_from=valid_from).first()
@@ -114,19 +131,40 @@ def save_version(connection, *, valid_from, weeks, name, reason, template, reque
         old.delete()
     version = ClientPlanVersion.objects.create(
         plan=plan, valid_from=valid_from, weeks=weeks, name=name, reason=reason,
-        template=template, request_id=request_id,
+        template=template,
     )
-    ClientPlanDay.objects.bulk_create([ClientPlanDay(version=version, weekday=w, routine=r) for w, r in days])
+    ClientPlanDay.objects.bulk_create([
+        ClientPlanDay(version=version, weekday=w, routine=r, prescription=p) for w, r, p in days
+    ])
     # Copies only the replaced version used (not kept by the new one) leave the client's list.
     unused = replaced - plan_routine_ids(plan)
     Routine.objects.filter(pk__in=unused, archived_at__isnull=True).update(archived_at=timezone.now())
     return version
 
 
-def retried_version(connection, request_id):
-    if not request_id:
-        return None
-    return ClientPlanVersion.objects.filter(plan__connection=connection, request_id=request_id).first()
+def payload_hash(data) -> str:
+    return hashlib.sha256(json.dumps(data, sort_keys=True, default=str, ensure_ascii=False).encode('utf-8')).hexdigest()
+
+
+def prior_request(connection, request_id, operation, digest):
+    """True if this exact request was already done for this collaboration; raises on reuse of the
+    ID with different content. Call with the collaboration locked."""
+    receipt = PlanRequest.objects.filter(connection=connection, request_id=request_id).first()
+    if receipt is None:
+        return False
+    if receipt.operation != operation or receipt.payload_hash != digest:
+        raise RequestConflict()
+    return True
+
+
+def record_request(connection, request_id, operation, digest):
+    PlanRequest.objects.create(connection=connection, request_id=request_id, operation=operation, payload_hash=digest)
+
+
+def kept_prescription(plan, routine_id):
+    """What was prescribed for a routine already in the plan (its latest day), not its edited copy."""
+    day = ClientPlanDay.objects.filter(version__plan=plan, routine_id=routine_id).order_by('-version__valid_from', '-version__created_at').first()
+    return day.prescription if day else None
 
 
 def attribute(connection, routine):
@@ -134,12 +172,10 @@ def attribute(connection, routine):
     CoachAssignment.objects.create(connection=connection, routine=routine)
 
 
-def _routine_summary(routine):
-    """The routine with its exercises and planned sets (the coach adjusts them per client)."""
-    if routine is None or routine.archived_at is not None:
-        return None
+def prescription_of(routine) -> dict:
+    """The routine as prescribed: name, exercises and planned sets (frozen on the plan day)."""
     return {
-        'id': str(routine.id), 'name': routine.name,
+        'name': routine.name,
         'exercises': [
             {
                 'exercise_id': str(item.exercise_id), 'name': item.exercise.name,
@@ -158,10 +194,18 @@ def _routine_summary(routine):
     }
 
 
+def _day_summary(day):
+    """The prescription (history) and, if it still exists, the client's routine to train with."""
+    if not day.prescription:
+        return None
+    usable = day.routine is not None and day.routine.archived_at is None
+    return {**day.prescription, 'id': str(day.routine_id) if usable else None}
+
+
 def plan_summary(plan, today=None):
     """Versions (recent past, current, upcoming) and today's planned routine."""
     today = today or timezone.localdate()
-    versions = list(plan.versions.prefetch_related('days__routine__exercises__exercise', 'days__routine__exercises__sets').order_by('valid_from', 'created_at'))
+    versions = list(plan.versions.prefetch_related('days__routine').order_by('valid_from', 'created_at'))
     current = version_on(versions, today)
     past = [v for v in versions if v.valid_from <= today and v is not current]
     shown = past[-PAST_VERSIONS_SHOWN:] + [v for v in versions if v not in past]
@@ -171,20 +215,27 @@ def plan_summary(plan, today=None):
             return 'current'
         return 'upcoming' if version.valid_from > today else 'past'
 
+    def until(version):
+        # Its own length, or the day before the next version starts, whichever is first.
+        ends = [e for e in (version_end(version),) if e]
+        later = [v.valid_from for v in versions if v.valid_from > version.valid_from]
+        if later:
+            ends.append(min(later))
+        return min(ends) - timedelta(days=1) if ends else None
+
     def summary(version):
-        end = version_end(version)
         return {
             'id': str(version.id), 'name': version.name, 'reason': version.reason,
-            'valid_from': version.valid_from, 'valid_until': end - timedelta(days=1) if end else None,
+            'valid_from': version.valid_from, 'valid_until': until(version),
             'weeks': version.weeks, 'template_id': str(version.template_id) if version.template_id else None,
             'created_at': version.created_at, 'state': state(version),
-            'days': [{'weekday': d.weekday, 'routine': _routine_summary(d.routine)} for d in version.days.all()],
+            'days': [{'weekday': d.weekday, 'routine': _day_summary(d)} for d in version.days.all()],
         }
 
     today_day = None
     if current is not None:
         day = next((d for d in current.days.all() if d.weekday == today.weekday()), None)
-        today_day = {'weekday': today.weekday(), 'routine': _routine_summary(day.routine) if day else None}
+        today_day = {'weekday': today.weekday(), 'routine': _day_summary(day) if day else None}
     return {
         'id': str(plan.id),
         'today': today_day,

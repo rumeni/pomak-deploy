@@ -7,6 +7,7 @@ import { CheckInAnswers, WeekReport } from '../progress/WeekReport'
 import { useClientWeek } from '../progress/weekApi'
 import { mondayFromParam, shiftWeek, thisMonday, weekLabel } from '../progress/weeks'
 import { CoachMessages } from './CoachMessages'
+import { useClientGuard } from './guard'
 
 /** A client's week for the coach: the facts he shares, his check-in, and the comments on the week. */
 export function ClientWeekPage() {
@@ -18,6 +19,11 @@ export function ClientWeekPage() {
   const monday = mondayFromParam(params.get('od'), new Date())
   const current = thisMonday(new Date())
   const week = useClientWeek(id, monday)
+  const guard = useClientGuard(id, week)
+  // Access changed since: no weight, nutrition or readiness until read again.
+  const review = week.data && guard.state === 'stale'
+    ? { ...week.data, weight: null, nutrition: null, readiness: null, shared: { measurements: false, nutrition: false, readiness: false } }
+    : week.data
   const go = (value: string) => setParams(value === current ? {} : { od: value }, { replace: true })
   return (
     <div className="min-h-full pb-12">
@@ -29,11 +35,11 @@ export function ClientWeekPage() {
           <Button size="sm" variant="ghost" disabled={monday >= current} onClick={() => go(shiftWeek(monday, 1))} aria-label={t('week.next')}>›</Button>
         </div>
         {week.isLoading && <LoadingScreen />}
-        {week.isError && !week.data && <FormError message={t('coachSpace.review.notFound')} />}
-        {week.data && (
+        {((week.isError && !week.data) || guard.state === 'revoked') && <FormError message={t('coachSpace.review.notFound')} />}
+        {review && guard.state !== 'revoked' && (
           <>
-            <WeekReport review={week.data} forCoach />
-            <CheckInAnswers checkIn={week.data.check_in} />
+            <WeekReport review={review} forCoach />
+            <CheckInAnswers checkIn={review.check_in} />
             {me && <CoachMessages selfId={me.id} clientId={id} weekStart={monday} title={t('coachSpace.week.comments')} />}
           </>
         )}

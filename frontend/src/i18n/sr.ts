@@ -670,6 +670,7 @@ export const sr = {
     checkInCoachHint: 'Tvoj trener vidi ovaj osvrt uz nedelju. Sve je opciono.',
     noCheckIn: 'Klijent još nije popunio osvrt za ovu nedelju.',
     tooOld: 'Osvrt se piše za ovu ili neku od poslednjih osam nedelja.',
+    privateUntilSaved: 'Ovaj osvrt je sačuvan kao privatan. Trener ga vidi tek kad ga ponovo sačuvaš.',
     scaleLow: 'loše',
     scaleHigh: 'odlično',
     q: {
@@ -699,6 +700,7 @@ export const sr = {
       minutes_few: '{{count}} minuta',
       minutes_other: '{{count}} minuta',
       edited: 'Klijent je naknadno ispravio ovaj trening.',
+      beforeCollaboration: 'Ovaj trening je iz vremena pre saradnje.',
       reviewed: 'Pregledano',
       markReviewed: 'Označi kao pregledano',
       comments: 'Komentari uz trening',
@@ -800,6 +802,7 @@ export const sr = {
       routineGone: 'rutina je obrisana',
       reason: 'Razlog izmene',
       reasonPlaceholder: 'npr. lakše zbog kolena',
+      base: 'Menjaš plan',
       validFrom: 'Važi od',
       validFromHint: 'Danas ili kasnije. Ono što je već urađeno se ne menja.',
       fromPlan: 'Iz plana',

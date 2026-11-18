@@ -19,7 +19,7 @@ from training.stats import PERIODS, training_stats
 
 from .models import CoachMessage, CoachTask
 from .plan_views import active_connection_for
-from .views import message_summary, readiness_summary
+from .views import access_facts, message_summary, readiness_summary
 
 
 def _workout(connection, workout_id):
@@ -46,6 +46,9 @@ class ClientWorkoutView(APIView):
             connection=connection, kind=CoachTask.Kind.WORKOUT_REVIEW, key=str(workout.id),
         ).first()
         return Response({
+            'access': access_facts(connection),
+            # Only workouts finished during this collaboration are part of the review workflow.
+            'reviewable': workout.finished_at >= connection.created_at,
             'id': str(workout.id), 'name': workout.name, 'started_at': workout.started_at,
             'finished_at': workout.finished_at, 'feeling': workout.feeling, 'notes': workout.notes,
             'edited_at': workout.edited_at,
@@ -79,6 +82,8 @@ class WorkoutReviewedView(APIView):
     def post(self, request, client_id, workout_id):
         connection = active_connection_for(request, client_id, lock=True)
         workout = _workout(connection, workout_id)
+        if workout.finished_at < connection.created_at:
+            raise ValidationError({'detail': _('Only workouts from this collaboration can be marked as reviewed.')})
         now = timezone.now()
         task, _created = CoachTask.objects.get_or_create(
             connection=connection, kind=CoachTask.Kind.WORKOUT_REVIEW, key=str(workout.id),
@@ -101,7 +106,7 @@ class ClientStatsView(APIView):
         stats = training_stats(connection.client, period)
         if not connection.share_readiness:
             stats['readiness'] = []
-        return Response(stats)
+        return Response({**stats, 'access': access_facts(connection)})
 
 
 class CoachTargetSerializer(serializers.Serializer):
@@ -150,8 +155,9 @@ class ClientNutritionTargetView(APIView):
     def get(self, request, client_id):
         connection = active_connection_for(request, client_id)
         if not (connection.coach_sets_nutrition or connection.share_nutrition):
-            return Response({'allowed': False, 'can_set': False, 'current': None, 'next': None})
-        return Response({'allowed': True, 'can_set': connection.coach_sets_nutrition, **client_targets(connection)})
+            return Response({'allowed': False, 'can_set': False, 'current': None, 'next': None, 'access': access_facts(connection)})
+        return Response({'allowed': True, 'can_set': connection.coach_sets_nutrition, **client_targets(connection),
+                         'access': access_facts(connection)})
 
     @transaction.atomic
     def post(self, request, client_id):
@@ -173,7 +179,8 @@ class ClientNutritionTargetView(APIView):
                 NutritionTarget.objects.update_or_create(owner=connection.client, valid_from=data['valid_from'], defaults=values)
         except IntegrityError:
             NutritionTarget.objects.filter(owner=connection.client, valid_from=data['valid_from']).update(**values)
-        return Response({'allowed': True, 'can_set': True, **client_targets(connection)}, status=status.HTTP_201_CREATED)
+        return Response({'allowed': True, 'can_set': True, **client_targets(connection), 'access': access_facts(connection)},
+                        status=status.HTTP_201_CREATED)
 
 
 class ClientWeekView(APIView):
@@ -184,8 +191,9 @@ class ClientWeekView(APIView):
         from progress.weekly import week_review
 
         connection = active_connection_for(request, client_id)
-        return Response(week_review(
+        review = week_review(
             connection.client, week_monday(day), measurements=connection.share_measurements,
-            nutrition=connection.share_nutrition, readiness=connection.share_readiness,
-        ))
+            nutrition=connection.share_nutrition, readiness=connection.share_readiness, coach_connection=connection,
+        )
+        return Response({**review, 'access': access_facts(connection)})
 

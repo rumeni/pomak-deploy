@@ -658,6 +658,7 @@ export const en = {
     checkInCoachHint: 'Your coach sees this review with the week. Everything is optional.',
     noCheckIn: 'The client has not filled in the review for this week yet.',
     tooOld: 'A review is for this week or one of the last eight.',
+    privateUntilSaved: 'This review was saved as private. Your coach sees it only once you save it again.',
     scaleLow: 'poor',
     scaleHigh: 'great',
     q: {
@@ -686,6 +687,7 @@ export const en = {
       minutes_one: '{{count}} minute',
       minutes_other: '{{count}} minutes',
       edited: 'The client corrected this workout afterwards.',
+      beforeCollaboration: 'This workout is from before the collaboration.',
       reviewed: 'Reviewed',
       markReviewed: 'Mark as reviewed',
       comments: 'Comments on this workout',
@@ -781,6 +783,7 @@ export const en = {
       routineGone: 'routine deleted',
       reason: 'Reason for the change',
       reasonPlaceholder: 'e.g. lighter because of the knee',
+      base: 'Plan to change',
       validFrom: 'Applies from',
       validFromHint: 'Today or later. What already happened does not change.',
       fromPlan: 'From the plan',

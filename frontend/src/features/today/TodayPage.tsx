@@ -154,7 +154,9 @@ function TrainingCard() {
   // A coach's plan decides today's workout; without one (or once trained today) the usual next routine.
   const plan = useMyPlan(!!me && !me.profile.is_coach)
   const planToday = plan.data?.today ?? null
-  const planned = planToday?.routine && doneToday.length === 0 ? routines?.find((r) => r.id === planToday.routine!.id) ?? null : null
+  const plannedId = planToday?.routine?.id ?? null
+  const plannedDone = !!plannedId && doneToday.some((s) => s.routine_id === plannedId)
+  const planned = plannedId && !plannedDone ? routines?.find((r) => r.id === plannedId) ?? null : null
   const next = planned ?? (routines ? nextRoutine(routines, recent) : null)
   const onStart = async (routine: Parameters<typeof start>[0]) => {
     setStarting(true)

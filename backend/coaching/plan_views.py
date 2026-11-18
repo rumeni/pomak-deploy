@@ -11,13 +11,13 @@ from rest_framework.views import APIView
 from core.views import require_object_body
 from training.models import Routine
 
-from .models import ClientPlan, CoachConnection, ProgramTemplate, ProgramTemplateDay
+from .models import ClientPlan, CoachConnection, PlanRequest, ProgramTemplate, ProgramTemplateDay
 from .plans import (
-    assignable_routine, attribute, check_valid_from, copy_routine, plan_routine_ids, plan_summary,
-    retried_version, save_version, tailored_routine,
+    assignable_routine, attribute, check_valid_from, copy_routine, kept_prescription, payload_hash, plan_routine_ids,
+    plan_summary, prescription_of, prior_request, record_request, save_version, tailored_routine,
 )
 from .tasks import lock_active
-from .views import coach_only, display_name
+from .views import access_facts, coach_only, display_name
 
 MAX_TEMPLATES = 100
 MAX_ASSIGN_CLIENTS = 50
@@ -62,7 +62,8 @@ class PlanVersionSerializer(serializers.Serializer):
     weeks = serializers.IntegerField(min_value=1, max_value=52, required=False, allow_null=True, default=None)
     name = serializers.CharField(max_length=100, trim_whitespace=True, required=False, allow_blank=True, default='')
     reason = serializers.CharField(max_length=300, trim_whitespace=True, required=False, allow_blank=True, default='')
-    request_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+    # Client-made ID; its receipt makes a retry return what the first request did.
+    request_id = serializers.UUIDField()
     # Empty: no plan from that date (a pause or the end of the plan).
     days = PlanDaySerializer(many=True)
 
@@ -70,21 +71,15 @@ class PlanVersionSerializer(serializers.Serializer):
         if len({d['weekday'] for d in value}) != len(value):
             raise serializers.ValidationError(_('One routine per day.'))
         return value
-
-    def validate_valid_from(self, value):
-        check_valid_from(value)
-        return value
+    # The date is checked only for new work: an exact retry of a done request still succeeds
+    # after that day has passed.
 
 
 class AssignTemplateSerializer(serializers.Serializer):
     client_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=MAX_ASSIGN_CLIENTS)
     start_date = serializers.DateField()
     reason = serializers.CharField(max_length=300, trim_whitespace=True, required=False, allow_blank=True, default='')
-    request_id = serializers.UUIDField(required=False, allow_null=True, default=None)
-
-    def validate_start_date(self, value):
-        check_valid_from(value)
-        return value
+    request_id = serializers.UUIDField()
 
 
 def template_summary(template):
@@ -161,7 +156,8 @@ class TemplateView(APIView):
 
 
 class AssignTemplateView(APIView):
-    """Template → clients → start date. Each client gets his own copies, in his own transaction."""
+    """Template → clients → start date. Each client gets his own copies, in his own transaction,
+    with a receipt: a retry (also a partial one, after some clients were done) does each client once."""
 
     def post(self, request, pk):
         require_object_body(request)
@@ -169,31 +165,39 @@ class AssignTemplateView(APIView):
         serializer = AssignTemplateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        client_ids = list(dict.fromkeys(data['client_ids']))
+        digest = payload_hash({'template': str(template.pk), 'client_ids': sorted(map(str, client_ids)),
+                               'start_date': data['start_date'], 'reason': data['reason']})
+        connections = dict(CoachConnection.objects.filter(
+            coach=request.user, client_id__in=client_ids, ended_at__isnull=True,
+        ).values_list('client_id', 'id'))
+        done = set(PlanRequest.objects.filter(connection_id__in=connections.values(), request_id=data['request_id'])
+                   .values_list('connection_id', flat=True))
+        if any(cid not in done for cid in connections.values()):
+            check_valid_from(data['start_date'])  # only new work needs a date from today on
         days = list(template.days.all())
-        sources = {d.routine_id: assignable_routine(request.user, d.routine_id) for d in days}
+        sources = None
         results = []
-        for client_id in dict.fromkeys(data['client_ids']):
-            connection_id = CoachConnection.objects.filter(
-                coach=request.user, client_id=client_id, ended_at__isnull=True,
-            ).values_list('id', flat=True).first()
+        for client_id in client_ids:
             with transaction.atomic():
-                connection = lock_active(connection_id) if connection_id else None
+                connection = lock_active(connections[client_id]) if client_id in connections else None
                 if connection is None:
                     results.append({'client_id': str(client_id), 'ok': False, 'error': 'not_a_client'})
                     continue
-                version = retried_version(connection, data['request_id'])
-                if version is None:
+                if not prior_request(connection, data['request_id'], PlanRequest.Operation.ASSIGN, digest):
+                    if sources is None:
+                        sources = {d.routine_id: assignable_routine(request.user, d.routine_id) for d in days}
                     copies = {}
                     for source_id, source in sources.items():
                         copies[source_id] = copy_routine(source, connection.client)
                         attribute(connection, copies[source_id])
-                    version = save_version(
+                    save_version(
                         connection, valid_from=data['start_date'], weeks=template.weeks, name=template.name,
-                        reason=data['reason'], template=template, request_id=data['request_id'],
-                        days=[(d.weekday, copies[d.routine_id]) for d in days],
+                        reason=data['reason'], template=template,
+                        days=[(d.weekday, copies[d.routine_id], prescription_of(sources[d.routine_id])) for d in days],
                     )
-                results.append({'client_id': str(client_id), 'name': display_name(connection.client), 'ok': True,
-                                'version_id': str(version.id)})
+                    record_request(connection, data['request_id'], PlanRequest.Operation.ASSIGN, digest)
+                results.append({'client_id': str(client_id), 'name': display_name(connection.client), 'ok': True})
         return Response({'results': results})
 
 
@@ -207,11 +211,15 @@ def active_connection_for(request, client_id, *, lock=False):
     return connection
 
 
+def plan_response(connection):
+    """The plan (or null) with the access facts it was read under."""
+    plan = ClientPlan.objects.filter(connection=connection).first()
+    return {'access': access_facts(connection), 'plan': plan_summary(plan) if plan else None}
+
+
 class ClientPlanView(APIView):
     def get(self, request, client_id):
-        connection = active_connection_for(request, client_id)
-        plan = ClientPlan.objects.filter(connection=connection).first()
-        return Response(plan_summary(plan) if plan else None)
+        return Response(plan_response(active_connection_for(request, client_id)))
 
 
 class ClientPlanVersionsView(APIView):
@@ -224,32 +232,37 @@ class ClientPlanVersionsView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         connection = active_connection_for(request, client_id, lock=True)
-        version = retried_version(connection, data['request_id'])
-        if version is None:
-            plan = ClientPlan.objects.filter(connection=connection).first()
-            kept = plan_routine_ids(plan) if plan else set()
-            days = []
-            for day in data['days']:
-                if 'keep_routine_id' in day:
-                    if day['keep_routine_id'] not in kept:
-                        raise ValidationError({'days': _('That routine is not part of this plan any more.')})
-                    routine = Routine.objects.filter(pk=day['keep_routine_id'], owner=connection.client, archived_at__isnull=True).first()
-                    if routine is None:
-                        raise ValidationError({'days': _('That routine is not part of this plan any more.')})
-                elif 'routine_id' in day:
-                    routine = copy_routine(assignable_routine(request.user, day['routine_id']), connection.client)
-                    attribute(connection, routine)
-                else:
-                    routine = tailored_routine(request, day['routine'], connection.client)
-                    attribute(connection, routine)
-                days.append((day['weekday'], routine))
-            current_name = plan.versions.order_by('-valid_from').values_list('name', flat=True).first() if plan else None
-            version = save_version(
-                connection, valid_from=data['valid_from'], weeks=data['weeks'],
-                name=data['name'] or current_name or str(_('Plan')), reason=data['reason'], template=None,
-                request_id=data['request_id'], days=days,
-            )
-        return Response(plan_summary(version.plan), status=status.HTTP_201_CREATED)
+        digest = payload_hash({k: v for k, v in request.data.items() if k != 'request_id'})
+        if prior_request(connection, data['request_id'], PlanRequest.Operation.CHANGE, digest):
+            return Response(plan_response(connection))
+        check_valid_from(data['valid_from'])
+        plan = ClientPlan.objects.filter(connection=connection).first()
+        kept = plan_routine_ids(plan) if plan else set()
+        days = []
+        for day in data['days']:
+            if 'keep_routine_id' in day:
+                routine = Routine.objects.filter(pk=day['keep_routine_id'], owner=connection.client, archived_at__isnull=True).first()
+                if day['keep_routine_id'] not in kept or routine is None:
+                    raise ValidationError({'days': _('That routine is not part of this plan any more.')})
+                # Keep what was prescribed, not whatever the client has since changed in his copy.
+                prescription = kept_prescription(plan, routine.pk) or prescription_of(routine)
+            elif 'routine_id' in day:
+                source = assignable_routine(request.user, day['routine_id'])
+                routine = copy_routine(source, connection.client)
+                attribute(connection, routine)
+                prescription = prescription_of(source)
+            else:
+                routine = tailored_routine(request, day['routine'], connection.client)
+                attribute(connection, routine)
+                prescription = prescription_of(Routine.objects.prefetch_related('exercises__exercise', 'exercises__sets').get(pk=routine.pk))
+            days.append((day['weekday'], routine, prescription))
+        current_name = plan.versions.order_by('-valid_from').values_list('name', flat=True).first() if plan else None
+        save_version(
+            connection, valid_from=data['valid_from'], weeks=data['weeks'],
+            name=data['name'] or current_name or str(_('Plan')), reason=data['reason'], template=None, days=days,
+        )
+        record_request(connection, data['request_id'], PlanRequest.Operation.CHANGE, digest)
+        return Response(plan_response(connection), status=status.HTTP_201_CREATED)
 
 
 class MyPlanView(APIView):

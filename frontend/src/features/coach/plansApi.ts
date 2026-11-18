@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
+import type { ServerAccess } from './access'
 
 /** 0 = Monday ... 6 = Sunday (as on the server). */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6
@@ -32,8 +33,9 @@ export interface PlanSet {
   rpe: string | null
 }
 
+/** A plan day: what was prescribed (frozen), and the client's routine to train with (null once gone). */
 export interface PlanRoutine {
-  id: string
+  id: string | null
   name: string
   exercises: {
     exercise_id: string
@@ -57,6 +59,12 @@ export interface PlanVersion {
   created_at: string
   state: 'past' | 'current' | 'upcoming'
   days: { weekday: Weekday; routine: PlanRoutine | null }[]
+}
+
+/** The coach's view of a client's plan, with the access it was read under. */
+export interface ClientPlanResponse {
+  access: ServerAccess
+  plan: ClientPlan | null
 }
 
 export interface ClientPlan {
@@ -137,8 +145,10 @@ export function useAssignTemplate() {
 export function useClientPlan(clientId: string) {
   return useQuery({
     queryKey: planKey(clientId),
-    queryFn: async () => (await api.get<ClientPlan | null>(`/coach/clients/${clientId}/plan/`)).data,
+    queryFn: async () => (await api.get<ClientPlanResponse>(`/coach/clients/${clientId}/plan/`)).data,
     retry: false,
+    // Notice a revoked collaboration while the screen is open.
+    refetchInterval: 30_000,
   })
 }
 
@@ -146,7 +156,7 @@ export function useSavePlanVersion(clientId: string) {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async (body: PlanVersionInput) => (await api.post<ClientPlan>(`/coach/clients/${clientId}/plan/versions/`, body)).data,
+    mutationFn: async (body: PlanVersionInput) => (await api.post<ClientPlanResponse>(`/coach/clients/${clientId}/plan/versions/`, body)).data,
     onSuccess: (plan) => {
       qc.setQueryData(planKey(clientId), plan)
       return qc.invalidateQueries({ queryKey: ['coach-client', clientId] })

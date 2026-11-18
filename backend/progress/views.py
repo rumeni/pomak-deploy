@@ -120,13 +120,19 @@ class WeekReviewView(APIView):
             raise ValidationError({'week': _('A check-in is for this week or one of the last eight.')})
         serializer = WeeklyCheckInSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        from coaching.models import CoachConnection
+        from coaching.tasks import weekly_checkin_task
+
+        # Written for the coach the athlete has now (the form says the coach sees it), or private
+        # without one; a later coach never gets check-ins that were not written for him.
+        coach = CoachConnection.objects.filter(client=request.user, ended_at__isnull=True).first()
         with transaction.atomic():
             checkin, _created = WeeklyCheckIn.objects.select_for_update().get_or_create(user=request.user, week_start=monday)
             for field, value in serializer.validated_data.items():
                 setattr(checkin, field, value)
+            checkin.shared_with = coach
             checkin.save()
-        # The coach, if there is one, gets it on the overview (once per week).
-        from coaching.tasks import weekly_checkin_task
-        weekly_checkin_task(request.user, monday)
+        if coach is not None:
+            weekly_checkin_task(coach.id, monday)
         return Response(weekly.week_review(request.user, monday))
 

@@ -161,3 +161,23 @@ class CoachNutritionTargetTests(ReviewTestCase):
         self.client.post(self.target_url(), {'valid_from': today, 'kcal': 2000}, format='json')
         self.client.post(self.target_url(), {'valid_from': today, 'kcal': 2100}, format='json')
         self.assertEqual(list(NutritionTarget.objects.filter(owner=self.ana).values_list('kcal', flat=True)), [2100])
+
+
+class ReviewAccessTests(ReviewTestCase):
+    def test_every_coach_view_carries_its_access_facts(self):
+        self.as_user(self.coach)
+        for url in (self.url(), f'/api/coach/clients/{self.ana.pk}/stats/', f'/api/coach/clients/{self.ana.pk}/nutrition-target/',
+                    f'/api/coach/clients/{self.ana.pk}/weeks/{timezone.localdate().isoformat()}/'):
+            access = self.client.get(url).data['access']
+            self.assertEqual((access['connection_id'], access['access_version']), (str(self.connection.pk), 1), url)
+            self.assertIn('coach_sets_nutrition', access)
+
+    def test_only_workouts_of_this_collaboration_can_be_marked_reviewed(self):
+        old = self.session(self.ana)
+        WorkoutSession.objects.filter(pk=old.pk).update(finished_at=self.connection.created_at - timedelta(days=1))
+        self.as_user(self.coach)
+        url = f'/api/coach/clients/{self.ana.pk}/workouts/{old.pk}/'
+        self.assertFalse(self.client.get(url).data['reviewable'])
+        self.assertEqual(self.client.post(url + 'reviewed/', {}, format='json').status_code, 400)
+        self.assertTrue(self.client.get(self.url()).data['reviewable'])
+

@@ -818,3 +818,15 @@ msgstr "Ta nedelja još nije počela."
 
 msgid "Weekly check-in"
 msgstr "Nedeljni osvrt"
+
+msgid "This request ID was already used for different content."
+msgstr "Ovaj ID zahteva je već iskorišćen za drugačiji sadržaj."
+
+msgid "Only workouts from this collaboration can be marked as reviewed."
+msgstr "Kao pregledan se označava samo trening iz ove saradnje."
+
+msgid "Assign a program"
+msgstr "Dodela programa"
+
+msgid "Change the plan"
+msgstr "Izmena plana"

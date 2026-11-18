@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { Button, Card, FormError } from '../../components/ui'
+import { useClientGuard } from './guard'
 import { useClientPlan } from './plansApi'
 import { PlanWeek } from './PlanWeek'
 
@@ -9,7 +10,10 @@ import { PlanWeek } from './PlanWeek'
 export function PlanPanel({ clientId }: { clientId: string }) {
   const { t } = useTranslation()
   const plan = useClientPlan(clientId)
-  const versions = plan.data?.versions ?? []
+  const guard = useClientGuard(clientId, plan)
+  if (guard.state === 'revoked') return null
+  const data = plan.data?.plan
+  const versions = data?.versions ?? []
   const current = versions.find((v) => v.state === 'current')
   const upcoming = versions.filter((v) => v.state === 'upcoming')
   const past = versions.filter((v) => v.state === 'past').reverse()
@@ -22,8 +26,8 @@ export function PlanPanel({ clientId }: { clientId: string }) {
           <Button variant="secondary" className="mt-2" onClick={() => void plan.refetch()}>{t('common.retry')}</Button>
         </>
       )}
-      {plan.data === null && <p className="text-muted">{t('coachSpace.plan.none')}</p>}
-      {plan.data && !current && upcoming.length === 0 && <p className="text-muted">{t('coachSpace.plan.noneNow')}</p>}
+      {plan.data && data === null && <p className="text-muted">{t('coachSpace.plan.none')}</p>}
+      {data && !current && upcoming.length === 0 && <p className="text-muted">{t('coachSpace.plan.noneNow')}</p>}
       {current && (
         <div className="mb-3">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">{t('coachSpace.plan.current')}</p>
@@ -38,7 +42,7 @@ export function PlanPanel({ clientId }: { clientId: string }) {
       ))}
       <div className="mt-2 flex flex-wrap gap-2">
         <Link to={`/trener/klijenti/${clientId}/plan`} className="app-button app-button-primary inline-flex min-h-10 items-center bg-brand px-4 text-sm text-white">
-          {plan.data ? t('coachSpace.plan.change') : t('coachSpace.plan.create')}
+          {data ? t('coachSpace.plan.change') : t('coachSpace.plan.create')}
         </Link>
         <Link to={`/trener/programi/dodela?klijent=${clientId}`} className="app-button inline-flex min-h-10 items-center bg-brand-soft px-4 text-sm text-brand-dark">
           {t('coachSpace.plan.assignProgram')}

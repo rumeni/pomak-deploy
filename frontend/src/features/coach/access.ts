@@ -36,8 +36,56 @@ export interface AccessFacts {
   share_measurements: boolean
   share_nutrition: boolean
   share_readiness?: boolean
+  coach_sets_nutrition?: boolean
   access_version?: number
   connected_at?: string
+}
+
+/** The access facts the server sends with every coach view of client data. */
+export interface ServerAccess {
+  connection_id: string
+  client_id: string
+  access_version: number
+  connected_at: string
+  share_measurements: boolean
+  share_nutrition: boolean
+  share_readiness: boolean
+  coach_sets_nutrition: boolean
+}
+
+export function factsOf(access: ServerAccess): AccessFacts {
+  return {
+    id: access.connection_id, client: { id: access.client_id }, access_version: access.access_version,
+    connected_at: access.connected_at, share_measurements: access.share_measurements, share_nutrition: access.share_nutrition,
+    share_readiness: access.share_readiness, coach_sets_nutrition: access.coach_sets_nutrition,
+  }
+}
+
+/**
+ * How a coach view of client data (plan, workout review, stats, target, week) may be shown,
+ * judged like the client screen: by server facts, against the highest version known anywhere.
+ * - 'revoked': nothing (the server said no, or the collaboration ended or was replaced);
+ * - 'stale': access changed since this data was read: show no consent category until refetched;
+ * - 'ok': as loaded (also offline before anything newer was seen).
+ */
+export function guardVerdict(
+  access: ServerAccess | undefined,
+  error: unknown,
+  dashboard: DashboardAccess | undefined,
+  registry: AccessRegistry,
+): { state: 'ok' | 'stale' | 'revoked' | 'none'; known?: AccessFacts } {
+  if (error && isAccessRevoked(error)) {
+    if (axios.isAxiosError(error) && error.response?.status !== 401) markRevoked(registry, access?.connection_id)
+    return { state: 'revoked' }
+  }
+  if (!access) return { state: 'none' }
+  if (!error) observe(registry, factsOf(access))
+  const { verdict, known } = judge(
+    { id: access.connection_id, client_id: access.client_id, access_version: access.access_version, connected_at: access.connected_at },
+    dashboard, registry,
+  )
+  if (verdict === 'revoked') return { state: 'revoked' }
+  return { state: verdict === 'stale' ? 'stale' : 'ok', known }
 }
 
 /** A collaboration as the dashboard lists it. */
@@ -198,8 +246,10 @@ export function visibleTaskList(tasks: CoachTask[], dashboard: DashboardAccess |
 
 /** Forget everything cached about a client the coach lost access to, and refresh the lists. */
 export function purgeClient(qc: QueryClient, clientId: string): Promise<unknown> {
-  qc.removeQueries({ queryKey: ['coach-client', clientId] })
-  qc.removeQueries({ queryKey: ['coach-messages', clientId] })
+  for (const key of ['coach-client', 'coach-messages', 'coach-client-plan', 'coach-client-workout', 'coach-client-stats',
+    'coach-client-targets', 'coach-client-week']) {
+    qc.removeQueries({ queryKey: [key, clientId] })
+  }
   return refreshCoachLists(qc)
 }
 

@@ -1,13 +1,14 @@
 """Program templates and client plans (T2a)."""
 
 import uuid
+from unittest import mock
 from datetime import timedelta
 
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from accounts.models import User
-from coaching.models import ClientPlanVersion, CoachConnection
+from coaching.models import ClientPlanVersion, CoachConnection, PlanRequest
 from training.models import Exercise, Routine, RoutineExercise, RoutineSet
 
 
@@ -61,8 +62,14 @@ class PlanTestCase(APITestCase):
         self.as_user(self.coach)
         return self.client.post(f'/api/coach/templates/{template_id}/assign/', {
             'client_ids': [str(c.pk) for c in clients], 'start_date': start.isoformat(),
-            'request_id': request_id,
+            'request_id': request_id or str(uuid.uuid4()),
         }, format='json')
+
+    def plan_of(self, client):
+        self.as_user(self.coach)
+        response = self.client.get(f'/api/coach/clients/{client.pk}/plan/')
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data['plan']
 
 
 class TemplateTests(PlanTestCase):
@@ -95,21 +102,30 @@ class AssignTests(PlanTestCase):
         RoutineSet.objects.filter(routine_exercise__routine=self.upper).update(weight_kg='100')
         self.client.put(f"/api/coach/templates/{template['id']}/", {'name': 'Changed', 'days': [
             {'weekday': 1, 'routine_id': str(self.upper.pk)}]}, format='json')
-        plan = self.client.get(f'/api/coach/clients/{self.ana.pk}/plan/').data
-        version = plan['versions'][0]
+        version = self.plan_of(self.ana)['versions'][0]
         self.assertEqual((version['name'], version['state'], version['valid_from']), ('Upper/Lower', 'upcoming', start))
         self.assertEqual([d['weekday'] for d in version['days']], [0, 3])
+        self.assertEqual(version['days'][0]['routine']['exercises'][0]['sets'][0]['weight_kg'], '60.00')
         copy = Routine.objects.get(owner=self.ana, name='Upper A')
         self.assertEqual(str(RoutineSet.objects.get(routine_exercise__routine=copy).weight_kg), '60.00')
         self.assertEqual(version['valid_until'], start + timedelta(weeks=4) - timedelta(days=1))
 
-    def test_a_retried_assignment_creates_nothing_twice(self):
+    def test_a_retried_assignment_creates_nothing_twice_also_partially_and_after_the_day(self):
         template = self.template()
         request_id = str(uuid.uuid4())
-        self.assign(template['id'], [self.ana], self.today, request_id)
-        self.assign(template['id'], [self.ana], self.today, request_id)
+        first = self.assign(template['id'], [self.ana], self.today, request_id)
+        self.assertEqual([r['ok'] for r in first.data['results']], [True])
+        # Retry of the whole request, with one more client that the first attempt never reached.
+        self.as_user(self.coach)
+        body = {'client_ids': [str(self.ana.pk)], 'start_date': self.today.isoformat(), 'request_id': request_id}
+        self.assertEqual(self.client.post(f"/api/coach/templates/{template['id']}/assign/", body, format='json').status_code, 200)
         self.assertEqual(ClientPlanVersion.objects.count(), 1)
         self.assertEqual(Routine.objects.filter(owner=self.ana).count(), 2)
+        # The same ID with other content is refused, not silently applied.
+        other = {**body, 'reason': 'Different'}
+        result = self.client.post(f"/api/coach/templates/{template['id']}/assign/", other, format='json')
+        self.assertEqual(result.status_code, 409)
+        self.assertEqual(ClientPlanVersion.objects.count(), 1)
 
     def test_no_start_in_the_past(self):
         template = self.template()
@@ -122,54 +138,93 @@ class PlanChangeTests(PlanTestCase):
         template = self.template(weeks=None)
         self.assign(template['id'], [self.ana], self.today)
         self.url = f'/api/coach/clients/{self.ana.pk}/plan/versions/'
-        self.plan = self.client.get(f'/api/coach/clients/{self.ana.pk}/plan/').data
+        self.plan = self.plan_of(self.ana)
         self.monday_routine = self.plan['versions'][0]['days'][0]['routine']['id']
 
-    def test_a_change_from_a_later_date_keeps_today_and_can_tailor_a_routine(self):
-        tailored = {'name': 'Upper A (Ana)', 'notes': '', 'exercises': [{
-            'exercise_id': str(self.bench.pk), 'rest_seconds': 90, 'notes': '',
-            'sets': [{'set_type': 'working', 'reps_min': 5, 'reps_max': 5, 'weight_kg': '55', 'duration_seconds': None,
+    def change(self, valid_from, days, request_id=None, **extra):
+        self.as_user(self.coach)
+        return self.client.post(self.url, {
+            'valid_from': valid_from.isoformat(), 'days': days, 'request_id': request_id or str(uuid.uuid4()), **extra,
+        }, format='json')
+
+    def tailored(self, weight='55', exercise=None):
+        return {'name': 'Upper A (Ana)', 'notes': '', 'exercises': [{
+            'exercise_id': str((exercise or self.bench).pk), 'rest_seconds': 90, 'notes': '',
+            'sets': [{'set_type': 'working', 'reps_min': 5, 'reps_max': 5, 'weight_kg': weight, 'duration_seconds': None,
                       'distance_m': None, 'rpe': None}],
         }]}
+
+    def test_a_change_from_a_later_date_keeps_today_and_can_tailor_a_routine(self):
         later = self.today + timedelta(days=7)
-        response = self.client.post(self.url, {'valid_from': later.isoformat(), 'reason': 'Lakše zbog kolena', 'days': [
-            {'weekday': 0, 'keep_routine_id': self.monday_routine},
-            {'weekday': 2, 'routine': tailored},
-        ]}, format='json')
+        response = self.change(later, [
+            {'weekday': 0, 'keep_routine_id': self.monday_routine}, {'weekday': 2, 'routine': self.tailored()},
+        ], reason='Lakše zbog kolena')
         self.assertEqual(response.status_code, 201, response.data)
-        states = [(v['state'], v['reason']) for v in response.data['versions']]
-        self.assertEqual(states, [('current', ''), ('upcoming', 'Lakše zbog kolena')])
+        versions = response.data['plan']['versions']
+        self.assertEqual([(v['state'], v['reason']) for v in versions], [('current', ''), ('upcoming', 'Lakše zbog kolena')])
+        # The current version now ends the day before the next one starts: no overlapping history.
+        self.assertEqual(versions[0]['valid_until'], later - timedelta(days=1))
         made = Routine.objects.get(owner=self.ana, name='Upper A (Ana)')
         self.assertEqual(str(RoutineSet.objects.get(routine_exercise__routine=made).weight_kg), '55.00')
-        # Private exercises of the coach never reach the client, not even in a tailored routine.
-        tailored['exercises'][0]['exercise_id'] = str(self.secret.pk)
-        self.assertEqual(self.client.post(self.url, {'valid_from': later.isoformat(), 'days': [
-            {'weekday': 2, 'routine': tailored}]}, format='json').status_code, 400)
+        self.assertEqual(self.change(later, [{'weekday': 2, 'routine': self.tailored(exercise=self.secret)}]).status_code, 400)
+
+    def test_editing_his_copy_never_rewrites_what_was_prescribed(self):
+        copy = Routine.objects.get(pk=self.monday_routine)
+        RoutineSet.objects.filter(routine_exercise__routine=copy).update(weight_kg='5')
+        copy.name = 'Mine now'
+        copy.save()
+        day = self.plan_of(self.ana)['versions'][0]['days'][0]['routine']
+        self.assertEqual((day['name'], day['exercises'][0]['sets'][0]['weight_kg']), ('Upper A', '60.00'))
+        self.assertEqual(day['id'], self.monday_routine)  # still the routine he trains with
+        # Keeping it in a new version keeps the prescription, not his edits.
+        response = self.change(self.today + timedelta(days=1), [{'weekday': 0, 'keep_routine_id': self.monday_routine}])
+        kept = response.data['plan']['versions'][-1]['days'][0]['routine']
+        self.assertEqual(kept['exercises'][0]['sets'][0]['weight_kg'], '60.00')
+
+    def test_a_delayed_retry_never_brings_back_a_replaced_version(self):
+        day = self.today + timedelta(days=2)
+        request_a = str(uuid.uuid4())
+        a = [{'weekday': 0, 'keep_routine_id': self.monday_routine}]
+        self.assertEqual(self.change(day, a, request_a, name='A').status_code, 201)
+        self.assertEqual(self.change(day, [], name='B').status_code, 201)  # replaced by B on the same date
+        retry = self.change(day, a, request_a, name='A')
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(retry.data['plan']['versions'][-1]['name'], 'B')
+        self.assertEqual(self.change(day, [], request_a, name='Other').status_code, 409)
+
+    def test_an_exact_retry_succeeds_even_after_its_day(self):
+        request_id = str(uuid.uuid4())
+        self.assertEqual(self.change(self.today, [], request_id).status_code, 201)
+        PlanRequest.objects.filter(request_id=request_id)  # receipt exists
+        with mock.patch('coaching.plans.timezone.localdate', return_value=self.today + timedelta(days=3)):
+            self.assertEqual(self.change(self.today, [], request_id).status_code, 200)
 
     def test_replacing_a_version_archives_only_copies_no_longer_used(self):
         thursday_routine = self.plan['versions'][0]['days'][1]['routine']['id']
-        response = self.client.post(self.url, {'valid_from': self.today.isoformat(), 'days': [
-            {'weekday': 0, 'keep_routine_id': self.monday_routine},
-        ]}, format='json')
+        response = self.change(self.today, [{'weekday': 0, 'keep_routine_id': self.monday_routine}])
         self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(len(response.data['versions']), 1)
+        self.assertEqual(len(response.data['plan']['versions']), 1)
         self.assertIsNone(Routine.objects.get(pk=self.monday_routine).archived_at)
         self.assertIsNotNone(Routine.objects.get(pk=thursday_routine).archived_at)
 
     def test_a_pause_and_rules_for_dates_and_routines(self):
-        pause = self.client.post(self.url, {'valid_from': (self.today + timedelta(days=1)).isoformat(), 'days': []}, format='json')
-        self.assertEqual(pause.data['versions'][-1]['days'], [])
-        self.assertEqual(self.client.post(self.url, {'valid_from': (self.today - timedelta(days=1)).isoformat(), 'days': []}, format='json').status_code, 400)
+        pause = self.change(self.today + timedelta(days=1), [])
+        self.assertEqual(pause.data['plan']['versions'][-1]['days'], [])
+        self.assertEqual(self.change(self.today - timedelta(days=1), []).status_code, 400)
         foreign = self.routine('Not in plan', owner=self.ana)
-        self.assertEqual(self.client.post(self.url, {'valid_from': self.today.isoformat(), 'days': [
-            {'weekday': 0, 'keep_routine_id': str(foreign.pk)}]}, format='json').status_code, 400)
-        self.assertEqual(self.client.post(self.url, {'valid_from': self.today.isoformat(), 'days': [
-            {'weekday': 0, 'keep_routine_id': self.monday_routine, 'routine_id': str(self.upper.pk)}]}, format='json').status_code, 400)
+        self.assertEqual(self.change(self.today, [{'weekday': 0, 'keep_routine_id': str(foreign.pk)}]).status_code, 400)
+        self.assertEqual(self.change(self.today, [
+            {'weekday': 0, 'keep_routine_id': self.monday_routine, 'routine_id': str(self.upper.pk)}]).status_code, 400)
+        self.as_user(self.coach)
+        self.assertEqual(self.client.post(self.url, {'valid_from': self.today.isoformat(), 'days': []}, format='json').status_code, 400)
 
     def test_only_the_coach_of_an_active_collaboration_sees_or_changes_the_plan(self):
+        access = self.client.get(f'/api/coach/clients/{self.ana.pk}/plan/').data['access']
+        self.assertEqual(access['access_version'], 1)
         self.as_user(self.other_coach)
         self.assertEqual(self.client.get(f'/api/coach/clients/{self.ana.pk}/plan/').status_code, 404)
-        self.assertEqual(self.client.post(self.url, {'valid_from': self.today.isoformat(), 'days': []}, format='json').status_code, 404)
+        self.assertEqual(self.client.post(self.url, {'valid_from': self.today.isoformat(), 'days': [],
+                                                     'request_id': str(uuid.uuid4())}, format='json').status_code, 404)
         self.as_user(self.ana)
         mine = self.client.get('/api/coach/plan/').data
         self.assertEqual(mine['current_version_id'], self.plan['current_version_id'])
@@ -182,8 +237,7 @@ class PlanChangeTests(PlanTestCase):
         self.assertEqual(self.client.get(f'/api/coach/clients/{self.ana.pk}/plan/').status_code, 404)
 
     def test_today_shows_the_routine_planned_for_this_weekday(self):
-        days = [{'weekday': self.today.weekday(), 'keep_routine_id': self.monday_routine}]
-        self.client.post(self.url, {'valid_from': self.today.isoformat(), 'days': days}, format='json')
+        self.change(self.today, [{'weekday': self.today.weekday(), 'keep_routine_id': self.monday_routine}])
         self.as_user(self.ana)
         today = self.client.get('/api/coach/plan/').data['today']
         self.assertEqual(today['routine']['id'], self.monday_routine)

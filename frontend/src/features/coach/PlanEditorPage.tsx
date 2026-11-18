@@ -8,7 +8,8 @@ import { toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { DraftError } from '../training/draft'
 import { useRoutines, type Routine } from '../training/api'
-import { tailorDraft, tailoredRoutine, type TailorDraft } from './plans'
+import { useClientGuard } from './guard'
+import { planDate, tailorDraft, tailoredRoutine, type TailorDraft } from './plans'
 import { useClientPlan, useSavePlanVersion, WEEKDAYS, type ClientPlan, type PlanDayInput, type PlanRoutine, type Weekday } from './plansApi'
 
 /** What a day of the new version holds. */
@@ -35,9 +36,10 @@ export function PlanEditorPage() {
   const { t } = useTranslation()
   const { id } = useParams()
   const plan = useClientPlan(id ?? '')
+  const guard = useClientGuard(id ?? '', plan)
   if (plan.isLoading) return <LoadingScreen />
-  if (plan.isError || !id) return <p className="p-6 text-center text-danger">{t('coach.clientNotFound')}</p>
-  return <Editor clientId={id} plan={plan.data ?? null} />
+  if (plan.isError || !id || !plan.data || guard.state === 'revoked') return <p className="p-6 text-center text-danger">{t('coach.clientNotFound')}</p>
+  return <Editor clientId={id} plan={plan.data.plan} />
 }
 
 function Editor({ clientId, plan }: { clientId: string; plan: ClientPlan | null }) {
@@ -45,13 +47,17 @@ function Editor({ clientId, plan }: { clientId: string; plan: ClientPlan | null 
   const navigate = useNavigate()
   const routines = useRoutines()
   const save = useSavePlanVersion(clientId)
-  const latest = plan?.versions.filter((v) => v.state !== 'past').at(-1) ?? null
-  const planRoutines = [...new Map((latest?.days ?? []).flatMap((d) => (d.routine ? [[d.routine.id, d.routine] as const] : []))).values()]
+  // The change starts from the plan in effect today; with a later version planned, the coach picks the base.
+  const bases = plan?.versions.filter((v) => v.state !== 'past') ?? []
+  const [baseId, setBaseId] = useState(() => bases.find((v) => v.state === 'current')?.id ?? bases[0]?.id ?? '')
+  const latest = bases.find((v) => v.id === baseId) ?? null
+  const planRoutines = [...new Map(bases.flatMap((v) => v.days).flatMap((d) => (d.routine?.id ? [[d.routine.id, d.routine] as const] : []))).values()]
   const usable = (routines.data ?? []).filter((r) => r.exercises.length > 0 && r.exercises.every((x) => !x.exercise.is_custom))
-  const [days, setDays] = useState<Record<Weekday, DayChoice>>(() => Object.fromEntries(WEEKDAYS.map((w) => {
-    const day = latest?.days.find((d) => d.weekday === w)
-    return [w, day?.routine ? { kind: 'keep', routine: day.routine } : { kind: 'rest' }]
-  })) as Record<Weekday, DayChoice>)
+  const daysOf = (base: typeof latest) => Object.fromEntries(WEEKDAYS.map((w) => {
+    const day = base?.days.find((d) => d.weekday === w)
+    return [w, day?.routine?.id ? { kind: 'keep', routine: day.routine } : { kind: 'rest' }]
+  })) as Record<Weekday, DayChoice>
+  const [days, setDays] = useState<Record<Weekday, DayChoice>>(() => daysOf(latest))
   const [validFrom, setValidFrom] = useState(() => toISODate(new Date()))
   const [weeks, setWeeks] = useState(latest?.weeks ? String(latest.weeks) : '')
   const [name, setName] = useState(latest?.name ?? '')
@@ -86,7 +92,7 @@ function Editor({ clientId, plan }: { clientId: string; plan: ClientPlan | null 
     try {
       input = WEEKDAYS.flatMap((weekday): PlanDayInput[] => {
         const choice = days[weekday]
-        if (choice.kind === 'keep') return [{ weekday, keep_routine_id: choice.routine.id }]
+        if (choice.kind === 'keep') return choice.routine.id ? [{ weekday, keep_routine_id: choice.routine.id }] : []
         if (choice.kind === 'copy') return [{ weekday, routine_id: choice.routineId }]
         if (choice.kind === 'tailor') return [{ weekday, routine: tailoredRoutine(choice.draft) }]
         return []
@@ -108,6 +114,24 @@ function Editor({ clientId, plan }: { clientId: string; plan: ClientPlan | null 
       <form className="mx-auto flex max-w-xl flex-col gap-3 px-4 py-4" onSubmit={submit} noValidate>
         <Card>
           <div className="flex flex-col gap-4">
+            {bases.length > 1 && (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium">{t('coachSpace.plan.base')}</span>
+                <select className={selectClass} value={baseId} onChange={(e) => {
+                  const base = bases.find((v) => v.id === e.target.value) ?? null
+                  setBaseId(e.target.value)
+                  setDays(daysOf(base))
+                  setWeeks(base?.weeks ? String(base.weeks) : '')
+                  setName(base?.name ?? '')
+                }}>
+                  {bases.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.state === 'current' ? t('coachSpace.plan.current') : t('coachSpace.plan.from', { from: planDate(v.valid_from) })} · {v.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <Field label={t('coachSpace.plan.validFrom')} name="valid-from" type="date" min={today} value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
             <p className="-mt-2 text-xs text-muted">{t('coachSpace.plan.validFromHint')}</p>
             <Field label={`${t('coachSpace.templates.name')} (${t('common.optional')})`} name="plan-name" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />

@@ -63,6 +63,7 @@ function CheckInForm({ monday, initial, hasCoach }: { monday: string; initial: W
   return (
     <Card title={t('week.checkInTitle')}>
       <p className="mb-3 text-sm text-muted">{hasCoach ? t('week.checkInCoachHint') : t('week.checkInHint')}</p>
+      {hasCoach && initial && !initial.shared_with_coach && <p className="mb-3 text-sm">{t('week.privateUntilSaved')}</p>}
       <form className="flex flex-col gap-4" onSubmit={submit}>
         {scales.map((field) => (
           <fieldset key={field}>
