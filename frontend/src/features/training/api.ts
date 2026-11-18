@@ -68,6 +68,8 @@ export interface Routine {
 
 export interface RoutinePayload {
   id?: string
+  /** Server updated_at that the editor originally loaded; reject conflicting PUTs. */
+  revision?: string
   name: string
   notes: string
   program_key?: string

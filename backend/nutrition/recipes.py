@@ -62,5 +62,12 @@ def recompute(recipe: Food) -> None:
 
 def recompute_recipes_using(food: Food) -> None:
     """Izmena lične namirnice menja recepte u kojima je (ali ne i već upisane obroke)."""
-    for recipe in Food.objects.filter(ingredients__food=food, archived_at__isnull=True).distinct():
+    # Serialize overlapping ingredient edits by locking each affected recipe
+    # before reading its ingredients; the second writer then sees committed
+    # values from both changes instead of overwriting with a stale snapshot.
+    ids = list(Food.objects.filter(
+        ingredients__food=food, archived_at__isnull=True,
+    ).order_by('pk').values_list('pk', flat=True).distinct())
+    for pk in ids:
+        recipe = Food.objects.select_for_update().get(pk=pk)
         recompute(recipe)

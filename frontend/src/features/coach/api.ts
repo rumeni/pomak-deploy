@@ -154,8 +154,8 @@ export function useAssignCoachRoutine(clientId: string) {
 export function useSendCoachMessage(clientId?: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (text: string) =>
-      (await api.post<CoachMessage>('/coach/messages/', { text, ...(clientId ? { client_id: clientId } : {}) })).data,
+    mutationFn: async ({ id, text }: { id: string; text: string }) =>
+      (await api.post<CoachMessage>('/coach/messages/', { id, text, ...(clientId ? { client_id: clientId } : {}) })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['coach-messages', clientId ?? 'own'] }),
   })
 }

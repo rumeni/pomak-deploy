@@ -8,6 +8,7 @@ export const en = {
     loading: 'Loading…',
     saving: 'Saving…',
     save: 'Save',
+    leaveUnsaved: 'You have unsaved changes. Leave without saving?',
     continue: 'Continue',
     back: 'Back',
     retry: 'Try again',

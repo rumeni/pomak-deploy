@@ -1,6 +1,7 @@
 import datetime
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
@@ -93,6 +94,7 @@ class GoalSerializer(serializers.ModelSerializer):
         attrs['start_date'] = today
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
         goal = super().create(validated_data)
         # Upisana polazna vrednost bez ranijeg merenja postaje prvo merenje.

@@ -116,11 +116,19 @@ def collect(user) -> dict:
     }
 
 
+def _safe_csv_cell(value):
+    # Excel/Sheets may execute a spreadsheet formula even in a quoted CSV
+    # field. Escape any user-controlled string that starts like one.
+    if isinstance(value, str) and value.lstrip(' \t\r\n').startswith(('=', '+', '-', '@')):
+        return "'" + value
+    return value
+
+
 def _csv(header, rows) -> str:
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(header)
-    writer.writerows(rows)
+    writer.writerows([_safe_csv_cell(cell) for cell in row] for row in rows)
     # BOM da Excel prepozna UTF-8 (š, đ, č).
     return '﻿' + out.getvalue()
 

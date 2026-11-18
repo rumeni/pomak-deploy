@@ -13,6 +13,7 @@ import { kcalCheck } from './labelCheck'
 import { foodFormValue } from './foodFormValues'
 import { useAuth } from '../../lib/auth'
 import { rememberFood } from '../diary/store'
+import { useUnsavedWarning } from '../../lib/useUnsavedWarning'
 import { MEALS, type MealKey } from '../diary/types'
 
 const STATES: FoodState[] = ['prepared', 'raw', 'cooked', 'na']
@@ -86,6 +87,9 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
   const editVersion = useRef(0)
   const scannedVersion = useRef(0)
   const markEdited = () => { editVersion.current += 1 }
+  const fingerprint = JSON.stringify([name, state, values, portions, barcode, shared, sourceRef])
+  const [initialFingerprint] = useState(() => fingerprint)
+  const confirmLeave = useUnsavedWarning(fingerprint !== initialFingerprint)
 
   const applyScan = (result: ScanResult) => {
     if (editVersion.current !== scannedVersion.current) return
@@ -223,7 +227,7 @@ function FoodForm({ initialFood }: { initialFood?: Food }) {
 
   return (
     <div className="min-h-full pb-10">
-      <ScreenHeader title={t(editing ? 'newFood.editTitle' : 'newFood.title')} onBack={() => navigate(-1)} />
+      <ScreenHeader title={t(editing ? 'newFood.editTitle' : 'newFood.title')} onBack={() => confirmLeave(() => navigate(-1))} />
       <form className="mx-auto flex max-w-xl flex-col gap-4 p-4" onSubmit={onSubmit} noValidate>
         {!editing && <FoodScanner onStart={() => { scannedVersion.current = editVersion.current }} onResult={applyScan} autoStart={params.get('skeniraj') === '1'} />}
         {existingFood && (

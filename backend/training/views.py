@@ -54,12 +54,20 @@ class RoutineViewSet(IdempotentCreateMixin, viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'put', 'delete']
 
     def get_queryset(self):
+        qs = Routine.objects.filter(owner=self.request.user, archived_at__isnull=True)
+        if self.action == 'update':
+            qs = qs.select_for_update()
         return (
-            Routine.objects.filter(owner=self.request.user, archived_at__isnull=True)
+            qs
             .prefetch_related(
                 Prefetch('exercises', queryset=RoutineExercise.objects.select_related('exercise').prefetch_related('sets')),
             )
         )
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        # Lock before comparing the submitted revision and replacing all sets.
+        return super().update(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)

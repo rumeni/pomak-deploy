@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button, EmptyState, FormError, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
+import { useUnsavedWarning } from '../../lib/useUnsavedWarning'
 import { useDeleteRoutine, useDuplicateRoutine, useRoutine, useSaveRoutine, type Exercise } from './api'
 import {
   DraftError,
@@ -41,6 +42,8 @@ function Editor({ initial }: { initial: RoutineDraft }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [draft, setDraft] = useState(initial)
+  const [initialFingerprint] = useState(() => JSON.stringify(initial))
+  const confirmLeave = useUnsavedWarning(JSON.stringify(draft) !== initialFingerprint)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const save = useSaveRoutine()
@@ -93,7 +96,7 @@ function Editor({ initial }: { initial: RoutineDraft }) {
     <div className="min-h-full pb-44">
       <ScreenHeader
         title={draft.isNew ? t('routine.newTitle') : t('routine.editTitle')}
-        onBack={() => navigate(-1)}
+        onBack={() => confirmLeave(() => navigate(-1))}
         action={
           <Button size="sm" onClick={onSave} disabled={save.isPending}>
             {save.isPending ? t('common.saving') : t('common.save')}

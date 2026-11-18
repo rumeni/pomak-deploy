@@ -66,6 +66,19 @@ class ExportDeleteTests(APITestCase):
         food = list(csv.reader(io.StringIO(z.read('ishrana.csv').decode('utf-8-sig'))))
         self.assertEqual((food[1][2], food[1][5]), ('Šnicla', ''))
 
+    def test_csv_export_disarms_spreadsheet_formula_names(self):
+        MealEntry.objects.create(
+            owner=self.user, date=datetime.date(2026, 9, 30),
+            meal='lunch', name='=HYPERLINK("https://example.test")', kcal=100,
+        )
+        result = self.client.get('/api/auth/me/export/')
+        self.assertEqual(result.status_code, 200)
+        z = zipfile.ZipFile(io.BytesIO(result.content))
+        entries = list(csv.reader(io.StringIO(z.read('ishrana.csv').decode('utf-8-sig'))))
+        self.assertIn('\'=HYPERLINK("https://example.test")', [row[2] for row in entries])
+        untouched = json.loads(z.read('pomak.json'))
+        self.assertIn('=HYPERLINK("https://example.test")', [row['name'] for row in untouched['nutrition']['entries']])
+
     def test_delete_needs_password_and_removes_everything(self):
         res = self.client.post('/api/auth/me/delete/', {'password': 'pogresna'}, format='json')
         self.assertEqual(res.status_code, 400)
