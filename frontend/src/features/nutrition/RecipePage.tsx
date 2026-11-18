@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button, Field, FormError, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
+import { useUnsavedWarning } from '../../lib/useUnsavedWarning'
 import { formatDecimal, parseDecimal } from '../../lib/format'
 import { useDebounced } from '../../lib/useDebounced'
 import { uuid } from '../../lib/uuid'
@@ -59,6 +60,9 @@ function RecipeForm({ recipe }: { recipe?: Recipe }) {
   const [servings, setServings] = useState(String(recipe?.servings ?? 1))
   const [picking, setPicking] = useState(!recipe)
   const [error, setError] = useState<string | null>(null)
+  const fingerprint = JSON.stringify([name, rows, mass, servings])
+  const initialFingerprint = useRef(fingerprint)
+  const confirmLeave = useUnsavedWarning(fingerprint !== initialFingerprint.current)
 
   const parsedMass = mass.trim() ? parseDecimal(mass) : null
   const parsedServings = Number.parseInt(servings, 10)
@@ -101,7 +105,7 @@ function RecipeForm({ recipe }: { recipe?: Recipe }) {
 
   return (
     <div className="min-h-full pb-10">
-      <ScreenHeader title={recipe ? t('recipe.editTitle') : t('recipe.newTitle')} onBack={() => navigate(-1)} />
+      <ScreenHeader title={recipe ? t('recipe.editTitle') : t('recipe.newTitle')} onBack={() => confirmLeave(() => navigate(-1))} />
       <form className="mx-auto flex max-w-xl flex-col gap-4 p-4" onSubmit={onSubmit} noValidate>
         <Field label={t('recipe.name')} name="name" placeholder={t('recipe.nameExample')} value={name} onChange={(e) => setName(e.target.value)} />
 
