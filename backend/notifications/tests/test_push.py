@@ -444,63 +444,103 @@ class GroupAssignTests(APITransactionTestCase):
         self.assertEqual(PushMessage.objects.count(), 6)
 
 
-class WakeUpTests(PushTestCase):
-    """A retry's backoff is scheduled with QStash: no later app traffic is needed."""
+WORKER = 'https://api.example.test/api/internal/push-deliver/'
 
-    @mock.patch.dict(os.environ, {**VAPID_ENV, 'PUSH_WORKER_URL': 'https://api.example.test/api/internal/push-deliver/'})
-    @override_settings(QSTASH_TOKEN='t', QSTASH_CURRENT_SIGNING_KEY='current-key', QSTASH_NEXT_SIGNING_KEY='next-key')
-    def test_the_worker_schedules_itself_for_a_retry_and_fails_loudly_if_it_cannot(self):
+
+class Accepted(Response):
+    status = 201
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+@mock.patch.dict(os.environ, {**VAPID_ENV, 'PUSH_WORKER_URL': WORKER})
+@override_settings(QSTASH_TOKEN='t', QSTASH_CURRENT_SIGNING_KEY='current-key', QSTASH_NEXT_SIGNING_KEY='next-key')
+class WakeUpTests(PushTestCase):
+    """The worker always plans its one next call: for a retry's backoff or the next reminder."""
+
+    def call(self, body=b'{}'):
         import base64
         import hashlib
 
+        body_hash = base64.urlsafe_b64encode(hashlib.sha256(body).digest()).decode().rstrip('=')
+        now = int(time.time())
+        signature = jwt.encode({'iss': 'Upstash', 'sub': WORKER, 'nbf': now, 'exp': now + 60, 'body': body_hash}, 'current-key', algorithm='HS256')
+        return self.client.post('/api/internal/push-deliver/', body, content_type='application/json', HTTP_UPSTASH_SIGNATURE=signature)
+
+    def setUp(self):
+        super().setUp()
+        self.published = []
+
+    def publish(self, request, timeout):
+        self.published.append(request)
+        return Accepted()
+
+    def delay_of(self, request):
+        return int(request.headers['Upstash-delay'].rstrip('s'))
+
+    def test_a_retry_is_planned_and_a_failed_plan_is_retried_by_qstash(self):
         PushDevice.objects.create(user=self.ana, kind='web', token='https://fcm.googleapis.com/fcm/send/only',
                                   p256dh=push.b64url(self.ua_public), auth=push.b64url(self.auth_secret))
         with mock.patch('notifications.push.kick'):
             push.notify(self.ana, title='x', body='y', url='/', tag='t')
-        body_hash = base64.urlsafe_b64encode(hashlib.sha256(b'{}').digest()).decode().rstrip('=')
-        now = int(time.time())
-        signature = jwt.encode({'iss': 'Upstash', 'sub': 'https://api.example.test/api/internal/push-deliver/', 'nbf': now,
-                                'exp': now + 60, 'body': body_hash}, 'current-key', algorithm='HS256')
 
         def unavailable(request, timeout):
             raise HTTPError(request.full_url, 503, 'Unavailable', {}, None)
 
-        published = []
-
-        class Accepted(Response):
-            status = 201
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-        def publish(request, timeout):
-            published.append(request)
-            return Accepted()
-
-        call = lambda: self.client.post('/api/internal/push-deliver/', b'{}', content_type='application/json',  # noqa: E731
-                                        HTTP_UPSTASH_SIGNATURE=signature)
-        with mock.patch('notifications.push.http_post', unavailable), mock.patch('notifications.push.urllib.request.urlopen', publish):
-            self.assertEqual(call().status_code, 204)
-        self.assertEqual(len(published), 1)
-        delay = int(published[0].headers['Upstash-delay'].rstrip('s'))
-        self.assertTrue(25 <= delay <= 31, delay)  # when the backoff ends, not right away
-        # The delayed call comes: the retry goes out and nothing is left to schedule.
+        with mock.patch('notifications.push.http_post', unavailable), mock.patch('notifications.push.urllib.request.urlopen', self.publish):
+            self.assertEqual(self.call().status_code, 204)
+        self.assertEqual(len(self.published), 1)
+        self.assertTrue(25 <= self.delay_of(self.published[0]) <= 31)
+        # The planned call arrives (it names its time): the retry goes out, nothing more to plan.
         PushMessage.objects.update(claimed_until=timezone.now() - timedelta(seconds=1))
         with mock.patch('notifications.push.http_post', return_value=Response()) as sent, \
-                mock.patch('notifications.push.urllib.request.urlopen', publish):
-            self.assertEqual(call().status_code, 204)
+                mock.patch('notifications.push.urllib.request.urlopen', self.publish):
+            self.assertEqual(self.call(self.published[0].data).status_code, 204)
         sent.assert_called_once()
-        self.assertEqual(len(published), 1)
-        self.assertFalse(PushMessage.objects.exists())
-        # If the continuation cannot be scheduled, QStash must retry the worker call itself.
+        self.assertEqual(len(self.published), 1)
+        # A plan that cannot be made: an error, so QStash retries this call (nothing silently lost).
         with mock.patch('notifications.push.kick'):
             push.notify(self.ana, title='x', body='y', url='/', tag='t')
         with mock.patch('notifications.push.http_post', unavailable), \
                 mock.patch('notifications.push.urllib.request.urlopen', side_effect=TimeoutError('qstash down')):
-            self.assertEqual(call().status_code, 503)
+            self.assertEqual(self.call().status_code, 503)
+
+    def test_a_reminder_wakes_the_worker_without_any_app_traffic_even_after_an_early_call(self):
+        from scheduling.models import Booking, BookingReminder, SessionType
+
+        coach = self.coach
+        pt = SessionType.objects.create(coach=coach, name='PT', duration_minutes=60)
+        start = timezone.now() + timedelta(hours=30)
+        booking = Booking.objects.create(coach=coach, client=self.ana, connection=self.connection, session_type=pt, type_name='PT',
+                                         type_mode='in_person', starts_at=start, ends_at=start + timedelta(hours=1),
+                                         status='confirmed', created_by='coach')
+        due = start - timedelta(hours=24)
+        BookingReminder.objects.create(booking=booking, hours_before=24, due_at=due, for_start=start)
+        self.subscribe(self.ana)
+        with mock.patch('notifications.push.urllib.request.urlopen', self.publish):
+            self.assertEqual(self.call().status_code, 204)  # any call: the next wake-up is planned
+            self.assertEqual(len(self.published), 1)
+            delay = self.delay_of(self.published[0])
+            self.assertTrue(abs(delay - (due - timezone.now()).total_seconds()) <= 2)  # rounded up, from now
+            planned = self.published[0].data
+            # Another call meanwhile does not plan a second chain.
+            self.assertEqual(self.call().status_code, 204)
+            self.assertEqual(len(self.published), 1)
+            # The planned call arrives early (nothing due yet): it plans itself again.
+            self.assertEqual(self.call(planned).status_code, 204)
+            self.assertEqual(len(self.published), 2)
+        # At the due time: the reminder is sent with no other traffic at all.
+        sent = []
+        with mock.patch('scheduling.services.timezone.now', return_value=due + timedelta(seconds=5)), \
+                mock.patch('notifications.push.notify', side_effect=lambda *a, **k: sent.append(a[0])):
+            from scheduling.services import send_due_reminders
+
+            send_due_reminders()
+        self.assertEqual(sent, [self.ana])
 
 
 class DeadlineTests(PushTestCase):

@@ -409,6 +409,12 @@ def coach_client_rows(connections, now, unread=None):
     ]
 
 
+def _today_counts(coach, now):
+    from scheduling.views import today_counts
+
+    return today_counts(coach, now)
+
+
 class DashboardView(APIView):
     def get(self, request):
         now = timezone.now()
@@ -442,6 +448,8 @@ class DashboardView(APIView):
                 'workouts_today': WorkoutSession.objects.filter(
                     owner_id__in=[c.client_id for c in connections], started_at__gte=day_start,
                 ).count(),
+                # Sessions today and requests waiting for the coach (calendar).
+                **_today_counts(request.user, now),
             })
         connection = active_connections().filter(client=request.user).select_related('client__profile', 'coach__profile').first()
         assignments = (
@@ -575,6 +583,10 @@ def end_connection(connection, ended_by):
     connection.save(update_fields=['ended_at', 'ended_by', 'access_version', 'updated_at'])
     # Tasks are about the client's current data, which the coach may no longer see.
     connection.tasks.all().delete()
+    # Sessions not yet held are cancelled; past ones stay in both calendars.
+    from scheduling.services import cancel_future_of
+
+    cancel_future_of(connection, now)
 
 
 class ConnectionView(APIView):
@@ -959,7 +971,13 @@ class UnreadView(APIView):
     def get(self, request):
         counts = unread_counts(request.user)
         # Pushes a failed hand-off left behind are picked up by the next poll.
-        if push_enabled() and PushMessage.objects.exists():
+        if push_enabled():
+            # Without the queue worker, due session reminders go out with the polls of open apps.
+            from notifications.push import queue_configured
+            from scheduling.services import send_due_reminders
+
+            if not queue_configured():
+                send_due_reminders(budget=1.0, limit=10)
             poll_kick()
         return Response({'total': sum(counts.values()), 'by_connection': {str(k): v for k, v in counts.items()}})
 

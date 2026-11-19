@@ -109,6 +109,9 @@ export type CoachDashboard =
     workouts_today?: number
     server_time?: string
     unread_messages?: number
+    /** Sessions today, and booking requests waiting for the coach. */
+    bookings_today?: number
+    booking_requests?: number
   }
   | {
     role: 'client'

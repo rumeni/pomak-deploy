@@ -273,7 +273,7 @@ export function visibleTaskList(tasks: CoachTask[], dashboard: DashboardAccess |
 /** Forget everything cached about a client the coach lost access to, and refresh the lists. */
 export function purgeClient(qc: QueryClient, clientId: string): Promise<unknown> {
   for (const key of ['coach-client', 'coach-messages', 'coach-client-plan', 'coach-client-workout', 'coach-client-stats',
-    'coach-client-targets', 'coach-client-week', 'coach-client-instructions']) {
+    'coach-client-targets', 'coach-client-week', 'coach-client-instructions', 'schedule-packages']) {
     qc.removeQueries({ queryKey: [key, clientId] })
   }
   return refreshCoachLists(qc)

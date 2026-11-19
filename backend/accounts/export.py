@@ -13,6 +13,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from nutrition.models import Food, MealEntry, NutritionDay, NutritionTarget, SavedMeal
+from scheduling.models import Booking, SessionPackage
 from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile, ExerciseInstruction
 from progress.models import Goal, Measurement, WeeklyCheckIn
 from training.models import Exercise, Routine, SessionExercise, WorkoutSession
@@ -67,6 +68,16 @@ def collect(user) -> dict:
                 for m in CoachMessage.objects.filter(connection__in=connections).select_related('connection').order_by('created_at')
             ],
             'assigned_routines': list(CoachAssignment.objects.filter(connection__client=user).values('routine__name', 'created_at')),
+            # Sessions booked with a coach (as client or as coach).
+            'bookings': [
+                {'session_type': b.type_name, 'starts_at': b.starts_at, 'ends_at': b.ends_at, 'status': b.status,
+                 'role': 'coach' if b.coach_id == user.pk else 'client', 'note': b.note}
+                for b in Booking.objects.filter(Q(coach=user) | Q(client=user)).order_by('starts_at')
+            ],
+            # Session packages (counters of prepaid sessions), as client or as coach.
+            'session_packages': list(SessionPackage.objects.filter(Q(coach=user) | Q(client=user)).order_by('valid_from').values(
+                'name', 'total', 'adjustment', 'valid_from', 'expires_on', 'note', 'closed_at',
+            )),
             # Written for the client, or by the coach.
             'exercise_instructions': list(ExerciseInstruction.objects.filter(connection__in=connections).order_by('created_at').values(
                 'exercise__name', 'text', 'created_at', 'updated_at',

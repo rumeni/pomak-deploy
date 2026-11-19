@@ -26,6 +26,12 @@ def cleanup_auth_throttle_cron(request):
     from notifications.push import drain
 
     delete_orphan_images()
+    # Session reminders: send what is due, and schedule the wake-ups of the next days.
+    from notifications.push import plan_wakeup
+    from scheduling.services import next_reminder_due, send_due_reminders
+
+    send_due_reminders(budget=5.0)
+    plan_wakeup(next_reminder_due())  # recovers a lost wake-up of the queue worker
     drain(5.0)  # delivers what is left and drops what is too old
     from datetime import timedelta
 

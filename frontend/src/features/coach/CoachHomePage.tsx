@@ -29,12 +29,19 @@ export function CoachHomePage() {
     <>
       <CoachHeader title={t('coachSpace.overviewTitle')} />
       <div className="flex flex-col gap-3 px-4 pb-8">
-        <div className="grid grid-cols-3 gap-2" aria-live="polite">
+        <div className="grid grid-cols-2 gap-2 min-[560px]:grid-cols-4" aria-live="polite">
           <Stat value={data ? activeClients : null} label={t('coachSpace.stats.activeClients')} to="/trener/klijenti" />
           <Stat value={data?.workouts_today ?? null} label={t('coachSpace.stats.workoutsToday')} />
           <Stat value={tasks.data ? groups.open.length : null} label={t('coachSpace.stats.toReview')} />
+          <Stat value={data?.bookings_today ?? null} label={t('coachSpace.stats.sessionsToday')} to="/trener/kalendar" />
         </div>
 
+        {!!data?.booking_requests && (
+          <Link to="/trener/kalendar" className="app-card flex items-center justify-between gap-3 !p-4">
+            <span className="font-semibold">{t('schedule.calendar.requests', { count: data.booking_requests })}</span>
+            <span className="text-muted" aria-hidden>›</span>
+          </Link>
+        )}
         {!!data?.unread_messages && (
           <Link to="/trener/poruke" className="app-card flex items-center justify-between gap-3 !p-4">
             <span className="font-semibold">{t('coach.unread', { count: data.unread_messages })}</span>

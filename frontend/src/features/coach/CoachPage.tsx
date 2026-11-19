@@ -9,6 +9,7 @@ import { errorMessage } from '../../lib/api'
 import { getFormatLocale } from '../../lib/format'
 import { CoachCardView } from './CoachCardView'
 import { CoachMessages } from './CoachMessages'
+import { MyBookingsCard } from '../schedule/MyBookingsCard'
 import { MyPlanCard } from './MyPlanCard'
 import {
   useCoachDashboard, useConnectCoach, useDisconnectCoach, useInvitePreview, useUpdateCoachSharing,
@@ -145,6 +146,7 @@ function Collaboration({ connection, coach, notes, assignments }: {
         </Card>
       )}
       <MyPlanCard />
+      <MyBookingsCard />
       <Card title={t('coach.assignedRoutines')}>
         {assignments.length === 0 && <p className="text-muted">{t('coach.noAssignments')}</p>}
         {assignments.map((assignment) => (

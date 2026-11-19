@@ -517,3 +517,189 @@ klijenta iz T1.
      `coaching.0005`, `coaching.0006`, `notifications.0001` i objaviti API/web.
      Na uređaju instalirati novi APK napravljen sa konfiguracijom i proveriti prijavu
      tokena, odobrenje za notifikacije i prijem stvarnog FCM push-a.
+
+## T4: kalendar, zakazivanje, paketi i podsetnici
+
+### Vremenska zona
+
+- **Raspored je u jednoj zoni**, `Europe/Belgrade` (`TIME_ZONE` aplikacije), bez obzira na zonu
+  uređaja. Radno vreme, dani u kalendaru, prikazana i upisana vremena su po beogradskom vremenu.
+  Kad je uređaj u drugoj zoni, ekran to i kaže.
+- **Računanje.** Radno vreme se najpre pretvara u trenutke. Trajanje, korak, preklapanja i rokovi
+  se zatim računaju u UTC-u.
+  - Termin od 120 minuta traje 120 stvarnih minuta i kad se menja sat.
+  - Vreme koje u proleće ne postoji (02:30) pomera se za veličinu „rupe“ (03:30) i nikad se ne
+    nudi kao slobodno. Server i aplikacija pri tome primenjuju isto pravilo.
+  - U jesen se ponovljeno vreme računa kao prvo od ta dva.
+- **Termin pripada danu u kome počinje.** U okviru dodatnog vremena može da traje i posle
+  ponoći. Spisak slobodnih termina i provera pri zakazivanju koriste isto pravilo.
+- **Mreža termina je stalna za svaki dan.** Termini počinju na svakih 15, 30 ili 60 minuta
+  stvarnog vremena od lokalne ponoći tog dana.
+  - Mreža ne zavisi od izabranog opsega datuma, pa termin ponuđen u nedeljnom pregledu server
+    prihvata i kad proverava samo taj dan.
+  - Ako radno ili dodatno vreme počne van mreže (npr. 10:10), prvi termin je na sledećoj tački
+    mreže (10:30).
+- **Jesen.** Kad se sat ponavlja, dva ista vremena istog dana razlikuju se oznakom zone
+  (npr. 02:30 GMT+2 i 02:30 GMT+1).
+
+### Šta trener podešava (Kalendar → Podešavanja termina)
+
+- **Vrste termina.** Naziv, trajanje (15–240 minuta) i način (uživo ili online).
+  - Zakazan termin čuva sopstvenu kopiju vrste (naziv, način, trajanje). Izmena ili uklanjanje
+    vrste ne menja već dogovorene termine ni istoriju.
+- **Radno vreme.** Do tri opsega po danu u nedelji.
+- **Izuzeci.**
+  - „Ne radim“ (praznik, odsustvo) ili „Dodatno vreme“ van radnog vremena.
+  - Izuzetak „Ne radim“ ništa ne otkazuje sam. Trener odmah vidi koji su termini već zakazani u
+    tom periodu.
+- **Pravila**, sa početnim vrednostima:
+
+  | Pravilo | Početno | Opseg |
+  |---|---|---|
+  | Potvrda | automatska; trener može da uključi ručnu | |
+  | Otkazivanje od strane klijenta | do 12 sati pre termina | 0–168 sati |
+  | Najkasnije zakazivanje | 2 sata unapred | 0–168 sati |
+  | Najdalje zakazivanje | 28 dana unapred | 1–90 dana |
+  | Početak termina | na svakih 30 minuta | 15, 30 ili 60 minuta |
+
+### Zakazivanje
+
+- **Klijent** (kartica Trener → Moji termini → Zakaži termin) bira vrstu, dan i slobodno vreme.
+  - Slobodna vremena računa server: radno vreme, plus dodatno vreme, minus „Ne radim“, minus
+    trenerovi i klijentovi termini koji zauzimaju vreme. Uz to važe pravila o najkasnijem i
+    najdaljem zakazivanju.
+  - Zahtev nosi ID saradnje za koju je formular napravljen. Formular otvoren pre prekida i
+    ponovnog povezivanja ne može da zakaže pod novom saradnjom (409 `collaboration_changed`).
+- **Bez ručne potvrde** termin je odmah potvrđen. **Sa ručnom potvrdom** termin čeka potvrdu, a
+  vreme je u međuvremenu zauzeto.
+  - Trener potvrđuje ili odbija, uz razlog koji klijent vidi.
+  - Zahtev na koji niko nije odgovorio do početka prikazuje se kao „istekao“.
+- **Trener** zakazuje za svog aktivnog klijenta bilo kada, i van radnog vremena. Termin je odmah
+  potvrđen.
+- **Ponovljeni zahtev.** Termin nosi ID koji pravi aplikacija. Isti ID sa istim zahtevom
+  (saradnja, vrsta, vreme, napomena) vraća sačuvani termin, u kom god da je stanju. Isti ID sa
+  bilo čim drugačijim se odbija (400).
+- **Redosled zaključavanja.**
+  - Svaka izmena termina prvo zaključava saradnju, pa raspored trenera.
+  - Izmene podešavanja (izuzeci, vrste termina, radno vreme, pravila) zaključavaju isti raspored.
+  - Zato provera slobodnog vremena i upis termina nikad ne mogu da se ukrste sa zatvaranjem
+    vremena, uklanjanjem vrste ili novim radnim vremenom. Ako trener zatvori vreme dok se termin
+    upravo upisuje, sačeka upis i dobije ga u spisku sukoba.
+  - Trenutno vreme se čita tek posle zaključavanja.
+
+### Zaštita od duplih rezervacija u bazi
+
+- U samoj bazi postoji Postgres `EXCLUDE USING gist` ograničenje nad vremenskim opsegom termina.
+  Važi i po treneru i po klijentu, za termine koji čekaju potvrdu ili su potvrđeni. Dva
+  istovremena zahteva za isto vreme ne mogu oba da uspeju.
+- Odbijen ili otkazan termin ne zauzima vreme, a termini jedan za drugim su dozvoljeni.
+- Kad baza odbije upis, korisnik dobija 409 `slot_taken`.
+
+### Otkazivanje
+
+- **Klijent** otkazuje termin koji čeka potvrdu bilo kada pre početka, a potvrđen termin do roka
+  koji je trener podesio. Posle toga se javlja treneru porukom.
+- **Trener** otkazuje dok se termin ne završi, uz razlog. Ako termin koristi paket, trener bira
+  da li se otkazani termin ipak računa u paket (npr. kasno otkazivanje).
+- **Kraj saradnje** otkazuje sve buduće termine te saradnje. Prošli ostaju u oba kalendara.
+  Treninzi iz paketa se vraćaju, kao kod svakog otkazivanja, a iskorišćeno ne pada ispod nule.
+- **„Moji termini“ kod klijenta** odvajaju predstojeće termine od nedavno otkazanih i odbijenih,
+  pa otkazani ne potiskuju prave.
+
+### Paketi treninga
+
+- **Šta je paket.** Brojač uplaćenih treninga; plaćanje je van aplikacije. Ima naziv, broj
+  treninga (1–200), datum od kog važi, opcioni datum isteka i napomenu.
+- **Iskorišćeno** = potvrđeni termini iz paketa, plus otkazani termini koje je trener odlučio da
+  računa, plus trenerova ručna korekcija (npr. +1 za trening van kalendara, −1 za vraćen).
+- **Dodela termina.** Potvrđen termin (odmah ili posle potvrde) uzima otvoren paket koji važi
+  na dan termina i u kome je ostalo treninga.
+  - Prednost ima paket koji prvi ističe, pa onda stariji.
+  - Dodela ide pod zaključanom saradnjom, pa dva termina nikad ne uzmu isti poslednji trening.
+  - Bez takvog paketa termin je bez paketa.
+- **Vraćanje.** Termin otkazan na vreme (ili bez računanja) vraća trening u paket. Ako je trener
+  ranije smanjio broj iskorišćenih, korekcija upija vraćeni trening, pa iskorišćeno nikad ne
+  pada ispod nule.
+- **Bezbedni upisi.**
+  - Novi paket nosi ID iz aplikacije, pa ponovljeni zahtev posle izgubljenog odgovora ne pravi
+    drugi paket. Isti ID sa drugačijim sadržajem se odbija.
+  - Korekcija se upisuje kao nova ukupna vrednost, uz vrednost koju je trener video. Ponovljeni
+    zahtev se ne primenjuje dvaput, a izmena na osnovu zastarelog prikaza dobija 409
+    `package_changed`.
+  - Iskorišćeno mora ostati između 0 i ukupnog broja.
+- **Prikaz.**
+  - Kod trenera paketi prate pristup klijentu kao i ostali podaci (brišu se kad pristup prestane)
+    i osvežavaju se na 30 sekundi.
+  - Kod klijenta su vezani za trenutnu saradnju i osvežavaju se zajedno sa terminima i posle
+    svake promene termina.
+  - Prvo se prikazuju paketi u upotrebi, pa poslednji zatvoreni ili istekli.
+- **Gde se vidi.**
+  - Kod trenera: na profilu klijenta (Pregled → Paketi treninga), sa korekcijom, zatvaranjem
+    paketa i spiskom termina iz paketa.
+  - Kod klijenta: „preostalo X od Y, važi do …“ u kartici „Moji termini“.
+- **Vezano za saradnju.** Upisi nose ID saradnje (409 `collaboration_changed` za staru).
+
+### Podsetnici
+
+- **Kada.** Klijent dobija push podsetnik 24 sata i 1 sat pre potvrđenog termina. Podsetnici
+  nastaju pri potvrdi.
+- **Šta mora da važi.**
+  - Podsetnik se šalje samo ako je termin i dalje potvrđen i počinje u isto vreme.
+  - Ne šalje se ako kasni više od 30 minuta i nikad se ne šalje dvaput.
+  - Sadržaj je samo vreme termina.
+- **Nikad za otkazan termin.**
+  - Slanje ide istim redom zaključavanja kao otkazivanje (saradnja, termin, podsetnik), pa
+    otkazivanje ili kraj saradnje uvek ili prethodi podsetniku ili dođe posle njegovog upisa u
+    red.
+  - Podsetnik u redu za slanje se pred samo slanje ponovo proverava: termin mora biti i dalje
+    potvrđen, a podsetnik ističe kad termin počne.
+  - Obaveštenje koje je push servis već primio ne može da se povuče. Isporuka je najbolji
+    pokušaj, kao u T3.
+- **Isporuka bez čekanja u zahtevu.** Potvrda termina samo upisuje podsetnike. Jedino predavanje
+  posla workeru ide jednom po zahtevu, sa vremenskim ograničenjem.
+- **Jedno zakazano buđenje.**
+  - Worker šalje dospele podsetnike u ograničenim delovima (najviše 3 s i 50 po pozivu, uz
+    nastavak), pa prazni red za slanje.
+  - Zatim zakazuje tačno jedno sledeće buđenje (`WorkerWakeup`), za najraniji podsetnik ili
+    ponovni pokušaj. Kašnjenje se zaokružuje naviše od trenutnog vremena, najviše šest dana
+    unapred.
+  - Svaki zakazani poziv nosi svoje vreme. Kad stigne (i ranije nego što treba), worker ga
+    poništi i ponovo zakaže sledeći, pa nema paralelnih lanaca poziva.
+  - Ako zakazivanje ne uspe, worker vraća grešku i QStash ponavlja poziv.
+- **Bez čekanja na zaključavanje.** Worker ne čeka na saradnju ili termin koji je upravo
+  zaključan (otkazivanje u toku). Takav podsetnik preskoči i pošalje u sledećem pozivu, pa
+  vremensko ograničenje važi. Vreme se čita posle zaključavanja.
+- **Oporavak.**
+  - Izgubljeno buđenje obnavljaju osvežavanje broja nepročitanih poruka i dnevni cron.
+  - Ako ne uspe ni prvo predavanje posla, ni poslednji zakazani poziv, a u međuvremenu nema
+    nikakvog saobraćaja, podsetnik može da zakasni više od 30 minuta i tada se ne šalje.
+    Podsetnici su zato samo najbolji pokušaj, ne garancija.
+  - Bez QStash-a podsetnici odlaze uz osvežavanje u otvorenoj aplikaciji ili uz cron. To je samo
+    rezervni režim.
+- **Van opsega.** Veza termina sa treningom (koji trening je urađen na kom terminu) nije deo T4.
+
+### Gde se vidi i obaveštenja
+
+- **Kod trenera:** kartica **Kalendar**, sa pregledom nedelje po danima.
+  - Višednevni izuzeci i termini preko ponoći prikazuju se svakog dana koji pokrivaju, skraćeno
+    na taj dan („do 12:00“, „od 22:00“, „ceo dan“).
+  - Ceo dan pod izuzetkom „Ne radim“ ne piše „slobodno“.
+- **Na Pregledu:** pločica „Termina danas“ i kartica sa zahtevima.
+- **Push obaveštenja** idu preko postojećeg reda za slanje i nikad ne sadrže napomenu:
+  - zahtev, novi termin i otkazivanje treneru;
+  - potvrda, odbijanje, otkazivanje i termin koji je zakazao trener klijentu.
+- **Brisanje naloga** trenera ili klijenta radi i kad postoje termini. Brišu se njegovi termini,
+  a nalozi drugih ostaju netaknuti.
+- **Izvoz podataka** obuhvata termine i pakete.
+
+### Bez interneta
+
+- Zakazivanje i izmene traže internet. Bez veze aplikacija to jasno kaže, a ponovljeni zahtev je
+  bezbedan.
+
+### Uvođenje na produkciju
+
+- Migracije:
+  - `scheduling.0001_scheduling`, koja uključuje proširenje `btree_gist` (Neon ga podržava);
+  - `notifications.0003_worker_wakeup`.
+- Za tačne podsetnike i push podesiti `PUSH_WORKER_URL` (QStash), kao u T3.

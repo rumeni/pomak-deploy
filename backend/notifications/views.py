@@ -1,4 +1,7 @@
+import time
+
 from django.db import transaction
+from django.utils import timezone
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -11,7 +14,12 @@ from accounts.recovery_views import valid_qstash_signature
 from core.views import require_object_body
 
 from .models import PushDevice
-from .push import WORKER_BUDGET, allowed_endpoint, drain, fcm_enabled, schedule_next, valid_keys, vapid_public_key, web_push_enabled, worker_url
+from .push import (
+    WORKER_BUDGET, allowed_endpoint, drain, fcm_enabled, plan_wakeup, publish_drain, valid_keys, vapid_public_key,
+    web_push_enabled, woke_for, worker_url,
+)
+
+REMINDER_BUDGET = 3.0
 from .registrations import register, remove_legacy, revoke
 
 MAX_DEVICES = 10
@@ -106,10 +114,21 @@ def push_worker(request):
     """Drain the push outbox. Reachable only with a QStash signature for PUSH_WORKER_URL."""
     if not worker_url() or not valid_qstash_signature(request.headers.get('Upstash-Signature', ''), request.body, subject=worker_url()):
         return HttpResponse(status=403)
-    # Run again when the queue next has work (now, or when a retry's backoff ends). If that cannot
-    # be scheduled, answer with an error so QStash retries this call instead of the work being
-    # silently dropped.
-    if not schedule_next(drain(WORKER_BUDGET)):
+    from scheduling.services import next_reminder_due, send_due_reminders
+
+    woke_for(request.body)
+    started = time.monotonic()
+    more_reminders = send_due_reminders(budget=REMINDER_BUDGET)
+    push_due = drain(max(1.0, WORKER_BUDGET - (time.monotonic() - started)))
+    # The next call: now if work is left, else the earlier of the queue's and the reminders'.
+    now = timezone.now()
+    candidates = [d for d in (push_due, next_reminder_due(), now if more_reminders else None) if d is not None]
+    due = min(candidates) if candidates else None
+    if due is not None and due <= now:
+        if not publish_drain(delay=1):  # continue in a fresh invocation
+            return HttpResponse(status=503)
+    elif not plan_wakeup(due):
+        # Not planned: answer with an error so QStash retries this call (nothing is dropped).
         return HttpResponse(status=503)
     return HttpResponse(status=204)
 
