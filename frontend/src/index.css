@@ -191,16 +191,18 @@ a, button { -webkit-tap-highlight-color: transparent; }
   margin-inline: auto;
   z-index: 25;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, .18);
-  background: linear-gradient(160deg, rgba(47, 48, 49, .88), rgba(22, 23, 24, .90) 58%, rgba(42, 43, 44, .86));
-  box-shadow: 0 14px 38px rgba(0, 0, 0, .24), 0 2px 10px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(255, 255, 255, .24);
+  border: 1px solid rgba(255, 255, 255, .10);
+  background: rgba(38, 39, 40, .88);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .10);
   -webkit-backdrop-filter: blur(26px) saturate(120%);
   backdrop-filter: blur(26px) saturate(120%);
   touch-action: pan-y;
 }
 .app-nav-list { position: relative; display: flex; padding: 5px; margin: 0; list-style: none; isolation: isolate; }
 .app-nav-list > li:not(.app-nav-glider) { position: relative; z-index: 1; min-width: 0; flex: 1; }
-/* The active lens physically glides between tabs; it follows touch while dragged. */
+/* Single dark active pill, inspired by iOS tab bars.
+ * No decorative orbs or overlaid circles: only one sliding selection surface.
+ */
 .app-nav-glider {
   position: absolute;
   z-index: 0;
@@ -209,30 +211,11 @@ a, button { -webkit-tap-highlight-color: transparent; }
   width: calc((100% - 10px) / var(--dock-count));
   border-radius: 999px;
   pointer-events: none;
-  background: linear-gradient(155deg, rgba(255,255,255,.19), rgba(222,224,226,.105) 58%, rgba(255,255,255,.065));
-  border: 1px solid rgba(255,255,255,.15);
-  box-shadow: inset 0 1px 3px rgba(255,255,255,.2), 0 3px 14px rgba(0,0,0,.16);
-  transition: transform 390ms cubic-bezier(.22, 1.32, .3, 1);
+  background: rgba(8, 9, 10, .82);
+  border: 1px solid rgba(255, 255, 255, .05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .045), 0 2px 9px rgba(0, 0, 0, .12);
+  transition: transform 320ms cubic-bezier(.2, .85, .2, 1);
   will-change: transform;
-}
-.app-nav-glider::before {
-  content: '';
-  position: absolute;
-  left: 50%; top: 49%;
-  width: 53px; height: 53px;
-  transform: translate(-50%,-50%);
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 25%, rgba(255,255,255,.30), transparent 46%),
-              radial-gradient(circle at 70% 77%, rgba(196,201,205,.13), transparent 65%),
-              linear-gradient(145deg, rgba(255,255,255,.12), rgba(68,72,75,.13));
-  border: 1px solid rgba(255,255,255,.19);
-  box-shadow: inset 0 1px 8px rgba(255,255,255,.18), 0 2px 14px rgba(0,0,0,.13);
-}
-.app-nav-glider::after {
-  content: '';
-  position: absolute; inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(170deg, rgba(255,255,255,.16), transparent 46%, rgba(0,0,0,.17));
 }
 .app-nav-link {
   position: relative;
@@ -252,8 +235,8 @@ a, button { -webkit-tap-highlight-color: transparent; }
 }
 .app-nav-link svg { width: 23px; height: 23px; stroke-width: 1.9; filter: drop-shadow(0 1px 2px rgba(0,0,0,.16)); }
 .app-nav-badge { position: absolute; top: 3px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--color-accent); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
-.app-nav-link.is-active { color: #fff; }
-.app-nav-link.is-active svg { color: #fff; stroke-width: 2.25; }
+.app-nav-link.is-active { color: var(--color-accent); }
+.app-nav-link.is-active svg { color: var(--color-accent); stroke-width: 2.25; }
 .app-nav-link:active { transform: scale(.94); }
 .app-nav-link:hover { color: #fff; }
 .app-nav-brand { display: none; }
