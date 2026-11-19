@@ -59,6 +59,18 @@ export function programAlreadyAdded(program: Program, routines: readonly Pick<Ro
     || (!routine.program_key && names.has(routine.name) && routine.notes === program.name))
 }
 
+/**
+ * Every routine of the program is there (a finished import), not just some of them: a first
+ * import that stopped halfway on another device has no local record here. Counted by the stable
+ * program key (names may be translated or edited); older imports by name.
+ */
+export function programCompletelyAdded(program: Program, routines: readonly Pick<Routine, 'name' | 'notes' | 'program_key'>[] | undefined): boolean {
+  if (!routines?.length) return false
+  if (routines.filter((routine) => routine.program_key === program.key).length >= program.routines.length) return true
+  const legacy = new Set(routines.filter((r) => !r.program_key && r.notes === program.name).map((r) => r.name))
+  return program.routines.every((r) => legacy.has(r.name))
+}
+
 /** Serialise one program import across tabs on Chrome/Android secure origins.
  * The caller must re-read server routines AFTER taking the lock so a waiting
  * second tab can see what the first tab just imported.

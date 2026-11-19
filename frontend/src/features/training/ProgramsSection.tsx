@@ -11,7 +11,7 @@ import { tokens } from '../../lib/tokens'
 import { uuid } from '../../lib/uuid'
 import { useAuth } from '../../lib/auth'
 import type { Routine, RoutinePayload } from './api'
-import { describePrescription, firstImportRoutines, importProgram, isImportingProgram, loadPendingProgram, programAlreadyAdded, programToRoutines, withProgramImportLock, type PendingProgram, type Program } from './programs'
+import { describePrescription, firstImportRoutines, importProgram, isImportingProgram, loadPendingProgram, programAlreadyAdded, programCompletelyAdded, programToRoutines, withProgramImportLock, type PendingProgram, type Program } from './programs'
 import { setProgramsHidden, useProgramsHidden } from './programsPref'
 
 function usePrograms(enabled: boolean) {
@@ -100,7 +100,9 @@ export function ProgramsSection({ routines }: { routines: Routine[] | undefined 
   const recommended = data.filter((p) => p.recommended)
   const shown = showAll || !recommended.length ? data : recommended
   const collapsible = !!routines?.length
-  const open = expanded ?? !startsCollapsed
+  // Without any routine (e.g. the last one deleted elsewhere) the suggestions are always open:
+  // that is when they help most, and there is no toggle to open them.
+  const open = routines?.length === 0 || (expanded ?? !startsCollapsed)
 
   const hide = () => {
     if (!me) return
@@ -171,9 +173,10 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
   const pending = useRef<{ ownerId: string; record: PendingProgram } | null>(null)
   // Existing routines are re-fetched under the cross-tab lock before import; here they only mark
   // a program that is already in "My routines".
-  // An unfinished import (some routines created, a later one failed) is not "already added".
+  // Only a finished import is "in your routines": not one in progress or failed here, nor one
+  // that stopped halfway on another device (only some of its routines exist).
   const partial = !!me && (loadPendingProgram(me.id, program) !== null || isImportingProgram(me.id, program.key))
-  const inRoutines = !partial && !add.isPending && !add.isError && programAlreadyAdded(program, routines)
+  const inRoutines = !partial && !add.isPending && !add.isError && programCompletelyAdded(program, routines)
   const routineNames = program.routines.map((r) => r.name).join(' · ')
 
   const onAdd = async () => {

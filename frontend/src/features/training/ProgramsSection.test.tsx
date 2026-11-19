@@ -65,8 +65,33 @@ function Screen() {
   return <ProgramsSection routines={data} />
 }
 
-let root: Root
+let root: Root | undefined
 let host: HTMLDivElement
+let client: QueryClient
+
+const routine = (i: number, extra: Partial<Routine> = {}): Routine => ({
+  id: `r${i}`, name: PROGRAM.routines[i].name, notes: PROGRAM.name, program_key: PROGRAM.key,
+  exercises: [], created_at: '', updated_at: '', ...extra,
+})
+
+/** (Re)mounts the screen against the fake server's current routines. */
+async function mount() {
+  const previous = root
+  if (previous) act(() => previous.unmount())
+  root = createRoot(host)
+  const current = root
+  client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  await act(async () => {
+    current.render(<QueryClientProvider client={client}><Screen /></QueryClientProvider>)
+  })
+  await settle()
+}
+
+/** What the screen sees after a change elsewhere (another tab or device). */
+async function refetchRoutines() {
+  await act(async () => { await client.invalidateQueries({ queryKey: ['routines'] }) })
+  await settle()
+}
 
 async function settle() {
   for (let i = 0; i < 20; i++) {
@@ -84,18 +109,16 @@ beforeEach(async () => {
   localStorage.clear()
   host = document.createElement('div')
   document.body.appendChild(host)
-  root = createRoot(host)
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  await act(async () => {
-    root.render(<QueryClientProvider client={client}><Screen /></QueryClientProvider>)
-  })
-  await settle()
+  await mount()
 })
 
 afterEach(() => {
-  act(() => root.unmount())
+  const current = root
+  if (current) act(() => current.unmount())
+  root = undefined
   host.remove()
 })
+
 
 describe('a first program import that fails halfway', () => {
   it('keeps the card, its error and retry visible, then resumes without duplicates', async () => {
@@ -140,15 +163,41 @@ describe('a first program import that fails halfway', () => {
 
 describe('with routines already there', () => {
   it('a finished program is marked as in your routines and the section starts collapsed', async () => {
-    act(() => root.unmount())
-    server.routines = PROGRAM.routines.map((r, i) => ({ id: `r${i}`, name: r.name, notes: PROGRAM.name, program_key: PROGRAM.key, exercises: [], created_at: '', updated_at: '' }))
-    root = createRoot(host)
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    await act(async () => {
-      root.render(<QueryClientProvider client={client}><Screen /></QueryClientProvider>)
-    })
-    await settle()
+    server.routines = [routine(0), routine(1), routine(2)]
+    await mount()
     expect(host.querySelector('#programs-list')?.className).toBe('hidden')
     expect(host.textContent).toContain('programs.inYourRoutines')
+  })
+
+  it('the last routine deleted elsewhere: the suggestions open again', async () => {
+    server.routines = [routine(0, { program_key: '', notes: '', name: 'Moja' })]
+    await mount()
+    expect(host.querySelector('#programs-list')?.className).toBe('hidden')
+
+    server.routines = []
+    await refetchRoutines()
+    expect(host.querySelector('#programs-list')?.className).not.toBe('hidden')
+    expect(button('programs.add')).toBeTruthy()
+  })
+
+  it('also after the user collapsed them on purpose', async () => {
+    server.routines = [routine(0, { program_key: '', notes: '', name: 'Moja' })]
+    await mount()
+    const toggle = host.querySelector<HTMLButtonElement>('#programs-title button')!
+    await act(async () => { toggle.click() }) // open
+    await act(async () => { toggle.click() }) // and collapse again
+    expect(host.querySelector('#programs-list')?.className).toBe('hidden')
+
+    server.routines = []
+    await refetchRoutines()
+    expect(host.querySelector('#programs-list')?.className).not.toBe('hidden')
+  })
+
+  it('a first import that stopped halfway on another device is not shown as in your routines', async () => {
+    // One of three routines exists and this device has no record of the import.
+    server.routines = [routine(0)]
+    await mount()
+    await act(async () => { host.querySelector<HTMLButtonElement>('#programs-title button')!.click() })
+    expect(host.textContent).not.toContain('programs.inYourRoutines')
   })
 })
