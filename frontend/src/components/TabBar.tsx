@@ -1,11 +1,11 @@
-import { useRef, useState, type CSSProperties, type TouchEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type TouchEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 
 import { useUnreadTotal } from '../features/coach/inboxApi'
 import { usePushSync } from '../lib/usePushSync'
 import { useAuth } from '../lib/auth'
-import { tabIndex, tabRoutes } from './tabNavigation'
+import { dockSwipeTarget, tabIndex, tabRoutes } from './tabNavigation'
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
@@ -20,44 +20,65 @@ export function TabBar() {
   const active = tabIndex(pathname, tabs)
   const [drag, setDrag] = useState<number | null>(null)
   const touch = useRef<{ x: number; y: number; active: number } | null>(null)
+  // iOS can synthesize a click on the old link after touchend. Block only that click.
+  const suppressClick = useRef(false)
   const unread = useUnreadTotal(!!me).data?.total ?? 0
   usePushSync(me?.id ?? null)
   const inboxTab = coachSpace ? '/trener/poruke' : me?.profile.is_coach ? null : '/trener'
   const indicator = drag ?? Math.max(0, active)
+  useEffect(() => { setDrag(null) }, [pathname])
 
   const touchStart = (event: TouchEvent<HTMLElement>) => {
+    // A fresh tap must never inherit a previously suppressed synthetic click.
+    suppressClick.current = false
     touch.current = null
     if (window.matchMedia('(min-width: 980px)').matches || event.touches.length !== 1 || active < 0) return
-    touch.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, active }
+    const x = event.touches[0].clientX
+    if (x < 24 || x > window.innerWidth - 24) return // Preserve iOS edge navigation.
+    touch.current = { x, y: event.touches[0].clientY, active }
   }
+
   const touchMove = (event: TouchEvent<HTMLElement>) => {
     if (!touch.current || event.touches.length !== 1) return
     const dx = event.touches[0].clientX - touch.current.x
     const dy = event.touches[0].clientY - touch.current.y
-    if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy)) return
-    const segment = (event.currentTarget.clientWidth - 12) / tabs.length
+    if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.15) return
+    const segment = (event.currentTarget.clientWidth - 10) / tabs.length
     setDrag(clamp(touch.current.active + dx / segment, 0, tabs.length - 1))
   }
+
   const touchEnd = (event: TouchEvent<HTMLElement>) => {
     const start = touch.current
     touch.current = null
-    setDrag(null)
-    if (!start || event.changedTouches.length !== 1) return
-    const dx = event.changedTouches[0].clientX - start.x
-    const dy = event.changedTouches[0].clientY - start.y
-    if (Math.abs(dx) < 42 || Math.abs(dx) < Math.abs(dy) * 1.4) return
-    // Do not also click the link on which the finger was released.
+    if (!start || event.changedTouches.length !== 1) { setDrag(null); return }
+    const end = event.changedTouches[0]
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const target = dockSwipeTarget(
+      start.active, start.x, start.y, end.clientX, end.clientY,
+      bounds.left, bounds.width, tabs.length,
+    )
+    if (target === null || target === start.active) { setDrag(null); return }
+
+    // Commit the selected tab, don't snap the lens back before router state updates.
+    // Suppress Safari's delayed link click, which used to navigate to the old tab.
+    suppressClick.current = true
     event.preventDefault()
-    const segment = (event.currentTarget.clientWidth - 12) / tabs.length
-    const steps = Math.max(1, Math.round(Math.abs(dx) / segment))
-    const target = clamp(start.active + (dx < 0 ? steps : -steps), 0, tabs.length - 1)
-    if (target !== start.active) navigate(tabs[target].to, { state: { tabMotion: dx < 0 ? 'next' : 'prev' } })
+    setDrag(target)
+    navigate(tabs[target].to, { state: { tabMotion: target > start.active ? 'next' : 'prev' } })
+  }
+
+  const onClickCapture = (event: MouseEvent<HTMLElement>) => {
+    if (!suppressClick.current) return
+    suppressClick.current = false
+    event.preventDefault()
+    event.stopPropagation()
   }
 
   return (
     <nav className="app-nav" aria-label={t('common.appName')}
       onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd}
-      onTouchCancel={() => { touch.current = null; setDrag(null) }}>
+      onClickCapture={onClickCapture}
+      onTouchCancel={() => { touch.current = null; setDrag(null); suppressClick.current = false }}>
       <div className="app-nav-brand" aria-hidden>
         <span className="brand-wordmark">POMAK</span>
         {coachSpace && <span className="app-nav-brand-sub">COACH</span>}

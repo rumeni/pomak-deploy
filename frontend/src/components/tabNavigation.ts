@@ -42,3 +42,27 @@ export function swipeDestination(
   const next = current + (dx < 0 ? 1 : -1)
   return tabs[next]?.to ?? null
 }
+
+/** Resolve the actual tab under the finger on release, not just the old active tab.
+ * A decisive swipe to an adjacent segment commits navigation. A small drag is
+ * only a visual preview and must not alter the selected tab.
+ */
+export function dockSwipeTarget(
+  active: number, startX: number, startY: number, endX: number, endY: number,
+  dockLeft: number, dockWidth: number, count: number,
+): number | null {
+  if (count < 2 || active < 0 || active >= count) return null
+  const dx = endX - startX
+  const dy = endY - startY
+  if (Math.abs(dx) < 24 || Math.abs(dx) < Math.abs(dy) * 1.2) return null
+  const segment = (dockWidth - 10) / count
+  if (segment <= 0) return null
+  const raw = Math.round((endX - dockLeft - 5) / segment - 0.5)
+  let target = Math.max(0, Math.min(count - 1, raw))
+  // If the finger stops just short of a segment boundary, treat a decisive
+  // directional swipe as navigation by one tab rather than snapping back.
+  if (target === active && Math.abs(dx) >= segment * 0.55) {
+    target = Math.max(0, Math.min(count - 1, active + (dx < 0 ? 1 : -1)))
+  }
+  return target === active ? null : target
+}
