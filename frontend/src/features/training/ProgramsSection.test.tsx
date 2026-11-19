@@ -178,6 +178,20 @@ describe('with routines already there', () => {
     await refetchRoutines()
     expect(host.querySelector('#programs-list')?.className).not.toBe('hidden')
     expect(button('programs.add')).toBeTruthy()
+
+    // An import from here fails halfway: the routine count goes 0 → 1, the list stays open.
+    server.posts = 0
+    server.failPost = 2
+    await act(async () => { button('programs.add')!.click() })
+    await settle()
+    expect(server.routines).toHaveLength(1)
+    expect(host.querySelector('#programs-list')?.className).not.toBe('hidden')
+    expect(host.querySelector('[role=alert]')?.textContent).toBe('Neuspelo.')
+
+    await act(async () => { button('programs.retry')!.click() })
+    await settle()
+    expect(server.routines.map((r) => r.name)).toEqual(['A', 'B', 'C'])
+    expect(host.textContent).toContain('programs.added')
   })
 
   it('also after the user collapsed them on purpose', async () => {

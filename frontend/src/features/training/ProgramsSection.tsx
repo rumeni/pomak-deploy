@@ -78,6 +78,9 @@ export function ProgramsSection({ routines }: { routines: Routine[] | undefined 
   // creates routines must not fold the list away under its own card (and its error or retry).
   const [startsCollapsed, setStartsCollapsed] = useState<boolean | null>(null)
   if (startsCollapsed === null && routines !== undefined) setStartsCollapsed(routines.length > 0)
+  // No routines at all (also after the last one was deleted elsewhere): open, and it stays open
+  // when an import then creates the first routine, so its error or retry stays in sight.
+  if (routines?.length === 0 && expanded !== true) setExpanded(true)
   // Hidden in this visit: a short note with undo, instead of the section vanishing silently.
   const [justHidden, setJustHidden] = useState(false)
 

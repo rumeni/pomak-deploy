@@ -66,7 +66,9 @@ export function programAlreadyAdded(program: Program, routines: readonly Pick<Ro
  */
 export function programCompletelyAdded(program: Program, routines: readonly Pick<Routine, 'name' | 'notes' | 'program_key'>[] | undefined): boolean {
   if (!routines?.length) return false
-  if (routines.filter((routine) => routine.program_key === program.key).length >= program.routines.length) return true
+  // Distinct names, so two half-finished copies do not add up to one complete program.
+  const keyed = new Set(routines.filter((routine) => routine.program_key === program.key).map((r) => r.name))
+  if (keyed.size >= program.routines.length) return true
   const legacy = new Set(routines.filter((r) => !r.program_key && r.notes === program.name).map((r) => r.name))
   return program.routines.every((r) => legacy.has(r.name))
 }

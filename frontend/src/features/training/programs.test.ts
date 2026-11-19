@@ -267,6 +267,8 @@ describe('a program completely added', () => {
     expect(programCompletelyAdded(p, [])).toBe(false)
     expect(programCompletelyAdded(p, [{ name: 'A', notes: 'P', program_key: 'k' }])).toBe(false)
     expect(programCompletelyAdded(p, [{ name: 'X', notes: '', program_key: 'k' }, { name: 'Y', notes: '', program_key: 'k' }])).toBe(true)
+    // Two half-finished copies (A twice) are not one complete program.
+    expect(programCompletelyAdded(p, [{ name: 'A', notes: 'P', program_key: 'k' }, { name: 'A', notes: 'P', program_key: 'k' }])).toBe(false)
   })
   it('older imports without a key: by name and the program name in notes', () => {
     expect(programCompletelyAdded(p, [{ name: 'A', notes: 'P', program_key: '' }])).toBe(false)
