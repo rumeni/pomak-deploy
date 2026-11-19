@@ -554,12 +554,15 @@ class EstimateSerializer(serializers.Serializer):
     """Izbori korisnika za procenu; telesni podaci se uzimaju iz profila i poslednjeg merenja težine."""
 
     activity = serializers.ChoiceField(choices=list(targets.ACTIVITY_FACTORS))
-    goal = serializers.ChoiceField(choices=list(targets.PACES))
+    # The four goals; older apps still send lose / maintain / gain (taken as the new ones).
+    goal = serializers.ChoiceField(choices=[*targets.GOALS, *targets.LEGACY_GOALS])
     pace = serializers.FloatField(default=0)
     # Trudnoća, dojenje, poremećaj ishrane ili bolest zbog koje ishranu vodi lekar.
     special_conditions = serializers.BooleanField()
 
     def validate(self, attrs):
+        attrs['goal'] = targets.normalize_goal(attrs['goal'])
+        # Recomposition and maintenance have no pace: only 0 is accepted.
         if attrs['pace'] not in targets.PACES[attrs['goal']]:
             raise serializers.ValidationError({'pace': _('Choose one of the offered paces.')})
         return attrs
@@ -592,7 +595,7 @@ class TargetWriteSerializer(EstimateSerializer):
 
     mode = serializers.ChoiceField(choices=[NutritionTarget.Mode.APP, NutritionTarget.Mode.MANUAL])
     activity = serializers.ChoiceField(choices=list(targets.ACTIVITY_FACTORS), required=False)
-    goal = serializers.ChoiceField(choices=list(targets.PACES), required=False)
+    goal = serializers.ChoiceField(choices=[*targets.GOALS, *targets.LEGACY_GOALS], required=False)
     special_conditions = serializers.BooleanField(required=False, default=False)
     kcal = serializers.IntegerField(min_value=800, max_value=8000, required=False)
     protein_g = serializers.IntegerField(min_value=0, max_value=600, required=False, allow_null=True)

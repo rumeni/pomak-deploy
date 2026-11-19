@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { Card, EmptyState, ScreenHeader } from '../../components/ui'
 import { formatDecimal, formatShortDate, toISODate } from '../../lib/format'
-import { useTargets, type Target } from './api'
+import { normalizeGoal, useTargets, type Target } from './api'
 import { targetOn } from './target'
+import { GoalGuidance } from './GoalGuidance'
 import { TargetExplanation } from './TargetExplanation'
 
 const linkClass = 'flex min-h-12 items-center justify-center rounded-xl bg-brand px-4 font-semibold text-white active:bg-brand-dark'
@@ -100,6 +101,9 @@ function TargetCard({ target, title, expanded = false }: { target: Target; title
           />
           <p className="mt-2 text-xs text-muted">{t('target.methodNote', { method: target.method })}</p>
         </details>
+      )}
+      {target.mode === 'app' && target.inputs && (
+        <div className="mt-3"><GoalGuidance goal={normalizeGoal(target.inputs.goal)} /></div>
       )}
     </Card>
   )

@@ -399,8 +399,29 @@ export function replaceExercise(workout: ActiveWorkout, exerciseKey: string, exe
  * confirmed values (weight, reps, time, distance or RPE), and whether the set list itself
  * starts over (switching between rep-based and timed work).
  */
+/** A set with something typed in (weight, reps, time, distance or RPE). */
+export function hasEnteredValues(s: ActiveSet): boolean {
+  return !!(s.weight.trim() || s.reps.trim() || s.duration.trim() || s.distance.trim() || typeof s.rpe === 'number')
+}
+
+/** Confirmed sets of the whole workout, warm-ups included (only a display; statistics are separate). */
+export function setProgress(workout: ActiveWorkout): { done: number; total: number } {
+  let done = 0
+  let total = 0
+  for (const item of workout.exercises) {
+    total += item.sets.length
+    done += item.sets.filter((s) => s.done).length
+  }
+  return { done, total }
+}
+
+/** Sets with typed results that were never confirmed: finishing would not save them. */
+export function unconfirmedWithValues(workout: ActiveWorkout): number {
+  return workout.exercises.reduce((n, item) => n + item.sets.filter((s) => !s.done && hasEnteredValues(s)).length, 0)
+}
+
 export function replacementLoss(item: ActiveExercise, exercise: Exercise): { enteredSets: number; resetsSets: boolean } {
-  const entered = (s: ActiveSet) => !!(s.weight.trim() || s.reps.trim() || s.duration.trim() || s.distance.trim() || typeof s.rpe === 'number')
+  const entered = hasEnteredValues
   return {
     enteredSets: item.sets.filter((s) => !s.done && entered(s)).length,
     resetsSets: isCardio(item.exercise) !== isCardio(exercise),

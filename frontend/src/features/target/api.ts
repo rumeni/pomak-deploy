@@ -3,12 +3,28 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 
 export type Activity = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
-export type Goal = 'lose' | 'maintain' | 'gain'
+/** The four nutrition goals (method msj-v2). */
+export type Goal = 'fat_loss' | 'muscle_gain' | 'recomposition' | 'maintenance'
+/** What earlier targets stored (msj-v1): shown under the new names. */
+export type LegacyGoal = 'lose' | 'maintain' | 'gain'
 export type TargetMode = 'app' | 'manual' | 'coach'
 
 export const ACTIVITIES: Activity[] = ['sedentary', 'light', 'moderate', 'active', 'very_active']
+export const GOALS: Goal[] = ['fat_loss', 'muscle_gain', 'recomposition', 'maintenance']
 /** Ponuđeni tempi (% telesne mase nedeljno); isti kao na serveru (nutrition/targets.py). */
-export const PACES: Record<Goal, number[]> = { lose: [0.25, 0.5, 0.75, 1], maintain: [0], gain: [0.1, 0.25, 0.5] }
+export const PACES: Record<Goal, number[]> = { fat_loss: [0.25, 0.5, 0.75, 1], muscle_gain: [0.1, 0.25, 0.5], recomposition: [0], maintenance: [0] }
+
+const LEGACY: Record<LegacyGoal, Goal> = { lose: 'fat_loss', maintain: 'maintenance', gain: 'muscle_gain' }
+
+/** A stored goal of any version as one of the four goals. */
+export function normalizeGoal(goal: Goal | LegacyGoal): Goal {
+  return (LEGACY as Record<string, Goal>)[goal] ?? (goal as Goal)
+}
+
+/** Recomposition and maintenance have no weight-change pace. */
+export function hasPace(goal: Goal): boolean {
+  return PACES[goal].length > 1
+}
 
 export interface Explanation {
   bmr: number
@@ -19,6 +35,9 @@ export interface Explanation {
   floor: number
   protein_g_per_kg: number
   fat_share: number
+  /** msj-v2: the weight protein is based on, adjusted above the reference weight (BMI 25). */
+  protein_weight_kg?: number
+  protein_weight_adjusted?: boolean
 }
 
 export interface TargetInputs {
@@ -28,7 +47,7 @@ export interface TargetInputs {
   weight_kg: number
   weight_date: string
   activity: Activity
-  goal: Goal
+  goal: Goal | LegacyGoal
   pace: number
 }
 

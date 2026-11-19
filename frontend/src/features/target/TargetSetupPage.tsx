@@ -14,6 +14,8 @@ import { uuid } from '../../lib/uuid'
 import {
   ACTIVITIES,
   estimateTarget,
+  GOALS,
+  hasPace,
   PACES,
   useLatestWeight,
   useSaveTarget,
@@ -23,6 +25,7 @@ import {
   type TargetWrite,
   type WeightMeasurement,
 } from './api'
+import { GoalGuidance } from './GoalGuidance'
 import { TargetExplanation } from './TargetExplanation'
 
 type Mode = 'app' | 'manual'
@@ -124,7 +127,7 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
       const heightCm = parseDecimal(height)
       if (!sex || !birthDate || heightCm === null || weightKg === null) throw new InputError('target.errors.bodyData')
       if (!activity) throw new InputError('target.errors.activity')
-      if (!goal || (goal !== 'maintain' && !pace)) throw new InputError('target.errors.goal')
+      if (!goal || (hasPace(goal) && !pace)) throw new InputError('target.errors.goal')
       if (!special) throw new InputError('target.errors.special')
 
       // Podaci se čuvaju u profilu i kao merenje težine, pa ih vidi i ostatak aplikacije.
@@ -142,7 +145,7 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
         await queryClient.invalidateQueries({ queryKey: ['measurements'] })
       }
       const estimate = await estimateTarget(
-        { activity, goal, pace: goal === 'maintain' ? 0 : Number(pace), special_conditions: special === 'yes' }, validFrom,
+        { activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes' }, validFrom,
       )
       if (version === calculationVersion.current) setResult(estimate)
     } catch (e) {
@@ -154,7 +157,7 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
 
   const accept = () => {
     if (!activity || !goal) return
-    submit(validFrom, { mode: 'app', activity, goal, pace: goal === 'maintain' ? 0 : Number(pace), special_conditions: special === 'yes' })
+    submit(validFrom, { mode: 'app', activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes' })
   }
 
   return (
@@ -189,20 +192,18 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
       />
       <p className="-mt-3 text-sm text-muted">{t('target.activityNote')}</p>
 
-      <Segmented
+      <ChoiceCards
+        name="goal"
         legend={t('target.goalLegend')}
-        options={[
-          { value: 'lose', label: t('target.goal_lose') },
-          { value: 'maintain', label: t('target.goal_maintain') },
-          { value: 'gain', label: t('target.goal_gain') },
-        ]}
+        options={GOALS.map((g) => ({ value: g, title: t(`target.goal_${g}`), text: t(`target.goalText_${g}`) }))}
         value={goal}
         onChange={(g) => {
           changed(setGoal)(g)
           setPace('')
         }}
       />
-      {goal && goal !== 'maintain' && (
+      {goal && !hasPace(goal) && <GoalGuidance goal={goal} />}
+      {goal && hasPace(goal) && (
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1.5 text-sm font-medium">{t('target.paceLegend')}</legend>
           <div className="grid grid-cols-2 gap-2">

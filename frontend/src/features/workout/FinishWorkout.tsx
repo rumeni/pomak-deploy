@@ -99,7 +99,7 @@ export function FinishWorkout({
         {summary.doneSets === 0 ? (
           <p className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('workout.noSetsYet')}</p>
         ) : (
-          unconfirmed > 0 && <p className="text-sm text-muted">{t('workout.unconfirmedLeft', { count: unconfirmed })}</p>
+          unconfirmed > 0 && <p role="status" className="rounded-xl bg-accent/15 px-4 py-3 text-sm">{t('workout.unconfirmedLeft', { count: unconfirmed })}</p>
         )}
 
         <fieldset>
