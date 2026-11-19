@@ -397,6 +397,30 @@ class LaterRecordTests(WorkspaceTestCase):
         self.set_weight(first, '95')
         self.assertEqual(self.records(), [])
 
+    def test_many_later_workouts_rejudge_with_bounded_queries(self):
+        from django.db import connection as db_connection
+        from django.test.utils import CaptureQueriesContext
+
+        self.connect(days_ago=8)
+        workouts = [self.workout(hours_ago=100 - i, weight=str(60 + i))
+                    for i in range(35)]
+        self.tasks()  # review and record tasks exist before the correction
+        with CaptureQueriesContext(db_connection) as queries:
+            self.set_weight(workouts[2], '30')
+        # Before the fix, each later workout reloaded its entire preceding history.
+        self.assertLess(len(queries), 135, len(queries))
+        self.assertEqual(len(self.records()), 34)  # all later improvements, not the first lift
+
+    def test_equal_start_times_do_not_count_each_other_as_earlier_records(self):
+        self.connect(days_ago=3)
+        first = self.workout(hours_ago=50, weight='80')
+        a = self.workout(hours_ago=24, weight='95')
+        b = self.workout(hours_ago=23, weight='90')
+        WorkoutSession.objects.filter(pk=b.pk).update(started_at=a.started_at)
+        self.assertEqual(self.records(), sorted([str(a.pk), str(b.pk)]))
+        self.set_weight(first, '85')
+        self.assertEqual(self.records(), sorted([str(a.pk), str(b.pk)]))
+
     def test_deleting_the_best_workout_makes_the_next_best_a_record(self):
         self.connect(days_ago=5)
         self.workout(hours_ago=72, weight='80')
