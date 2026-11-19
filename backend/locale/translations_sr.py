@@ -241,4 +241,22 @@ SR = {
     'Shared the weekly review.': 'Poslao/la je nedeljni osvrt.',
     'You have sent many pictures today. Try again tomorrow.': 'Danas si poslao/la mnogo slika. Pokušaj ponovo sutra.',
     'Your coach added a new exercise instruction.': 'Trener je dodao novo uputstvo za vežbu.',
+
+    # Dodatne serverske poruke (treninzi, recepti, obnova prijave i deljene namirnice)
+    'Refresh token is required.': 'Token za obnavljanje prijave je obavezan.',
+    'Invalid refresh token.': 'Nevažeći token za obnavljanje prijave.',
+    'Name or aliases are too long for search.': 'Naziv ili alternativni nazivi su predugački za pretragu.',
+    'This food cannot be changed because a recipe using it would become invalid.': 'Ova namirnica ne može da se izmeni jer bi recept koji je koristi postao neispravan.',
+    'Supply all per-100-g snapshot fields or none.': 'Unesi sve sačuvane vrednosti na 100 g ili nijednu.',
+    'A per-100-g snapshot requires a food.': 'Za sačuvane vrednosti na 100 g mora biti izabrana namirnica.',
+    'An existing entry nutritional snapshot cannot be changed.': 'Sačuvane nutritivne vrednosti postojeće stavke ne mogu se menjati.',
+    'Name is too long for search.': 'Naziv je predugačak za pretragu.',
+    'At most %(count)d exercises per workout.': 'Najviše %(count)d vežbi po treningu.',
+    'Invalid workout plan snapshot.': 'Neispravan sačuvani plan treninga.',
+    'The workout plan snapshot is too large.': 'Sačuvani plan treninga je prevelik.',
+    'Invalid history cursor.': 'Neispravan pokazivač istorije.',
+    'Expected a JSON object.': 'Očekuje se JSON objekat.',
+    'This item was already saved. Refresh to see the saved version.': 'Ova stavka je već sačuvana. Osveži stranicu da vidiš sačuvanu verziju.',
+    'At most 20 shared foods every 24 hours.': 'Najviše 20 deljenih namirnica u 24 sata.',
+    'This shared food is used in another user\'s recipe. Report an error instead.': 'Ova deljena namirnica se koristi u tuđem receptu. Umesto izmene prijavi grešku.',
 }
