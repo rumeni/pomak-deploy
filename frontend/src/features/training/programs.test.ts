@@ -12,6 +12,7 @@ import {
   programToRoutines,
   firstImportRoutines,
   programAlreadyAdded,
+  programCompletelyAdded,
   type Program,
 } from './programs'
 
@@ -257,5 +258,21 @@ describe('suggested programs', () => {
     await createRoutines(batch, post) // the retry
     expect([...saved.keys()]).toEqual(['id-1', 'id-2'])
     expect(n).toBe(2) // no new IDs were made for the retry
+  })
+})
+
+describe('a program completely added', () => {
+  const p = { key: 'k', name: 'P', routines: [{ name: 'A' }, { name: 'B' }] } as unknown as Program
+  it('needs every routine, counted by the program key (names may be translated or edited)', () => {
+    expect(programCompletelyAdded(p, [])).toBe(false)
+    expect(programCompletelyAdded(p, [{ name: 'A', notes: 'P', program_key: 'k' }])).toBe(false)
+    expect(programCompletelyAdded(p, [{ name: 'X', notes: '', program_key: 'k' }, { name: 'Y', notes: '', program_key: 'k' }])).toBe(true)
+    // Two half-finished copies (A twice) are not one complete program.
+    expect(programCompletelyAdded(p, [{ name: 'A', notes: 'P', program_key: 'k' }, { name: 'A', notes: 'P', program_key: 'k' }])).toBe(false)
+  })
+  it('older imports without a key: by name and the program name in notes', () => {
+    expect(programCompletelyAdded(p, [{ name: 'A', notes: 'P', program_key: '' }])).toBe(false)
+    expect(programCompletelyAdded(p, [{ name: 'A', notes: 'P', program_key: '' }, { name: 'B', notes: 'P', program_key: '' }])).toBe(true)
+    expect(programCompletelyAdded(p, [{ name: 'A', notes: 'other', program_key: '' }, { name: 'B', notes: 'P', program_key: '' }])).toBe(false)
   })
 })

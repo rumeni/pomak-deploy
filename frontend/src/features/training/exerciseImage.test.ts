@@ -14,7 +14,7 @@ describe('exerciseImageUrls', () => {
     expect(exerciseImageUrls({ name: 'Stara', muscle: 'chest' })).toBeNull()
   })
 
-  it('crteži postoje za 42 vežbe', () => {
-    expect(EXERCISE_IMAGE_SLUGS.size).toBe(42)
+  it('crteži postoje za 78 vežbi', () => {
+    expect(EXERCISE_IMAGE_SLUGS.size).toBe(78)
   })
 })
