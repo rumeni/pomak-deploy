@@ -12,13 +12,23 @@ import { uuid } from '../../lib/uuid'
 import { useAuth } from '../../lib/auth'
 import type { Routine, RoutinePayload } from './api'
 import { describePrescription, firstImportRoutines, importProgram, isImportingProgram, loadPendingProgram, programAlreadyAdded, programToRoutines, withProgramImportLock, type PendingProgram, type Program } from './programs'
+import { setProgramsHidden, useProgramsHidden } from './programsPref'
 
-function usePrograms() {
+function usePrograms(enabled: boolean) {
   return useQuery({
     queryKey: ['programs', i18n.language],
     queryFn: async () => (await api.get<Program[]>('/training/programs/')).data,
     staleTime: 60 * 60_000,
+    enabled,
   })
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={`size-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
 }
 
 /**
@@ -53,32 +63,93 @@ function useAddProgram() {
 /**
  * Suggested programs by level (and for women), the profile's match first. Adding one copies its
  * routines into "My routines", where they can be changed like any other.
+ *
+ * With routines of one's own the section starts collapsed to one row; it can also be hidden
+ * (per account on this device) and brought back here right away or later in Profil.
  */
 export function ProgramsSection({ routines }: { routines: Routine[] | undefined }) {
   const { t } = useTranslation()
-  const { data, isError } = usePrograms()
+  const { me } = useAuth()
+  const hidden = useProgramsHidden(me?.id)
+  const { data, isError } = usePrograms(!hidden)
   const [showAll, setShowAll] = useState(false)
+  const [expanded, setExpanded] = useState<boolean | null>(null)
+  // Hidden in this visit: a short note with undo, instead of the section vanishing silently.
+  const [justHidden, setJustHidden] = useState(false)
+
+  if (hidden) {
+    if (!justHidden || !me) return null
+    return (
+      <p role="status" className="flex items-center justify-between gap-3 rounded-2xl bg-brand-soft px-4 py-2 text-sm">
+        <span>{t('programs.hiddenNotice')}</span>
+        <button
+          type="button"
+          onClick={() => { setProgramsHidden(me.id, false); setJustHidden(false) }}
+          className="min-h-11 shrink-0 rounded-xl px-2 font-semibold underline"
+        >
+          {t('programs.undo')}
+        </button>
+      </p>
+    )
+  }
   if (isError || !data?.length) return null
   const recommended = data.filter((p) => p.recommended)
   const shown = showAll || !recommended.length ? data : recommended
+  const collapsible = !!routines?.length
+  const open = !collapsible || (expanded ?? false)
+
+  const hide = () => {
+    if (!me) return
+    setJustHidden(true)
+    setProgramsHidden(me.id, true)
+  }
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby="programs-title">
-      <div>
-        <h2 id="programs-title" className="text-xl font-extrabold tracking-tight">{t('programs.title')}</h2>
-        <p className="text-sm text-muted">{t('programs.intro')}</p>
-      </div>
-      {shown.map((program) => (
-        <ProgramCard key={program.key} program={program} routines={routines} />
-      ))}
-      {recommended.length > 0 && (
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 id="programs-title" className="text-xl font-extrabold tracking-tight">
+            {collapsible ? (
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls="programs-list"
+                onClick={() => setExpanded(!open)}
+                className="flex min-h-11 items-center gap-2 text-left"
+              >
+                {t('programs.title')}
+                <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-semibold tabular-nums">{data.length}</span>
+                <Chevron open={open} />
+              </button>
+            ) : (
+              t('programs.title')
+            )}
+          </h2>
+          <p className="text-sm text-muted">{open ? t('programs.intro') : t('programs.collapsedIntro')}</p>
+        </div>
         <button
           type="button"
-          onClick={() => setShowAll((v) => !v)}
-          className="min-h-11 rounded-xl text-sm font-semibold text-brand-dark active:bg-brand-soft"
+          onClick={hide}
+          className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-semibold text-muted active:bg-brand-soft"
         >
-          {showAll ? t('programs.showRecommended') : t('programs.showAll', { count: data.length })}
+          {t('programs.hideSection')}
         </button>
+      </div>
+      {open && (
+        <div id="programs-list" className="flex flex-col gap-3">
+          {shown.map((program) => (
+            <ProgramCard key={program.key} program={program} routines={routines} />
+          ))}
+          {recommended.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="min-h-11 rounded-xl text-sm font-semibold text-brand-dark active:bg-brand-soft"
+            >
+              {showAll ? t('programs.showRecommended') : t('programs.showAll', { count: data.length })}
+            </button>
+          )}
+        </div>
       )}
     </section>
   )
@@ -94,8 +165,10 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
   const [waiting, setWaiting] = useState(false)
   // The batch (with its routine IDs) of an add that has not finished: a retry resumes it.
   const pending = useRef<{ ownerId: string; record: PendingProgram } | null>(null)
-  // Existing routines are re-fetched under the cross-tab lock before import.
-  void routines
+  // Existing routines are re-fetched under the cross-tab lock before import; here they only mark
+  // a program that is already in "My routines".
+  const inRoutines = programAlreadyAdded(program, routines)
+  const routineNames = program.routines.map((r) => r.name).join(' · ')
 
   const onAdd = async () => {
     if (!me || busy.current) return
@@ -138,6 +211,23 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
     }
   }
 
+  // Just added: one compact row instead of the whole card.
+  if (added) {
+    return (
+      <article role="status" className="app-card flex items-center gap-3">
+        <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-white">
+          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+            <path d="m5 12 5 5 9-10" />
+          </svg>
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate font-semibold">{program.name}</span>
+          <span className="block text-sm text-muted">{t('programs.added', { count: program.routines.length })}</span>
+        </span>
+      </article>
+    )
+  }
+
   return (
     <article className="app-card flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -145,18 +235,21 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
         <span className="rounded-full bg-brand-soft px-2 py-0.5 font-semibold">{t(`programs.level_${program.level}`)}</span>
         <span className="rounded-full bg-brand-soft px-2 py-0.5 font-semibold">{t('programs.days', { count: program.days })}</span>
         {program.sex === 'female' && <span className="rounded-full bg-brand-soft px-2 py-0.5 font-semibold">{t('programs.forWomen')}</span>}
+        {inRoutines && <span className="rounded-full bg-ink px-2 py-0.5 font-semibold text-white">{t('programs.inYourRoutines')}</span>}
       </div>
       <h3 className="text-lg font-bold tracking-tight">{program.name}</h3>
       <p className="text-sm text-muted">{program.description}</p>
-      <p className="text-sm">{program.routines.map((r) => r.name).join(' · ')}</p>
+      {/* The routine list only when it says more than the name (many names are the list itself). */}
+      {routineNames !== program.name && <p className="text-sm">{routineNames}</p>}
 
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="min-h-11 self-start rounded-xl px-1 text-sm font-semibold text-brand-dark"
+        className="inline-flex min-h-11 items-center gap-1.5 self-start rounded-full px-4 text-sm font-semibold ring-1 ring-line active:bg-brand-soft"
       >
         {open ? t('programs.hide') : t('programs.preview')}
+        <Chevron open={open} />
       </button>
       {open && (
         <div className="flex flex-col gap-3">
@@ -178,13 +271,9 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
       )}
 
       {add.isError && <p role="alert" className="text-sm text-danger">{errorMessage(add.error)}</p>}
-      {added ? (
-        <p role="status" className="rounded-xl bg-brand-soft px-3 py-2 text-sm font-semibold">{t('programs.added', { count: program.routines.length })}</p>
-      ) : (
-        <Button variant={program.recommended ? 'primary' : 'secondary'} onClick={() => void onAdd()} disabled={add.isPending || waiting}>
-          {add.isPending ? t('common.saving') : add.isError ? t('programs.retry') : t('programs.add', { count: program.routines.length })}
-        </Button>
-      )}
+      <Button variant={program.recommended && !inRoutines ? 'primary' : 'secondary'} onClick={() => void onAdd()} disabled={add.isPending || waiting}>
+        {add.isPending ? t('common.saving') : add.isError ? t('programs.retry') : t('programs.add', { count: program.routines.length })}
+      </Button>
     </article>
   )
 }

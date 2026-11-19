@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { LanguageMenu } from '../../components/LanguageMenu'
+import { ProgramsSetting } from '../training/ProgramsSetting'
 import { Button, Card, FormError, ScreenHeader } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
@@ -62,6 +63,7 @@ export function ProfilePage() {
         <NavRow to="/profil/lozinka">{t('accountSecurity.changeTitle')}</NavRow>
         <NavRow to="/profil/obroci">{t('profile.mealsLink')}</NavRow>
         <NavRow to="/ishrana/cilj">{t('profile.targetLink')}</NavRow>
+        <ProgramsSetting />
         <ExactAlarmSetting />
         <PushSetting />
 

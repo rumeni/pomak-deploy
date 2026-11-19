@@ -18,7 +18,26 @@ class ExerciseLibraryTests(APITestCase):
         return self.names(self.client.get('/api/training/exercises/', params))
 
     def test_library_is_seeded(self):
-        self.assertGreaterEqual(Exercise.objects.filter(owner__isnull=True).count(), 50)
+        self.assertGreaterEqual(Exercise.objects.filter(owner__isnull=True).count(), 150)
+
+    def test_library_source_is_complete(self):
+        # Every shared exercise: a unique slug, an English name and instructions in both
+        # languages ending with a tip; and all of them reach the database.
+        from training.data.instructions import INSTRUCTIONS
+        from training.exercise_library import EXERCISES, NAMES_EN
+
+        slugs = [row[0] for row in EXERCISES]
+        self.assertEqual(len(slugs), len(set(slugs)))
+        for slug in slugs:
+            with self.subTest(slug=slug):
+                self.assertTrue(NAMES_EN.get(slug))
+                text = INSTRUCTIONS[slug]
+                self.assertTrue(text['sr'][-1].startswith('Savet:'))
+                self.assertTrue(text['en'][-1].startswith('Tip:'))
+        self.assertEqual(set(NAMES_EN), set(slugs))
+        self.assertEqual(
+            set(Exercise.objects.filter(owner__isnull=True).values_list('slug', flat=True)), set(slugs),
+        )
 
     def test_every_library_exercise_has_instructions_in_both_languages(self):
         library = Exercise.objects.filter(owner__isnull=True)

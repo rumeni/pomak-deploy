@@ -1574,6 +1574,13 @@ export const sr = {
     addAgainConfirm: 'Već imaš rutine iz ovog programa. Dodati ih ponovo?',
     showAll: 'Prikaži sve programe ({{count}})',
     showRecommended: 'Prikaži samo preporučene',
+    collapsedIntro: 'Gotovi programi po nivou. Dodirni da ih vidiš.',
+    hideSection: 'Sakrij',
+    hiddenNotice: 'Predlozi su sakriveni. Možeš ih vratiti u Profilu.',
+    undo: 'Poništi',
+    inYourRoutines: '✓ U tvojim rutinama',
+    settingLabel: 'Predloženi programi',
+    settingText: 'Prikazuj gotove programe na stranici Trening.',
   },
   history: {
     underMinute: '< 1 min',

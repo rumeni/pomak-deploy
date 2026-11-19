@@ -8,8 +8,9 @@ Kopira dva SVG crteža po vežbi (početni i završni položaj) u public/exercis
 i pravi src/features/training/exerciseImages.ts. Crteži se ne menjaju (samo se kopiraju), pa ostaju
 pod istom licencom; autorstvo je navedeno u aplikaciji (Profil → O aplikaciji) i u public/exercises/README.md.
 
-Svako uparivanje je provereno vizuelno. Vežba bez odgovarajućeg crteža ostaje bez slike (bolje nego
-pogrešna slika): kardio, plank, face pull, swing sa girjom, goblet čučanj, viseće podizanje nogu, pec deck.
+Svako uparivanje je provereno vizuelno (i dopuna sa 36 vežbi, 2026-11). Vežba bez odgovarajućeg crteža ostaje bez slike (bolje nego
+pogrešna slika): kardio, plank, face pull, swing sa girjom, goblet čučanj, viseće podizanje nogu, pec deck,
+zgibovi podhvatom i Arnold potisak (Everkinetic nema SVG), propadanja sa tegom i pregib nogu sedeći (crtež ne odgovara).
 """
 
 import json
@@ -61,6 +62,42 @@ MAP = {
     'skull-crusher': 'lying-triceps-press-with-barbell',
     'triceps-pushdown': 'triceps-pushdown-with-cable',
     'weighted-pull-up': 'pull-ups',
+    'decline-bench-press': 'decline-barbell-bench-press',
+    'smith-bench-press': 'smith-machine-bench-press',
+    'chest-press-machine': 'machine-bench-press',
+    'incline-dumbbell-fly': 'incline-dumbbell-flys',
+    'dumbbell-pullover': 'dumbbell-bent-arm-pullover',
+    'decline-push-up': 'push-up-feet-elevated',
+    'close-grip-bench-press': 'close-grip-barbell-bench-press',
+    'assisted-dips': 'tricep-dips-using-body-weight',
+    'bench-dips': 'bench-dips',
+    'rope-pushdown': 'triceps-pushdown-with-rope-and-cable',
+    'dumbbell-kickback': 'triceps-kickback-with-dumbbell',
+    'diamond-push-up': 'close-triceps-pushup',
+    'dumbbell-skull-crusher': 'lying-triceps-extension-with-dumbbells',
+    'close-grip-pulldown': 'v-bar-pull-down',
+    'straight-arm-pulldown': 'straight-arm-push-down',
+    't-bar-row': 't-bar-rows',
+    'inverted-row': 'body-row',
+    'good-morning': 'barbell-good-mornings',
+    'superman': 'supermans',
+    'upright-row': 'upright-barbell-rows',
+    'barbell-shrug': 'barbell-shrugs',
+    'cable-curl': 'standing-biceps-curl-with-cable',
+    'ez-bar-curl': 'ez-bar-curl-with-barbell',
+    'incline-dumbbell-curl': 'alternating-incline-curl-with-dumbbell',
+    'concentration-curl': 'concentration-curls-with-dumbbell',
+    'machine-curl': 'biceps-curl-with-machine',
+    'cable-hammer-curl': 'hammer-curls-with-rope-and-cable',
+    'dumbbell-preacher-curl': 'one-arm-preacher-curl-with-dumbbell',
+    'hack-squat': 'hack-squat-machine',
+    'smith-squat': 'smith-machine-squats',
+    'walking-lunge': 'walking-lunges',
+    'reverse-lunge': 'rear-lunges-with-dumbbell',
+    'seated-calf-raise': 'seated-calf-raise-using-machine',
+    'leg-press-calf-raise': 'calves-press-on-leg-machine',
+    'hip-adduction': 'thigh-adductor',
+    'side-plank': 'side-plank',
 }
 
 ROOT = Path(__file__).resolve().parent.parent

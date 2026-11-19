@@ -1524,6 +1524,13 @@ export const en = {
     addAgainConfirm: 'You already have routines from this program. Add them again?',
     showAll: 'Show all programs ({{count}})',
     showRecommended: 'Show recommended only',
+    collapsedIntro: 'Ready-made programs by level. Tap to see them.',
+    hideSection: 'Hide',
+    hiddenNotice: 'Suggestions are hidden. You can bring them back in Profile.',
+    undo: 'Undo',
+    inYourRoutines: '✓ In your routines',
+    settingLabel: 'Suggested programs',
+    settingText: 'Show ready-made programs on the Training screen.',
   },
   history: {
     underMinute: '< 1 min',
