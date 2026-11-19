@@ -87,6 +87,15 @@ class FoodViewSet(
         if not can_edit_food(item, self.request):
             raise PermissionDenied(self.shared_readonly_message)
 
+    def update(self, request, *args, **kwargs):
+        # DRF validates input before perform_update. An in-use shared food must return
+        # the conflict message (409) even if the proposed nutritional values are invalid.
+        item = self.get_object()
+        if (item.source == Food.Source.COMMUNITY and item.created_by_id == request.user.pk
+                and item.verified_at is None and community_used_by_other(item)):
+            raise CommunityFoodInUse()
+        return super().update(request, *args, **kwargs)
+
     def perform_update(self, serializer):
         # DRF validated before acquiring the lock. Revalidate against the locked, current
         # database row: concurrent edits to calories and macros must not combine incorrectly.
