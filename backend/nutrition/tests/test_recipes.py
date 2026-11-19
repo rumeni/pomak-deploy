@@ -89,7 +89,7 @@ class RecipeTests(APITestCase):
         res = self.client.patch(f'/api/nutrition/foods/{sauce.id}/', {'kcal': '500'}, format='json')
         self.assertEqual(res.status_code, 400, res.data)
         self.assertIn('non_field_errors', res.data)
-        self.assertIn('recipe', str(res.data['non_field_errors']).lower())
+        self.assertTrue(any(word in str(res.data['non_field_errors']).lower() for word in ('recept', 'recipe')))
         self.assertNotIn('mass_g', res.data)
         self.assertEqual(str(Food.objects.get(pk=sauce.id).kcal), '100.0')
         self.assertEqual(self.client.get(f"{URL}{recipe['id']}/").data['kcal'], '200.0')
