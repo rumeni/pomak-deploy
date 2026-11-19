@@ -258,5 +258,5 @@ SR = {
     'Expected a JSON object.': 'Očekuje se JSON objekat.',
     'This item was already saved. Refresh to see the saved version.': 'Ova stavka je već sačuvana. Osveži stranicu da vidiš sačuvanu verziju.',
     'At most 20 shared foods every 24 hours.': 'Najviše 20 deljenih namirnica u 24 sata.',
-    'This shared food is used in another user\'s recipe. Report an error instead.': 'Ova deljena namirnica se koristi u tuđem receptu. Umesto izmene prijavi grešku.',
+    'This shared food is used in another user\'s recipe or saved meal. Report an error instead.': 'Ova deljena namirnica se koristi u tuđem receptu ili sačuvanom obroku. Umesto izmene prijavi grešku.',
 }
