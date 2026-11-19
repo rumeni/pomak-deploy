@@ -170,7 +170,7 @@ try {
   // Execute the ACTUAL scanner source in Chromium. A synthetic, high-contrast
   // Croatian nutrition label is generated in-browser; no photo upload occurs.
   await page.addScriptTag({ url: '/__ocr-browser-smoke.js', type: 'module' })
-  await page.waitForFunction(() => !!window.__pomakOcrSmoke, { timeout: 20_000 })
+  await page.waitForFunction(() => !!window.__pomakOcrSmoke, null, { timeout: 20_000 })
   await page.evaluate(async () => {
     const canvas = document.createElement('canvas')
     canvas.width = 1700
@@ -209,7 +209,7 @@ try {
     inputs[1].files = data.files
     inputs[1].dispatchEvent(new Event('change', { bubbles: true }))
   })
-  await page.waitForFunction(() => window.__pomakOcrSmoke.uiResult !== null, { timeout: 12_000 })
+  await page.waitForFunction(() => window.__pomakOcrSmoke.uiResult !== null, null, { timeout: 12_000 })
   const offlineFallback = await page.evaluate(() => window.__pomakOcrSmoke.uiResult)
   assert.equal(offlineFallback.kind, 'label')
   assert.deepEqual(offlineFallback.values, {}, 'First offline scan must not invent values')
