@@ -423,6 +423,7 @@ export const sr = {
     saveManual: 'Sačuvaj cilj',
     errors: {
       bodyData: 'Upiši pol, datum rođenja, visinu i težinu.',
+      dataChanged: 'Profil ili poslednja težina su promenjeni dok je formular bio otvoren. Proveri osvežene vrednosti i izračunaj ponovo.',
       activity: 'Izaberi nivo aktivnosti.',
       goal: 'Izaberi šta želiš sa težinom i tempo.',
       special: 'Odgovori na pitanje o posebnim stanjima.',

@@ -28,3 +28,26 @@ describe('previewRecipe', () => {
     expect(previewRecipe([], null, 1)).toBeNull()
   })
 })
+
+describe('recipe ingredient-only edit detection', () => {
+  const old = [
+    { food_id: 'archived-food', grams: '100.0', portion_name: '1 porcija' },
+    { food_id: 'active-food', grams: '45.0', portion_name: '' },
+  ]
+
+  it('omits unchanged archived ingredients on a metadata-only PATCH', async () => {
+    const { recipeIngredientsUnchanged } = await import('./recipe')
+    expect(recipeIngredientsUnchanged(
+      [{ ...old[0], grams: '100' }, { ...old[1], grams: '45' }], old,
+    )).toBe(true)
+  })
+
+  it('sends ingredients when portions, amounts, identity, or order changed', async () => {
+    const { recipeIngredientsUnchanged } = await import('./recipe')
+    expect(recipeIngredientsUnchanged([{ ...old[0], grams: '110' }, old[1]], old)).toBe(false)
+    expect(recipeIngredientsUnchanged([{ ...old[0], portion_name: '' }, old[1]], old)).toBe(false)
+    expect(recipeIngredientsUnchanged([old[1], old[0]], old)).toBe(false)
+    expect(recipeIngredientsUnchanged([old[0]], old)).toBe(false)
+    expect(recipeIngredientsUnchanged([...old, { food_id: 'new', grams: '20', portion_name: '' }], old)).toBe(false)
+  })
+})

@@ -26,3 +26,15 @@ export function previewRecipe(ingredients: { food: Values; grams: number }[], ma
   ) as RecipePreview['per100']
   return { per100, mass: total, rawMass, servingGrams: total / Math.max(1, servings) }
 }
+
+/** Compare exactly the submitted ingredient list, ignoring numeric display formatting. */
+export function recipeIngredientsUnchanged(
+  current: readonly { food_id: string; grams: string; portion_name: string }[],
+  original: readonly { food_id: string; grams: string; portion_name: string }[],
+): boolean {
+  return current.length === original.length && current.every((item, index) =>
+    item.food_id === original[index].food_id
+    && Number(item.grams) === Number(original[index].grams)
+    && item.portion_name.trim() === original[index].portion_name.trim()
+  )
+}
