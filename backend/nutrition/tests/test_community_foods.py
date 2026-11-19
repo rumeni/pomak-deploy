@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 from unittest import mock
 
 from django.test import override_settings
@@ -80,7 +81,7 @@ class CommunityFoodTests(APITestCase):
         self.assertEqual(self.create(name='Moja privatna namirnica').status_code, 201)
         # Once a rolling 24-hour creation expires, one new shared entry is allowed.
         earliest = Food.objects.filter(source=Food.Source.COMMUNITY).order_by('created_at').first()
-        Food.objects.filter(pk=earliest.pk).update(created_at=timezone.now() - timezone.timedelta(hours=25))
+        Food.objects.filter(pk=earliest.pk).update(created_at=timezone.now() - timedelta(hours=25))
         self.assertEqual(self.create(shared=True, name='Sutra').status_code, 201)
 
     def test_shared_values_must_be_consistent_but_private_ones_are_the_users_business(self):
