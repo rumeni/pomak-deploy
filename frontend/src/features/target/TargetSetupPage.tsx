@@ -107,6 +107,8 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
   const { result, error } = proposal
   const [pending, setPending] = useState(false)
   const weightId = useRef(uuid())
+  // Keep the source the fields were initialized from, even if React Query refetches props.
+  const sourceAtOpen = useRef({ profile, weight })
   const calculationVersion = useRef(0)
   const save = useSaveTarget()
   const navigate = useNavigate()
@@ -154,8 +156,9 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
       ])
       if (!scopeIsCurrent(scope) || freshUser.data.id !== me.id) throw new Error('Authentication changed')
       const newestWeight = freshWeights.data[0] ?? null
-      if (sourceChanged(profile, weight, freshUser.data.profile, newestWeight)) {
+      if (sourceChanged(sourceAtOpen.current.profile, sourceAtOpen.current.weight, freshUser.data.profile, newestWeight)) {
         // Refresh the displayed form, discard its old proposal and ask for review.
+        sourceAtOpen.current = { profile: freshUser.data.profile, weight: newestWeight }
         queryClient.setQueryData(['me'], freshUser.data)
         queryClient.setQueryData(['measurements', 'weight', 'latest'], newestWeight)
         setSex(freshUser.data.profile.sex)
@@ -166,15 +169,17 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
       }
 
       // Podaci se čuvaju u profilu i kao merenje težine, pa ih vidi i ostatak aplikacije.
-      if (sex !== profile.sex || birthDate !== profile.birth_date || String(heightCm) !== String(Number(profile.height_cm))) {
+      if (sex !== sourceAtOpen.current.profile.sex || birthDate !== sourceAtOpen.current.profile.birth_date || String(heightCm) !== String(Number(sourceAtOpen.current.profile.height_cm))) {
         if (!me) throw new Error('Authentication changed')
         const submitted = { sex, birth_date: birthDate, height_cm: String(heightCm) }
         const data = await patchOwnProfile(me.id, submitted, scope)
         if (!data) throw new Error('Authentication changed')
+        sourceAtOpen.current.profile = data.profile
         applyOwnProfileResponse(queryClient, scope, data, submitted)
       }
-      if (!weight || weightKg !== Number(weight.value)) {
-        await api.post('/progress/measurements/', { id: weightId.current, kind: 'weight', value: String(weightKg), measured_on: toISODate(new Date()) }, config)
+      if (!sourceAtOpen.current.weight || weightKg !== Number(sourceAtOpen.current.weight.value)) {
+        const stored = await api.post<WeightMeasurement>('/progress/measurements/', { id: weightId.current, kind: 'weight', value: String(weightKg), measured_on: toISODate(new Date()) }, config)
+        sourceAtOpen.current.weight = stored.data
         weightId.current = uuid()
         await queryClient.invalidateQueries({ queryKey: ['measurements'] })
       }
