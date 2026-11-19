@@ -89,7 +89,6 @@ function prepareForText(source: HTMLCanvasElement): HTMLCanvasElement {
  */
 export async function readNutritionLabel(file: Blob, onProgress?: (share: number) => void): Promise<LabelValues & { text: string }> {
   const canvas = await toCanvas(file, 2400)
-  const { createWorker, PSM } = await import('tesseract.js')
   let pass = 0
   // Only same-origin, build-vendored OCR files: never execute CDN scripts in this app.
   const ocrBase = new URL(`${import.meta.env.BASE_URL}ocr/${__POMAK_OCR_VERSION__}/`, window.location.origin).href
@@ -103,6 +102,8 @@ export async function readNutritionLabel(file: Blob, onProgress?: (share: number
     ])
     if (!worker || !model) throw new Error('OCR requires one online scan before offline use')
   }
+  // Only load the large Tesseract code AFTER the lightweight offline check.
+  const { createWorker, PSM } = await import('tesseract.js')
 
   // Croatian model: Latin script with diacritics and decimal commas. The SW owns
   // language caching instead of Tesseract's unversioned IndexedDB keys.
