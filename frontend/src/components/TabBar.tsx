@@ -18,10 +18,11 @@ const COACH: Tab = { to: '/trener', label: 'tabs.coach', icon: 'M12 12a4 4 0 100
 const CLIENT_TABS = [TODAY, TRAINING, NUTRITION, PROGRESS, COACH]
 /** A coach's own training and food: no coach tab, the coach space is one switch away. */
 const COACH_PERSONAL_TABS = [TODAY, TRAINING, NUTRITION, PROGRESS]
-/** The coach space. The calendar joins in a later phase. */
+/** The coach space. */
 const COACH_SPACE_TABS: Tab[] = [
   { to: '/trener', end: true, label: 'coachSpace.tabs.overview', icon: 'M4 5h16M4 12h16M4 19h10' },
   { to: '/trener/klijenti', label: 'coachSpace.tabs.clients', icon: 'M9 11a4 4 0 100-8 4 4 0 000 8zM2 21a7 7 0 0114 0M17 11a3 3 0 100-6M22 21a6 6 0 00-5-5.9' },
+  { to: '/trener/kalendar', label: 'coachSpace.tabs.calendar', icon: 'M7 3v4M17 3v4M4 9h16M5 5h14v15H5z' },
   { to: '/trener/programi', label: 'coachSpace.tabs.programs', icon: 'M4 9v6M8 7v10M16 7v10M20 9v6M8 12h8' },
   { to: '/trener/poruke', label: 'coachSpace.tabs.messages', icon: 'M4 5h16v11H8l-4 4z' },
 ]

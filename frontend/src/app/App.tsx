@@ -14,6 +14,9 @@ import { TemplateEditorPage } from '../features/coach/TemplateEditorPage'
 import { WorkoutReviewPage } from '../features/coach/WorkoutReviewPage'
 import { ClientWeekPage } from '../features/coach/ClientWeekPage'
 import { WeekPage } from '../features/progress/WeekPage'
+import { BookSessionPage } from '../features/schedule/BookSessionPage'
+import { CoachCalendarPage } from '../features/schedule/CoachCalendarPage'
+import { ScheduleSettingsPage } from '../features/schedule/ScheduleSettingsPage'
 import { CoachOnly, CoachRoot, InviteLinkLoggedOut, InviteLinkPage } from '../features/coach/CoachRoutes'
 import { usePendingInviteRedirect } from '../features/coach/pendingInvite'
 import { lastSpace } from '../features/coach/workspace'
@@ -107,6 +110,7 @@ export function App() {
         <Route path="/trener/klijenti" element={<CoachOnly><CoachClientsPage /></CoachOnly>} />
         <Route path="/trener/klijenti/:id" element={<CoachOnly><CoachClientsPage /></CoachOnly>} />
         <Route path="/trener/programi" element={<CoachOnly><CoachProgramsPage /></CoachOnly>} />
+        <Route path="/trener/kalendar" element={<CoachOnly><CoachCalendarPage /></CoachOnly>} />
         <Route path="/trener/poruke" element={<CoachOnly><CoachInboxPage /></CoachOnly>} />
         <Route path="/trener/poruke/:id" element={<CoachOnly><CoachInboxPage /></CoachOnly>} />
         <Route path="/trener/arhiva/:connectionId" element={<ArchivePage />} />
@@ -119,6 +123,8 @@ export function App() {
       <Route path="/trener/klijenti/:id/trening/:workoutId" element={<CoachOnly><WorkoutReviewPage /></CoachOnly>} />
       <Route path="/trener/klijenti/:id/nedelja" element={<CoachOnly><ClientWeekPage /></CoachOnly>} />
       <Route path="/napredak/nedelja" element={<WeekPage />} />
+      <Route path="/trener/kalendar/podesavanja" element={<CoachOnly><ScheduleSettingsPage /></CoachOnly>} />
+      <Route path="/trener/termin" element={me.profile.is_coach ? <Navigate to="/trener/kalendar" replace /> : <BookSessionPage />} />
       <Route path="/trener/profil" element={me.profile.is_coach ? <CoachProfilePage /> : <Navigate to="/trener" replace />} />
       <Route path="/trening/aktivan" element={<ActiveWorkoutPage />} />
       <Route path="/trening/istorija/:id" element={<SessionDetailPage />} />

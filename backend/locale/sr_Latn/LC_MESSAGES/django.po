@@ -934,3 +934,90 @@ msgstr "Najviše 20 deljenih namirnica u 24 sata."
 
 msgid "This shared food is used in another user's recipe. Report an error instead."
 msgstr "Ova deljena namirnica se koristi u tuđem receptu. Umesto izmene prijavi grešku."
+
+msgid "Closed"
+msgstr "Zatvoreno"
+
+msgid "Extra hours"
+msgstr "Dodatno radno vreme"
+
+msgid "Requested"
+msgstr "Zatražen"
+
+msgid "Confirmed"
+msgstr "Potvrđen"
+
+msgid "Declined"
+msgstr "Odbijen"
+
+msgid "Cancelled"
+msgstr "Otkazan"
+
+msgid "System"
+msgstr "Sistem"
+
+msgid "That time is no longer free. Choose another one."
+msgstr "Taj termin više nije slobodan. Izaberi drugi."
+
+msgid "This booking has changed. Reload and try again."
+msgstr "Termin se u međuvremenu promenio. Osveži i pokušaj ponovo."
+
+msgid "This collaboration has ended."
+msgstr "Ova saradnja je završena."
+
+msgid "Choose one of the coach's session types."
+msgstr "Izaberi jednu od trenerovih vrsta termina."
+
+msgid "This session type is no longer offered."
+msgstr "Ova vrsta termina se više ne nudi."
+
+msgid "Choose a time in the future."
+msgstr "Izaberi vreme u budućnosti."
+
+msgid "Choose a time within the next six months."
+msgstr "Izaberi vreme u narednih šest meseci."
+
+msgid "Your session is confirmed."
+msgstr "Tvoj termin je potvrđen."
+
+msgid "Your session request was declined."
+msgstr "Tvoj zahtev za termin je odbijen."
+
+msgid "This session is already over."
+msgstr "Ovaj termin je već prošao."
+
+msgid "It is too late to cancel online. Message your coach."
+msgstr "Kasno je za otkazivanje u aplikaciji. Javi se treneru porukom."
+
+msgid "Your coach cancelled a session."
+msgstr "Trener je otkazao termin."
+
+msgid "Cancelled a session."
+msgstr "Otkazao/la je termin."
+
+msgid "Your coach booked a session for you."
+msgstr "Trener ti je zakazao termin."
+
+msgid "Booked a session."
+msgstr "Zakazao/la je termin."
+
+msgid "Requested a session."
+msgstr "Traži termin."
+
+msgid "You have no coach at the moment."
+msgstr "Trenutno nemaš trenera."
+
+msgid "At most 20 session types."
+msgstr "Najviše 20 vrsta termina."
+
+msgid "The end must be after the start."
+msgstr "Kraj mora biti posle početka."
+
+msgid "At most three time ranges per day."
+msgstr "Najviše tri vremenska opsega po danu."
+
+msgid "Time ranges of one day must not overlap."
+msgstr "Opsezi istog dana ne smeju da se preklapaju."
+
+msgid "At most 31 days at once."
+msgstr "Najviše 31 dan odjednom."

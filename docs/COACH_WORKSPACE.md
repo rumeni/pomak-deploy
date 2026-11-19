@@ -517,3 +517,76 @@ klijenta iz T1.
      `coaching.0005`, `coaching.0006`, `notifications.0001` i objaviti API/web.
      Na uređaju instalirati novi APK napravljen sa konfiguracijom i proveriti prijavu
      tokena, odobrenje za notifikacije i prijem stvarnog FCM push-a.
+
+## T4a: kalendar i zakazivanje
+
+### Šta trener podešava (Kalendar → Podešavanja termina)
+
+- **Vrste termina.** Naziv, trajanje (15–240 minuta) i način (uživo ili online). Uklonjena vrsta
+  ostaje na već zakazanim terminima, ali se više ne nudi. Novo trajanje važi samo za nove termine.
+- **Radno vreme.** Do tri opsega po danu u nedelji, po lokalnom vremenu aplikacije
+  (`Europe/Belgrade`).
+- **Izuzeci.**
+  - „Ne radim“ (praznik, odsustvo) ili „Dodatno vreme“ van radnog vremena.
+  - Izuzetak „Ne radim“ ništa ne otkazuje sam. Trener odmah vidi koji su termini već zakazani u
+    tom periodu, pa se dogovara sa klijentima ili otkazuje.
+- **Pravila**, sa početnim vrednostima:
+
+  | Pravilo | Početno | Opseg |
+  |---|---|---|
+  | Potvrda | automatska; trener može da uključi ručnu | |
+  | Otkazivanje od strane klijenta | do 12 sati pre termina | 0–168 sati |
+  | Najkasnije zakazivanje | 2 sata unapred | 0–168 sati |
+  | Najdalje zakazivanje | 28 dana unapred | 1–90 dana |
+  | Početak termina | na svakih 30 minuta | 15, 30 ili 60 minuta |
+
+### Zakazivanje
+
+- **Klijent** (kartica Trener → Moji termini → Zakaži termin) bira vrstu, dan i slobodno vreme.
+  - Slobodna vremena računa server: radno vreme, plus dodatno vreme, minus „Ne radim“, minus
+    trenerovi i klijentovi termini koji zauzimaju vreme. Uz to važe pravila o najkasnijem i
+    najdaljem zakazivanju.
+  - Server ponovo proverava i izabrano vreme.
+- **Bez ručne potvrde** termin je odmah potvrđen. **Sa ručnom potvrdom** termin čeka potvrdu, a
+  vreme je u međuvremenu zauzeto, pa niko drugi ne može da ga uzme. Trener potvrđuje ili odbija,
+  uz razlog koji klijent vidi.
+- **Trener** zakazuje za svog aktivnog klijenta bilo kada, i van radnog vremena. Termin je odmah
+  potvrđen. Zahtev nosi ID izabrane saradnje (409 `collaboration_changed` za staru ili tuđu).
+- **Ponovljeni zahtev.** Termin nosi ID koji pravi aplikacija, pa ponovljeni zahtev posle
+  izgubljenog odgovora vraća isti termin, umesto da zakaže dupli.
+
+### Zaštita od duplih rezervacija u bazi
+
+- U samoj bazi postoji Postgres `EXCLUDE USING gist` ograničenje nad vremenskim opsegom termina.
+  Važi i po treneru i po klijentu, za termine koji čekaju potvrdu ili su potvrđeni. Zato dva
+  istovremena zahteva za isto vreme ne mogu oba da uspeju, šta god radila aplikacija.
+- Odbijen ili otkazan termin ne zauzima vreme, a termini jedan za drugim su dozvoljeni.
+- Kad baza odbije upis, korisnik dobija 409 `slot_taken` („Taj termin više nije slobodan“).
+- Test sa dva prava paralelna zahteva potvrđuje da tačno jedan prolazi.
+
+### Otkazivanje i obaveštenja
+
+- **Klijent** otkazuje termin koji čeka potvrdu bilo kada pre početka, a potvrđen termin do roka
+  koji je trener podesio. Posle toga se javlja treneru porukom.
+- **Trener** otkazuje bilo koji termin dok se ne završi, uz razlog koji klijent vidi.
+- **Kraj saradnje** otkazuje sve buduće termine te saradnje. Prošli ostaju u oba kalendara.
+- **Push obaveštenja** idu preko postojećeg reda za slanje i nikad ne sadrže napomenu:
+  - zahtev, novi termin i otkazivanje treneru;
+  - potvrda, odbijanje, otkazivanje i termin koji je zakazao trener klijentu.
+
+### Gde se vidi
+
+- **Kod trenera:** nova kartica **Kalendar** u navigaciji, sa pregledom nedelje, zahtevima koji
+  čekaju odgovor i izuzecima.
+- **Na Pregledu:** pločica „Termina danas“ i kartica sa brojem zahteva.
+- **Kod klijenta:** kartica „Moji termini“ na kartici Trener.
+- **Izvoz podataka:** obuhvata i termine, za obe strane.
+
+### Bez interneta
+
+- Zakazivanje traži internet, jer slobodna vremena proverava server. Bez veze aplikacija to jasno
+  kaže, a ponovljeni zahtev je bezbedan.
+
+### Uvođenje na produkciju
+
+- Migracija `scheduling.0001_scheduling` uključuje proširenje `btree_gist` (Neon ga podržava).
