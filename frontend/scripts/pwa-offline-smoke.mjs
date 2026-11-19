@@ -2,6 +2,7 @@
 // Run after npm run build; requires a local playwright runtime and Chromium.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { readdir } from 'node:fs/promises'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromium } from 'playwright'
 
@@ -97,6 +98,26 @@ try {
   assert.ok(swUrl?.endsWith('/sw.js'), 'Unexpected service worker: ' + swUrl)
   console.log('Service worker controls the online page:', swUrl)
 
+  const cores = (await readdir('dist/ocr/core')).sort()
+  assert.deepEqual(cores, [
+    'tesseract-core-lstm.wasm.js',
+    'tesseract-core-relaxedsimd-lstm.wasm.js',
+    'tesseract-core-simd-lstm.wasm.js',
+  ], 'Build must ship ONLY the three LSTM-embedded WASM cores')
+
+  // Optional OCR must not be in the installation precache or runtime cache yet.
+  const precachedOcr = await page.evaluate(async () => {
+    const urls = []
+    for (const name of await caches.keys()) {
+      const entries = await (await caches.open(name)).keys()
+      for (const entry of entries) {
+        if (new URL(entry.url).pathname.startsWith('/ocr/')) urls.push(entry.url)
+      }
+    }
+    return urls
+  })
+  assert.deepEqual(precachedOcr, [], 'First visit must not precache large OCR assets')
+
   await context.setOffline(true)
   const offlineResponse = await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 })
   assert.equal(offlineResponse?.status(), 200, 'Offline root navigation was not precached')
@@ -104,30 +125,8 @@ try {
   assert.match(body, /POMAK/i, 'Offline page did not render the app')
   console.log('Offline root navigation renders POMAK')
 
-  // OCR must run without executing CDN code. Its worker, WASM and Croatian model
-  // are shipped on our own origin and must be available after service-worker install.
-  const offlineOcr = await page.evaluate(async () => {
-    const paths = [
-      '/ocr/worker.min.js',
-      '/ocr/core/tesseract-core.wasm.js',
-      '/ocr/core/tesseract-core-simd-lstm.wasm',
-      '/ocr/lang/hrv.traineddata.gz',
-    ]
-    return Promise.all(paths.map(async (path) => {
-      try {
-        const response = await fetch(path, { cache: 'no-store' })
-        return { path, status: response.status, bytes: (await response.arrayBuffer()).byteLength }
-      } catch (error) {
-        return { path, error: String(error) }
-      }
-    }))
-  })
-  for (const resource of offlineOcr) {
-    assert.equal(resource.status, 200, 'Offline OCR asset missing: ' + JSON.stringify(resource))
-    assert.ok(resource.bytes > 100, 'Offline OCR asset is empty: ' + resource.path)
-  }
-  console.log('Offline OCR worker, WASM and Croatian data load from the service worker')
-
+  // Scanner assets are intentionally NOT available before the first online scan.
+  // Normal PWA navigation remains offline-ready without paying for optional OCR.
   // SPA fallback must work when navigating to a deep link with no network.
   const routeResponse = await page.goto(url + '/trener', { waitUntil: 'domcontentloaded', timeout: 15000 })
   assert.equal(routeResponse?.status(), 200, 'Offline SPA route did not resolve')
@@ -143,7 +142,41 @@ try {
   console.log('Offline /trener deep link renders POMAK React content')
 
   await context.setOffline(false)
-  console.log('PASS: real Chromium offline PWA service-worker smoke')
+
+  // Simulate the first scan requesting OCR assets. The Workbox CacheFirst runtime
+  // route caches each same-origin asset; a second scan must work offline.
+  const ocrPaths = [
+    '/ocr/worker.min.js',
+    '/ocr/core/tesseract-core-lstm.wasm.js',
+    '/ocr/core/tesseract-core-simd-lstm.wasm.js',
+    '/ocr/core/tesseract-core-relaxedsimd-lstm.wasm.js',
+    '/ocr/lang/hrv.traineddata.gz',
+  ]
+  const fetchOcrAssets = () => page.evaluate(async paths => Promise.all(paths.map(async path => {
+    try {
+      const response = await fetch(path)
+      return { path, status: response.status, bytes: (await response.arrayBuffer()).byteLength }
+    } catch (error) {
+      return { path, error: String(error) }
+    }
+  })), ocrPaths)
+  const firstScan = await fetchOcrAssets()
+  for (const resource of firstScan) {
+    assert.equal(resource.status, 200, 'First online OCR asset missing: ' + JSON.stringify(resource))
+    assert.ok(resource.bytes > 100, 'OCR asset is empty: ' + resource.path)
+  }
+
+  const ocrCache = await page.evaluate(async () => {
+    const cache = await caches.open('pomak-ocr-v1')
+    return (await cache.keys()).map(request => new URL(request.url).pathname)
+  })
+  for (const path of ocrPaths) assert.ok(ocrCache.includes(path), 'OCR asset not runtime-cached: ' + path)
+
+  await context.setOffline(true)
+  const secondScan = await fetchOcrAssets()
+  assert.deepEqual(secondScan, firstScan, 'Previously loaded OCR assets must work fully offline')
+  await context.setOffline(false)
+  console.log('PASS: offline PWA without OCR precache; OCR assets cached on demand and work offline')
 } finally {
   await browser?.close()
   preview.kill('SIGTERM')
