@@ -32,7 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, wait
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import jwt
 from cryptography.hazmat.primitives import hashes, serialization
@@ -54,6 +54,8 @@ RETRY_DELAY = timedelta(seconds=30)
 # The whole hand-off after a request (publish to QStash, or a short drain here) stays under this.
 KICK_BUDGET = 3.0
 WORKER_BUDGET = 7.0
+# QStash delays a call by at most about a week; later work is planned again by the worker or cron.
+MAX_WAKEUP_DELAY = timedelta(days=6)
 
 # The push services of real browsers. A web push endpoint must be https on the default port at
 # one of these hosts (or a subdomain of the suffixes).
@@ -310,6 +312,30 @@ def deliver(user_id, payload: dict, deadline: float, device_ids=None) -> list:
     return [str(d.pk) for d, outcome in zip(devices, outcomes) if outcome == RETRY]
 
 
+# Checks a queued message must still pass right before it is sent: kind -> callable(guard) -> bool.
+GUARDS = {}
+
+
+def still_valid(payload, now) -> bool:
+    until = payload.get('valid_until')
+    if until and datetime.fromisoformat(until) <= now:
+        return False
+    guard = payload.get('guard')
+    if guard:
+        check = GUARDS.get(guard.get('kind'))
+        if check is None:
+            from django.apps import apps
+
+            apps.get_app_configs()  # app modules register their guards on import
+            check = GUARDS.get(guard.get('kind'))
+        try:
+            return bool(check and check(guard))
+        except Exception:
+            logger.exception('push guard failed')
+            return False
+    return True
+
+
 def next_due():
     """When the queue next has work: None if empty, now if something can go right away."""
     now = timezone.now()
@@ -333,6 +359,9 @@ def drain(budget: float):
             item.claimed_until = now + timedelta(seconds=60)
             item.attempts += 1
             item.save(update_fields=['claimed_until', 'attempts'])
+        if not still_valid(item.payload, now):
+            PushMessage.objects.filter(pk=item.pk).delete()
+            continue
         try:
             retry = deliver(item.user_id, item.payload, deadline=min(deadline, time.monotonic() + TIMEOUT + 0.5),
                             device_ids=item.devices)
@@ -350,12 +379,14 @@ def drain(budget: float):
     return next_due()
 
 
-def publish_drain(timeout: float = 3.0, delay: int = 0) -> bool:
-    """Ask the QStash worker to drain the queue (after `delay` seconds); False if not accepted."""
+def publish_drain(timeout: float = 3.0, delay: int = 0, wake_for=None) -> bool:
+    """Ask the QStash worker to drain the queue (after `delay` seconds); False if not accepted.
+    A planned wake-up names its time in the (signed) body."""
     headers = {'Authorization': 'Bearer ' + settings.QSTASH_TOKEN, 'Content-Type': 'application/json', 'Upstash-Retries': '3'}
     if delay > 0:
         headers['Upstash-Delay'] = f'{int(delay)}s'
-    request = urllib.request.Request('https://qstash.upstash.io/v2/publish/' + worker_url(), data=b'{}', method='POST', headers=headers)
+    body = json.dumps({'wake_for': wake_for.isoformat()}).encode() if wake_for else b'{}'
+    request = urllib.request.Request('https://qstash.upstash.io/v2/publish/' + worker_url(), data=body, method='POST', headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return 200 <= response.status < 300
@@ -412,29 +443,89 @@ def kick() -> None:
         logger.exception('push kick failed')
 
 
+def request_handoff() -> None:
+    """Something was queued for later (a reminder): hand the queue over once, after the commit
+    (with the request's other notifications), so the worker can plan its next wake-up."""
+    transaction.on_commit(_committed)
+
+
+def plan_wakeup(due) -> bool:
+    """Make sure exactly one future worker call is scheduled no later than `due`. False if that
+    could not be done (the caller reports failure so QStash retries it)."""
+    from .models import WorkerWakeup
+
+    if due is None or not queue_configured():
+        return True
+    now = timezone.now()
+    with transaction.atomic():
+        wakeup, _created = WorkerWakeup.objects.select_for_update().get_or_create(pk=1)
+        # An earlier or equal call is already planned (delays are whole seconds, rounded up).
+        if wakeup.scheduled_for and now < wakeup.scheduled_for <= due + timedelta(seconds=2):
+            return True
+        delay = max(1, math.ceil((due - now).total_seconds()))
+        delay = min(delay, int(MAX_WAKEUP_DELAY.total_seconds()))
+        at = now + timedelta(seconds=delay)
+        if not publish_drain(timeout=2.0, delay=delay, wake_for=at):
+            return False
+        wakeup.scheduled_for = at
+        wakeup.save(update_fields=['scheduled_for'])
+    return True
+
+
+def woke_for(body: bytes) -> None:
+    """A scheduled call arrived (on time, early or late): it is no longer pending."""
+    from .models import WorkerWakeup
+
+    try:
+        at = json.loads(body or b'{}').get('wake_for')
+    except ValueError:
+        at = None
+    if at:
+        WorkerWakeup.objects.filter(pk=1, scheduled_for=datetime.fromisoformat(at)).update(scheduled_for=None)
+
+
+def wakeup_overdue(now) -> bool:
+    from .models import WorkerWakeup
+
+    row = WorkerWakeup.objects.filter(pk=1).first()
+    return row is None or row.scheduled_for is None or row.scheduled_for < now - timedelta(minutes=5)
+
+
 def poll_kick() -> None:
     """From the unread poll (every 30 s while the app is open): pick up what a failed hand-off
     left, without adding provider calls to every poll."""
-    stuck = PushMessage.objects.filter(created_at__lt=timezone.now() - timedelta(seconds=60)).filter(
-        Q(claimed_until__isnull=True) | Q(claimed_until__lte=timezone.now()))
-    if not stuck.exists():
+    now = timezone.now()
+    stuck = PushMessage.objects.filter(created_at__lt=now - timedelta(seconds=60)).filter(
+        Q(claimed_until__isnull=True) | Q(claimed_until__lte=now)).exists()
+    # Future work (reminders) with no planned worker call: a lost or failed wake-up is recovered.
+    from scheduling.services import next_reminder_due
+
+    lost = next_reminder_due() is not None and wakeup_overdue(now)
+    if not (stuck or lost):
         return
     if queue_configured():
         publish_drain(timeout=1.0)
-    else:
+    elif stuck:
         drain(1.5)
 
 
-def notify(user, *, title, body, url, tag) -> None:
+def notify(user, *, title, body, url, tag, valid_until=None, guard=None) -> None:
     """Queue a notification in the current transaction, in the recipient's language.
 
     `title` and `body` are lazy translations (or plain text) evaluated in that language; nothing
-    is queued if push is off on the server or the user has no device.
+    is queued if push is off on the server or the user has no device. `valid_until`: not sent
+    after that moment. `guard`: re-checked right before sending (see `GUARDS`), so a queued
+    message about something that changed meanwhile is dropped. A notification already handed to
+    a push service cannot be recalled.
     """
     if not push_enabled() or not PushDevice.objects.filter(user=user).exists():
         return
     language = getattr(getattr(user, 'profile', None), 'language', None) or 'sr-latn'
     with translation.override(language):
         payload = {'title': str(title)[:120], 'body': str(body)[:200], 'url': url, 'tag': tag}
+    if valid_until is not None:
+        payload['valid_until'] = valid_until.isoformat()
+    if guard is not None:
+        payload['guard'] = guard
     PushMessage.objects.create(user=user, payload=payload)
     transaction.on_commit(_committed)

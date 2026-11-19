@@ -41,6 +41,14 @@ class PushRevocation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class WorkerWakeup(models.Model):
+    """The one future call of the queue worker that is scheduled (a single row). Every scheduled
+    call carries its time; when it runs (early or late), it is cleared and the next is planned."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
+
+
 class PushMessage(TimeStampedModel):
     """A notification waiting to be delivered (the outbox). Written in the same transaction as
     the event that caused it; removed once delivered, after a few attempts, or after an hour."""

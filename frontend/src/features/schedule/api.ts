@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
+import type { ServerAccess } from '../coach/access'
 
 export type SessionMode = 'in_person' | 'online'
 export type BookingStatus = 'requested' | 'confirmed' | 'declined' | 'cancelled'
@@ -92,13 +93,15 @@ export interface SlotsData {
 const CALENDAR = ['schedule-calendar']
 const MINE = ['schedule-my']
 const SLOTS = ['schedule-slots']
+const PACKAGES = ['schedule-packages']
 
-/** After any booking change: both sides' lists, free slots and the overview counts. */
+/** After any booking change: both sides' lists, free slots, package balances, the overview. */
 function refreshBookings(qc: ReturnType<typeof useQueryClient>) {
   return Promise.all([
     qc.invalidateQueries({ queryKey: CALENDAR }),
     qc.invalidateQueries({ queryKey: MINE }),
     qc.invalidateQueries({ queryKey: SLOTS }),
+    qc.invalidateQueries({ queryKey: PACKAGES }),
     qc.invalidateQueries({ queryKey: ['coach-dashboard'] }),
   ])
 }
@@ -230,27 +233,40 @@ export function useBookingAction() {
     networkMode: 'always',
     mutationFn: async ({ id, action, reason = '', charge = false }: { id: string; action: 'confirm' | 'decline' | 'cancel'; reason?: string; charge?: boolean }) =>
       (await api.post<Booking>(`/schedule/bookings/${id}/${action}/`, { reason, charge })).data,
-    onSettled: () => Promise.all([refreshBookings(qc), qc.invalidateQueries({ queryKey: ['schedule-packages'] })]),
+    onSettled: () => refreshBookings(qc),
   })
 }
 
 // ---- packages ----
 
+export interface ClientPackages {
+  access: ServerAccess
+  connection_id: string
+  packages: SessionPackage[]
+}
+
+/** A client's packages for his coach: guarded like other client data, refreshed while open. */
 export function useClientPackages(clientId: string) {
   return useQuery({
-    queryKey: ['schedule-packages', clientId],
-    queryFn: async () => (await api.get<{ connection_id: string; packages: SessionPackage[] }>(`/schedule/clients/${clientId}/packages/`)).data,
+    queryKey: [...PACKAGES, clientId],
+    queryFn: async () => (await api.get<ClientPackages>(`/schedule/clients/${clientId}/packages/`)).data,
+    refetchInterval: 30000,
     retry: false,
   })
+}
+
+/** Written into the cache only if it is still about the collaboration shown. */
+function storeIfCurrent(qc: ReturnType<typeof useQueryClient>, clientId: string, data: ClientPackages) {
+  qc.setQueryData<ClientPackages>([...PACKAGES, clientId], (old) => (!old || old.connection_id === data.connection_id ? data : old))
 }
 
 export function useAddPackage(clientId: string) {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async (body: { connection_id: string; name: string; total: number; valid_from: string; expires_on: string | null; note: string }) =>
-      (await api.post<{ connection_id: string; packages: SessionPackage[] }>(`/schedule/clients/${clientId}/packages/`, body)).data,
-    onSuccess: (data) => qc.setQueryData(['schedule-packages', clientId], data),
+    mutationFn: async (body: { id: string; connection_id: string; name: string; total: number; valid_from: string; expires_on: string | null; note: string }) =>
+      (await api.post<ClientPackages>(`/schedule/clients/${clientId}/packages/`, body)).data,
+    onSuccess: (data) => storeIfCurrent(qc, clientId, data),
   })
 }
 
@@ -258,17 +274,27 @@ export function useChangePackage(clientId: string) {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async ({ id, ...body }: { id: string; connection_id: string; adjust_by?: number; close?: boolean }) =>
-      (await api.patch<{ connection_id: string; packages: SessionPackage[] }>(`/schedule/clients/${clientId}/packages/${id}/`, body)).data,
-    onSuccess: (data) => qc.setQueryData(['schedule-packages', clientId], data),
+    mutationFn: async ({ id, ...body }: { id: string; connection_id: string; adjustment?: number; expected_adjustment?: number; close?: boolean }) =>
+      (await api.patch<ClientPackages>(`/schedule/clients/${clientId}/packages/${id}/`, body)).data,
+    onSuccess: (data) => storeIfCurrent(qc, clientId, data),
+    onError: () => qc.invalidateQueries({ queryKey: [...PACKAGES, clientId] }),
   })
 }
 
-export function useMyPackages(enabled = true) {
+/** The athlete's packages with his current coach, refreshed with his sessions. */
+export function useMyPackages(ownerId: string | null) {
   return useQuery({
-    queryKey: ['schedule-packages', 'mine'],
-    queryFn: async () => (await api.get<SessionPackage[]>('/schedule/packages/')).data,
-    enabled,
+    queryKey: [...PACKAGES, 'mine', ownerId],
+    queryFn: async () => (await api.get<{ connection_id: string; packages: SessionPackage[] }>('/schedule/packages/')).data,
+    enabled: !!ownerId,
+    refetchInterval: 60000,
     retry: false,
   })
+}
+
+/** Nothing when the app knows a different collaboration (ended or replaced). */
+export function packagesFor(data: { connection_id: string; packages: SessionPackage[] } | undefined, currentConnectionId: string | null | undefined) {
+  if (!data) return []
+  if (currentConnectionId !== undefined && data.connection_id !== currentConnectionId) return []
+  return data.packages
 }

@@ -5,13 +5,13 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers, status
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import APIException, NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from coaching.errors import CollaborationChanged
 from coaching.models import CoachConnection
-from coaching.views import client_only, coach_only, display_name
+from coaching.views import access_facts, client_only, coach_only, display_name
 from core.views import require_object_body
 
 from . import services
@@ -372,6 +372,8 @@ class BookingActionView(APIView):
 # ---- packages -------------------------------------------------------------------------------
 
 class PackageSerializer(serializers.Serializer):
+    # Made by the app and kept across a retry: a lost answer never creates a second package.
+    id = serializers.UUIDField()
     connection_id = serializers.UUIDField()
     name = serializers.CharField(max_length=80, trim_whitespace=True)
     total = serializers.IntegerField(min_value=1, max_value=200)
@@ -387,10 +389,24 @@ class PackageSerializer(serializers.Serializer):
 
 class PackageChangeSerializer(serializers.Serializer):
     connection_id = serializers.UUIDField()
-    # Sessions used outside the calendar (+) or given back (-), added to the correction.
-    adjust_by = serializers.IntegerField(min_value=-200, max_value=200, required=False, default=0)
+    # The correction as a whole value (+ sessions used outside the calendar, - given back), with
+    # the value the coach saw: a retry cannot apply it twice, a concurrent change is refused.
+    adjustment = serializers.IntegerField(min_value=-200, max_value=200, required=False)
+    expected_adjustment = serializers.IntegerField(min_value=-200, max_value=200, required=False)
     expires_on = serializers.DateField(required=False, allow_null=True)
     close = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, data):
+        if ('adjustment' in data) != ('expected_adjustment' in data):
+            raise serializers.ValidationError({'expected_adjustment': 'Send both the new and the seen correction.'})
+        return data
+
+
+class PackageChanged(APIException):
+    status_code = status.HTTP_409_CONFLICT
+
+    def __init__(self):
+        super().__init__({'detail': _('This package has changed. Reload and try again.'), 'code': 'package_changed'})
 
 
 def _coach_connection(request, client_id, connection_id):
@@ -418,13 +434,22 @@ class ClientPackagesView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         connection = _coach_connection(request, client_id, data.pop('connection_id'))
-        SessionPackage.objects.create(coach=request.user, client_id=client_id, connection=connection, **data)
+        package_id = data.pop('id')
+        existing = SessionPackage.objects.filter(pk=package_id).first()
+        if existing is not None:
+            same = (existing.connection_id == connection.pk and existing.name == data['name'] and existing.total == data['total']
+                    and existing.valid_from == data['valid_from'] and existing.expires_on == data.get('expires_on')
+                    and existing.note == data['note'])
+            if not same:
+                raise ValidationError({'id': 'This package ID is already in use for another request.'})
+            return Response(self.listing(connection))
+        SessionPackage.objects.create(id=package_id, coach=request.user, client_id=client_id, connection=connection, **data)
         return Response(self.listing(connection), status=status.HTTP_201_CREATED)
 
     @staticmethod
     def listing(connection):
-        rows = SessionPackage.objects.filter(connection=connection).order_by('-valid_from', '-created_at')[:20]
-        return {'connection_id': str(connection.id), 'packages': [services.package_summary(p) for p in rows]}
+        return {'access': access_facts(connection), 'connection_id': str(connection.id),
+                'packages': [services.package_summary(p) for p in packages_in_order(connection)]}
 
 
 class PackageView(APIView):
@@ -437,7 +462,13 @@ class PackageView(APIView):
         package = SessionPackage.objects.select_for_update().filter(pk=pk, connection=connection).first()
         if package is None:
             raise NotFound()
-        package.adjustment += data['adjust_by']
+        if 'adjustment' in data and package.adjustment != data['adjustment']:
+            if package.adjustment != data['expected_adjustment']:
+                raise PackageChanged()
+            used = services.counted(package) + data['adjustment']
+            if not 0 <= used <= package.total:
+                raise ValidationError({'adjustment': _('Used sessions must stay between 0 and the package total.')})
+            package.adjustment = data['adjustment']
         if 'expires_on' in request.data:
             if data['expires_on'] and data['expires_on'] < package.valid_from:
                 raise ValidationError({'expires_on': _('The end must be after the start.')})
@@ -453,8 +484,18 @@ class MyPackagesView(APIView):
 
     def get(self, request):
         connection = client_connection(request)
-        rows = SessionPackage.objects.filter(connection=connection, closed_at__isnull=True).order_by('-valid_from')[:10]
-        return Response([services.package_summary(p) for p in rows])
+        today = timezone.localdate()
+        rows = [p for p in packages_in_order(connection) if p.closed_at is None and not (p.expires_on and p.expires_on < today)]
+        # Which collaboration these belong to: the app shows them only for its current one.
+        return Response({'connection_id': str(connection.id), 'packages': [services.package_summary(p) for p in rows]})
+
+
+def packages_in_order(connection):
+    """Packages in use first (open, not expired), then the last ten others."""
+    today = timezone.localdate()
+    rows = list(SessionPackage.objects.filter(connection=connection).order_by('-valid_from', '-created_at'))
+    active = [p for p in rows if p.closed_at is None and not (p.expires_on and p.expires_on < today)]
+    return active + [p for p in rows if p not in active][:10]
 
 
 def today_counts(coach, now=None):

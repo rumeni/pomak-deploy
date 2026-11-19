@@ -290,4 +290,6 @@ SR = {
     'At most 31 days at once.': 'Najviše 31 dan odjednom.',
     'Reminder: your session starts at {time}.': 'Podsetnik: tvoj termin počinje u {time}.',
     'Reminder: you have a session tomorrow at {time}.': 'Podsetnik: sutra imaš termin u {time}.',
+    'This package has changed. Reload and try again.': 'Paket se u međuvremenu promenio. Osveži i pokušaj ponovo.',
+    'Used sessions must stay between 0 and the package total.': 'Broj iskorišćenih treninga mora biti između 0 i ukupnog broja u paketu.',
 }

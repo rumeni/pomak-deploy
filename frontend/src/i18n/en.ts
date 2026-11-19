@@ -1161,7 +1161,7 @@ export const en = {
       expired: 'expired',
       sessions: 'Sessions from this package',
       adjust: 'Correction',
-      adjustPrompt: 'How many sessions to add to the used ones (e.g. 1 for a session outside the calendar, -1 for one given back)?',
+      adjustPrompt: 'Manual correction of used sessions, in total (now {{current}}). E.g. 1 for a session outside the calendar, -1 for one given back:',
       close: 'Close package',
       closeConfirm: 'Close the package? New sessions will no longer use it.',
       totalRange: 'From 1 to 200 sessions.',

@@ -29,8 +29,6 @@ MAX_COACH_AHEAD = timedelta(days=180)
 REMINDER_HOURS = (24, 1)
 # A reminder later than this after its time is not sent any more (the moment has passed).
 REMINDER_GRACE = timedelta(minutes=30)
-# QStash delays callbacks by up to a week; later reminders are scheduled by the daily cron.
-MAX_WAKEUP_DELAY = timedelta(days=6)
 
 
 class SlotTaken(APIException):
@@ -189,6 +187,8 @@ def cancel(booking_id, *, user, reason='', charge=False):
         booking.cancel_reason = reason
         booking.charged = bool(by_coach and charge and booking.package_id)
         booking.save(update_fields=['status', 'cancelled_at', 'cancelled_by', 'cancel_reason', 'charged', 'updated_at'])
+        if booking.package_id and not booking.charged:
+            keep_used_non_negative(booking.package_id)
         if by_coach:
             notify(connection.client, title='POMAK', body=_('Your coach cancelled a session.'), url='/trener', tag=f'booking-{booking.pk}')
         else:
@@ -231,6 +231,21 @@ def _used_counts(packages):
     return {r['package_id']: r['n'] for r in rows}
 
 
+def keep_used_non_negative(package_id):
+    """A session given back after the coach corrected the count downwards: the correction absorbs
+    it, so "used" never goes below zero (call with the collaboration locked)."""
+    package = SessionPackage.objects.select_for_update().get(pk=package_id)
+    used = package_used(package)
+    if used < 0:
+        package.adjustment -= used
+        package.save(update_fields=['adjustment', 'updated_at'])
+
+
+def counted(package) -> int:
+    """Sessions from the calendar that use the package (without the coach's correction)."""
+    return _used_counts([package]).get(package.pk, 0)
+
+
 def package_used(package) -> int:
     return _used_counts([package]).get(package.pk, 0) + package.adjustment
 
@@ -267,9 +282,16 @@ def package_summary(package, today=None):
 
 
 # ---- reminders ------------------------------------------------------------------------------
+#
+# A reminder row is written with the confirmation; nothing is published from the booking request
+# itself except the request's single bounded hand-off. The queue worker sends due reminders and
+# plans its one next wake-up for the earliest due reminder (`notifications.push.plan_wakeup`).
+# The unread poll and the daily cron recover a wake-up that was lost.
 
 def create_reminders(booking, now):
     """Reminders 24 h and 1 h before a confirmed session (only those still ahead)."""
+    from notifications.push import request_handoff
+
     for hours in REMINDER_HOURS:
         due = booking.starts_at - timedelta(hours=hours)
         if due > now:
@@ -277,46 +299,63 @@ def create_reminders(booking, now):
                 booking=booking, hours_before=hours,
                 defaults={'due_at': due, 'for_start': booking.starts_at, 'sent_at': None, 'scheduled_at': None},
             )
-    transaction.on_commit(schedule_reminder_wakeups)
+    request_handoff()
 
 
-def schedule_reminder_wakeups(now=None):
-    """Ask the queue worker to wake up when each reminder of the next days is due (once each)."""
-    from notifications.push import publish_drain, queue_configured
-
-    if not queue_configured():
-        return
+def next_reminder_due(now=None):
+    """When the next reminder is due (now if one is due already and still worth sending)."""
     now = now or timezone.now()
-    rows = BookingReminder.objects.filter(sent_at__isnull=True, scheduled_at__isnull=True,
-                                          due_at__gt=now, due_at__lte=now + MAX_WAKEUP_DELAY)[:200]
-    for reminder in rows:
-        delay = max(1, int((reminder.due_at - now).total_seconds()))
-        if publish_drain(timeout=2.0, delay=delay):
-            BookingReminder.objects.filter(pk=reminder.pk, scheduled_at__isnull=True).update(scheduled_at=now)
+    due = (BookingReminder.objects.filter(sent_at__isnull=True, due_at__gt=now - REMINDER_GRACE)
+           .order_by('due_at').values_list('due_at', flat=True).first())
+    return None if due is None else max(due, now)
 
 
-def send_due_reminders(now=None) -> int:
-    """Send the reminders that are due, if their session still stands as it was. Safe to run from
-    several places at once (each reminder is claimed under a row lock)."""
+def _reminder_stands(booking, reminder, now) -> bool:
+    return (booking.status == Booking.Status.CONFIRMED and booking.starts_at == reminder.for_start
+            and booking.starts_at > now and now - reminder.due_at <= REMINDER_GRACE)
+
+
+def reminder_guard(guard) -> bool:
+    """Right before a queued reminder is sent: the session still stands at that time."""
+    booking = Booking.objects.filter(pk=guard.get('booking')).only('status', 'starts_at').first()
+    return bool(booking and booking.status == Booking.Status.CONFIRMED and booking.starts_at.isoformat() == guard.get('start'))
+
+
+def send_due_reminders(now=None, *, budget=None, limit=50) -> bool:
+    """Send the reminders that are due, if their session still stands as it was. Returns True if
+    due reminders are left (time or batch limit), so the caller continues in a new call.
+
+    Each one is handled under the same lock order as booking changes (collaboration, booking,
+    reminder), so a cancellation or an end of the collaboration either happens first (no
+    reminder) or after it is queued; a queued reminder is checked again right before sending
+    and expires when the session starts.
+    """
+    import time as clock
+
+    from notifications.push import notify
+
+    deadline = clock.monotonic() + budget if budget else None
     now = now or timezone.now()
-    sent = 0
-    for reminder_id in list(BookingReminder.objects.filter(sent_at__isnull=True, due_at__lte=now).values_list('pk', flat=True)[:200]):
+    rows = list(BookingReminder.objects.filter(sent_at__isnull=True, due_at__lte=now)
+                .order_by('due_at').values_list('pk', 'booking__connection_id', 'booking_id')[:limit + 1])
+    for reminder_id, connection_id, booking_id in rows[:limit]:
+        if deadline and clock.monotonic() > deadline:
+            return True
         with transaction.atomic():
-            reminder = (BookingReminder.objects.select_for_update(skip_locked=True, of=('self',)).select_related('booking__client__profile')
-                        .filter(pk=reminder_id, sent_at__isnull=True).first())
-            if reminder is None:
+            CoachConnection.objects.select_for_update().filter(pk=connection_id).first()
+            booking = Booking.objects.select_for_update(of=('self',)).select_related('client__profile').filter(pk=booking_id).first()
+            reminder = BookingReminder.objects.select_for_update(skip_locked=True).filter(pk=reminder_id, sent_at__isnull=True).first()
+            if reminder is None or booking is None:
                 continue
             reminder.sent_at = now
             reminder.save(update_fields=['sent_at'])
-            booking = reminder.booking
-            stands = (booking.status == Booking.Status.CONFIRMED and booking.starts_at == reminder.for_start
-                      and booking.starts_at > now and now - reminder.due_at <= REMINDER_GRACE)
-            if not stands:
+            if not _reminder_stands(booking, reminder, now):
                 continue
             at = booking.starts_at.astimezone(LOCAL).strftime('%H:%M')
             # Formatted in the recipient's language when the notification is queued.
             body = format_lazy(_('Reminder: your session starts at {time}.') if reminder.hours_before <= 1
                                else _('Reminder: you have a session tomorrow at {time}.'), time=at)
-            notify(booking.client, title='POMAK', body=body, url='/trener', tag=f'reminder-{booking.pk}')
-            sent += 1
-    return sent
+            notify(booking.client, title='POMAK', body=body, url='/trener', tag=f'reminder-{booking.pk}',
+                   valid_until=min(booking.starts_at, reminder.due_at + REMINDER_GRACE),
+                   guard={'kind': 'booking_reminder', 'booking': str(booking.pk), 'start': booking.starts_at.isoformat()})
+    return len(rows) > limit

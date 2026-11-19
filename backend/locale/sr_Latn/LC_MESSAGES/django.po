@@ -1027,3 +1027,9 @@ msgstr "Podsetnik: tvoj termin počinje u {time}."
 
 msgid "Reminder: you have a session tomorrow at {time}."
 msgstr "Podsetnik: sutra imaš termin u {time}."
+
+msgid "This package has changed. Reload and try again."
+msgstr "Paket se u međuvremenu promenio. Osveži i pokušaj ponovo."
+
+msgid "Used sessions must stay between 0 and the package total."
+msgstr "Broj iskorišćenih treninga mora biti između 0 i ukupnog broja u paketu."

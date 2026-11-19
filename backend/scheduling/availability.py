@@ -103,28 +103,39 @@ def busy(coach, start, end, *, client=None):
 
 
 def free_slots(coach, duration_minutes, first: date, last: date, *, now, client=None):
-    """Start instants (UTC) a client can book for a session of this length, in order. A slot
-    belongs to the schedule day it starts on; it may run past midnight within open time."""
+    """Start instants (UTC) a client can book for a session of this length, in order.
+
+    Slots sit on a fixed grid of each schedule day: every `slot_step_minutes` of real time from
+    that day's local midnight. The grid never depends on the dates asked for, so a slot listed
+    for a week is exactly the one accepted when booking that day. A slot belongs to the day it
+    starts on and may run past midnight within open time.
+    """
     rules = booking_settings(coach)
     earliest = now + timedelta(hours=rules.min_notice_hours)
     latest = now + timedelta(days=rules.horizon_days)
     duration = timedelta(minutes=duration_minutes)
     step = timedelta(minutes=max(5, rules.slot_step_minutes))
-    day_start, day_end = day_bounds(first, last)
     # One extra day on both sides: open time crossing midnight belongs to the window it is part of.
     windows = open_windows(coach, first - timedelta(days=1), last + timedelta(days=1))
     if not windows:
         return []
     taken = busy(coach, windows[0][0], windows[-1][1], client=client)
     slots = []
-    for start, end in windows:
-        t = start
-        while t + duration <= end:
-            if (day_start <= t < day_end and earliest <= t <= latest
-                    and not any(t < b_end and t + duration > b_start for b_start, b_end in taken)):
-                slots.append(t)
-            t += step
-    return slots
+    day = first
+    while day <= last:
+        grid, day_end = day_bounds(day, day)
+        for start, end in windows:
+            if end <= grid or start >= day_end:
+                continue
+            # The first grid point at or after the window's start (within this day).
+            k = max(0, -(-(max(start, grid) - grid) // step))
+            t = grid + k * step
+            while t < day_end and t + duration <= end:
+                if earliest <= t <= latest and not any(t < b_end and t + duration > b_start for b_start, b_end in taken):
+                    slots.append(t)
+                t += step
+        day += timedelta(days=1)
+    return sorted(set(slots))
 
 
 def is_free_slot(coach, duration_minutes, starts_at, *, now, client=None) -> bool:

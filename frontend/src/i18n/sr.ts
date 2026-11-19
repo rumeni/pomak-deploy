@@ -1195,7 +1195,7 @@ export const sr = {
       expired: 'istekao',
       sessions: 'Termini iz paketa',
       adjust: 'Korekcija',
-      adjustPrompt: 'Koliko treninga dodati u iskorišćene (npr. 1 za trening van kalendara, -1 za vraćen)?',
+      adjustPrompt: 'Ručna korekcija iskorišćenih treninga, ukupno (sada {{current}}). Npr. 1 za trening van kalendara, -1 za vraćen:',
       close: 'Zatvori paket',
       closeConfirm: 'Zatvoriti paket? Novi termini ga više neće koristiti.',
       totalRange: 'Broj treninga od 1 do 200.',

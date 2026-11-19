@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addDays, dayKey, groupByDay, mondayOf, onDay, rangesOverlap, spanOnDay, timeLabel, validDayTime, weekDays, weekdayOf, zonedMoment } from './time'
+import { addDays, dayKey, groupByDay, mondayOf, onDay, rangesOverlap, slotLabels, spanOnDay, timeLabel, validDayTime, weekDays, weekdayOf, zonedMoment } from './time'
 
 describe('schedule dates (Europe/Belgrade, whatever the device zone)', () => {
   it('weeks start on Monday, as on the server', () => {
@@ -51,5 +51,15 @@ describe('schedule dates (Europe/Belgrade, whatever the device zone)', () => {
     expect(validDayTime('', '09:00')).toBe(false)
     expect(validDayTime('2026-11-24', '')).toBe(false)
     expect(validDayTime('2026-11-24', '09:00')).toBe(true)
+  })
+})
+
+describe('slot labels', () => {
+  it('the hour repeated in autumn shows two distinguishable times', () => {
+    const first = zonedMoment('2027-10-31', '02:30') // CEST
+    const second = new Date(Date.parse(first) + 3600_000).toISOString() // the same wall time, CET
+    const labels = slotLabels([first, second, zonedMoment('2027-10-31', '04:00')])
+    expect(labels[0].label).not.toBe(labels[1].label)
+    expect(labels[2].label).toBe('04:00')
   })
 })

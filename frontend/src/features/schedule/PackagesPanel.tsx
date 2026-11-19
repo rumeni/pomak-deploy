@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Card, Field, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
-import { isCollaborationChanged } from '../coach/access'
+import { uuid } from '../../lib/uuid'
+import { isAccessRevoked, isCollaborationChanged } from '../coach/access'
+import { useClientGuard } from '../coach/guard'
 import { useAddPackage, useChangePackage, useClientPackages, type SessionPackage } from './api'
 import { dayKey, dayLabel } from './time'
 
@@ -11,8 +13,12 @@ import { dayKey, dayLabel } from './time'
 export function PackagesPanel({ clientId }: { clientId: string }) {
   const { t } = useTranslation()
   const packages = useClientPackages(clientId)
+  const guard = useClientGuard(clientId, packages)
   const [adding, setAdding] = useState(false)
-  const data = packages.data
+  // Lost access, or the server says this collaboration is gone: never show the old balance.
+  const gone = guard.state === 'revoked' || (packages.isError && isAccessRevoked(packages.error))
+  const data = gone ? undefined : packages.data
+  if (gone) return null
   return (
     <Card title={t('schedule.packages.title')}>
       <p className="mb-2 text-sm text-muted">{t('schedule.packages.hint')}</p>
@@ -34,9 +40,12 @@ function PackageRow({ clientId, connectionId, pkg }: { clientId: string; connect
   const change = useChangePackage(clientId)
   const inactive = pkg.closed || pkg.expired
   const adjust = () => {
-    const answer = window.prompt(t('schedule.packages.adjustPrompt'))
+    // The whole correction, with the value seen: a retry never doubles it, a stale view is refused.
+    const answer = window.prompt(t('schedule.packages.adjustPrompt', { current: pkg.adjustment }), String(pkg.adjustment))
     const value = answer === null ? NaN : Number(answer.trim())
-    if (Number.isInteger(value) && value !== 0) change.mutate({ id: pkg.id, connection_id: connectionId, adjust_by: value })
+    if (Number.isInteger(value) && value !== pkg.adjustment) {
+      change.mutate({ id: pkg.id, connection_id: connectionId, adjustment: value, expected_adjustment: pkg.adjustment })
+    }
   }
   return (
     <li className={`rounded-xl border border-line px-3 py-2 ${inactive ? 'opacity-60' : ''}`}>
@@ -86,6 +95,8 @@ function PackageForm({ clientId, connectionId, onDone }: { clientId: string; con
   const [expiresOn, setExpiresOn] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // One ID for this form: a retry after a lost answer never creates a second package.
+  const [packageId] = useState(() => uuid())
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setError(null)
@@ -94,7 +105,7 @@ function PackageForm({ clientId, connectionId, onDone }: { clientId: string; con
     if (!Number.isInteger(count) || count < 1 || count > 200) return setError(t('schedule.packages.totalRange'))
     if (!/^\d{4}-\d{2}-\d{2}$/.test(validFrom)) return setError(t('schedule.calendar.dayTimeRequired'))
     if (expiresOn && expiresOn < validFrom) return setError(t('schedule.settings.endAfterStart'))
-    add.mutate({ connection_id: connectionId, name: name.trim(), total: count, valid_from: validFrom, expires_on: expiresOn || null, note: note.trim() },
+    add.mutate({ id: packageId, connection_id: connectionId, name: name.trim(), total: count, valid_from: validFrom, expires_on: expiresOn || null, note: note.trim() },
       { onSuccess: onDone })
   }
   return (

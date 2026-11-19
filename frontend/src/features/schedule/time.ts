@@ -121,6 +121,20 @@ export function timeLabel(value: string, tz = SCHEDULE_TZ): string {
   return new Date(value).toLocaleTimeString(getFormatLocale(), { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+/**
+ * Labels for one day's slots. When the autumn clock change repeats an hour, the two equal
+ * times are told apart by their zone offset (02:30 GMT+2, 02:30 GMT+1).
+ */
+export function slotLabels(values: string[], tz = SCHEDULE_TZ): { value: string; label: string }[] {
+  const plain = values.map((v) => timeLabel(v, tz))
+  return values.map((value, i) => ({
+    value,
+    label: plain.indexOf(plain[i]) !== plain.lastIndexOf(plain[i])
+      ? new Date(value).toLocaleTimeString(getFormatLocale(), { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short' })
+      : plain[i],
+  }))
+}
+
 /** pon, 24. nov (a calendar date: no zone shifts it). */
 export function dayLabel(key: string, long = false): string {
   return utcDay(key).toLocaleDateString(getFormatLocale(), long

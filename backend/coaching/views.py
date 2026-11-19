@@ -973,11 +973,12 @@ class UnreadView(APIView):
         # Pushes a failed hand-off left behind are picked up by the next poll.
         if push_enabled():
             # Without the queue worker, due session reminders go out with the polls of open apps.
+            from notifications.push import queue_configured
             from scheduling.services import send_due_reminders
 
-            send_due_reminders()
-            if PushMessage.objects.exists():
-                poll_kick()
+            if not queue_configured():
+                send_due_reminders(budget=1.0, limit=10)
+            poll_kick()
         return Response({'total': sum(counts.values()), 'by_connection': {str(k): v for k, v in counts.items()}})
 
 

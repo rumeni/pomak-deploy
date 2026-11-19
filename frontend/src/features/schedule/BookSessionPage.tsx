@@ -9,7 +9,7 @@ import { useOnline } from '../../lib/useOnline'
 import { uuid } from '../../lib/uuid'
 import { useCreateBooking, useSlots, type Booking, type NewBooking } from './api'
 import { ZoneNote } from './ZoneNote'
-import { addDays, dayKey, dayLabel, groupByDay, timeLabel } from './time'
+import { addDays, dayKey, dayLabel, groupByDay, slotLabels, timeLabel } from './time'
 
 const PAGE_DAYS = 7
 
@@ -23,7 +23,9 @@ export function BookSessionPage() {
   const [typeId, setTypeId] = useState<string | null>(null)
   const to = addDays(from, PAGE_DAYS - 1)
   const slots = useSlots(typeId, from, to)
-  const data = slots.data
+  const noCoachNow = slots.isError && axios.isAxiosError(slots.error) && slots.error.response?.status === 404
+  // A confirmed "no coach" hides whatever was loaded before.
+  const data = noCoachNow ? undefined : slots.data
   const chosenType = data?.session_types.find((x) => x.id === data.session_type_id) ?? null
   const byDay = groupByDay(data?.slots ?? [], (s) => s)
   const days = Array.from({ length: PAGE_DAYS }, (_, i) => addDays(from, i))
@@ -32,7 +34,7 @@ export function BookSessionPage() {
   const [slot, setSlot] = useState<string | null>(null)
   const [done, setDone] = useState<Booking | null>(null)
   const back = () => navigate('/trener')
-  const noCoach = slots.isError && axios.isAxiosError(slots.error) && slots.error.response?.status === 404
+  const noCoach = noCoachNow
 
   if (done) {
     return (
@@ -100,10 +102,10 @@ export function BookSessionPage() {
                 ? <p className="text-sm text-muted">{t('schedule.book.noSlots')}</p>
                 : (
                   <div className="grid grid-cols-3 gap-2 min-[480px]:grid-cols-4">
-                    {byDay.get(shownDay)!.map((s) => (
-                      <button key={s} type="button" onClick={() => setSlot(s)} aria-pressed={s === slot}
-                        className={`min-h-11 rounded-xl border text-sm font-semibold tabular-nums ${s === slot ? 'border-brand bg-brand text-white' : 'border-line bg-card'}`}>
-                        {timeLabel(s)}
+                    {slotLabels(byDay.get(shownDay)!).map(({ value, label }) => (
+                      <button key={value} type="button" onClick={() => setSlot(value)} aria-pressed={value === slot}
+                        className={`min-h-11 rounded-xl border text-sm font-semibold tabular-nums ${value === slot ? 'border-brand bg-brand text-white' : 'border-line bg-card'}`}>
+                        {label}
                       </button>
                     ))}
                   </div>

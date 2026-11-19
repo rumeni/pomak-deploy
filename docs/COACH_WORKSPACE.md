@@ -533,6 +533,14 @@ klijenta iz T1.
   - U jesen se ponovljeno vreme računa kao prvo od ta dva.
 - **Termin pripada danu u kome počinje.** U okviru dodatnog vremena može da traje i posle
   ponoći. Spisak slobodnih termina i provera pri zakazivanju koriste isto pravilo.
+- **Mreža termina je stalna za svaki dan.** Termini počinju na svakih 15, 30 ili 60 minuta
+  stvarnog vremena od lokalne ponoći tog dana.
+  - Mreža ne zavisi od izabranog opsega datuma, pa termin ponuđen u nedeljnom pregledu server
+    prihvata i kad proverava samo taj dan.
+  - Ako radno ili dodatno vreme počne van mreže (npr. 10:10), prvi termin je na sledećoj tački
+    mreže (10:30).
+- **Jesen.** Kad se sat ponavlja, dva ista vremena istog dana razlikuju se oznakom zone
+  (npr. 02:30 GMT+2 i 02:30 GMT+1).
 
 ### Šta trener podešava (Kalendar → Podešavanja termina)
 
@@ -603,10 +611,27 @@ klijenta iz T1.
   treninga (1–200), datum od kog važi, opcioni datum isteka i napomenu.
 - **Iskorišćeno** = potvrđeni termini iz paketa, plus otkazani termini koje je trener odlučio da
   računa, plus trenerova ručna korekcija (npr. +1 za trening van kalendara, −1 za vraćen).
-- **Dodela termina.** Potvrđen termin (odmah ili posle potvrde) uzima najstariji otvoren paket
-  koji važi na dan termina i u kome je ostalo treninga. Dodela ide pod zaključanom saradnjom, pa
-  dva termina nikad ne uzmu isti poslednji trening. Bez takvog paketa termin je bez paketa.
-- **Vraćanje.** Termin otkazan na vreme (ili bez računanja) vraća trening u paket.
+- **Dodela termina.** Potvrđen termin (odmah ili posle potvrde) uzima otvoren paket koji važi
+  na dan termina i u kome je ostalo treninga.
+  - Prednost ima paket koji prvi ističe, pa onda stariji.
+  - Dodela ide pod zaključanom saradnjom, pa dva termina nikad ne uzmu isti poslednji trening.
+  - Bez takvog paketa termin je bez paketa.
+- **Vraćanje.** Termin otkazan na vreme (ili bez računanja) vraća trening u paket. Ako je trener
+  ranije smanjio broj iskorišćenih, korekcija upija vraćeni trening, pa iskorišćeno nikad ne
+  pada ispod nule.
+- **Bezbedni upisi.**
+  - Novi paket nosi ID iz aplikacije, pa ponovljeni zahtev posle izgubljenog odgovora ne pravi
+    drugi paket. Isti ID sa drugačijim sadržajem se odbija.
+  - Korekcija se upisuje kao nova ukupna vrednost, uz vrednost koju je trener video. Ponovljeni
+    zahtev se ne primenjuje dvaput, a izmena na osnovu zastarelog prikaza dobija 409
+    `package_changed`.
+  - Iskorišćeno mora ostati između 0 i ukupnog broja.
+- **Prikaz.**
+  - Kod trenera paketi prate pristup klijentu kao i ostali podaci (brišu se kad pristup prestane)
+    i osvežavaju se na 30 sekundi.
+  - Kod klijenta su vezani za trenutnu saradnju i osvežavaju se zajedno sa terminima i posle
+    svake promene termina.
+  - Prvo se prikazuju paketi u upotrebi, pa poslednji zatvoreni ili istekli.
 - **Gde se vidi.**
   - Kod trenera: na profilu klijenta (Pregled → Paketi treninga), sa korekcijom, zatvaranjem
     paketa i spiskom termina iz paketa.
@@ -617,16 +642,34 @@ klijenta iz T1.
 
 - **Kada.** Klijent dobija push podsetnik 24 sata i 1 sat pre potvrđenog termina. Podsetnici
   nastaju pri potvrdi.
-- **Šta mora da važi.** Podsetnik se šalje samo ako je termin i dalje potvrđen i počinje u isto
-  vreme.
-- **Bez kašnjenja i bez ponavljanja.** Ne šalje se ako kasni više od 30 minuta i nikad se ne
-  šalje dvaput.
-- **Sadržaj** je samo vreme termina, na jeziku primaoca.
-- **Isporuka.**
-  - Za svaki podsetnik u narednih šest dana worker za push se zakazuje preko QStash-a tačno za
-    trenutak kad dospeva. Kasnije podsetnike zakazuje dnevni cron.
-  - Bez QStash-a podsetnici odlaze uz osvežavanje broja nepročitanih poruka u otvorenoj
-    aplikaciji, ili uz dnevni cron. To je samo rezervni režim; tačni podsetnici traže QStash.
+- **Šta mora da važi.**
+  - Podsetnik se šalje samo ako je termin i dalje potvrđen i počinje u isto vreme.
+  - Ne šalje se ako kasni više od 30 minuta i nikad se ne šalje dvaput.
+  - Sadržaj je samo vreme termina.
+- **Nikad za otkazan termin.**
+  - Slanje ide istim redom zaključavanja kao otkazivanje (saradnja, termin, podsetnik), pa
+    otkazivanje ili kraj saradnje uvek ili prethodi podsetniku ili dođe posle njegovog upisa u
+    red.
+  - Podsetnik u redu za slanje se pred samo slanje ponovo proverava: termin mora biti i dalje
+    potvrđen, a podsetnik ističe kad termin počne.
+  - Obaveštenje koje je push servis već primio ne može da se povuče. Isporuka je najbolji
+    pokušaj, kao u T3.
+- **Isporuka bez čekanja u zahtevu.** Potvrda termina samo upisuje podsetnike. Jedino predavanje
+  posla workeru ide jednom po zahtevu, sa vremenskim ograničenjem.
+- **Jedno zakazano buđenje.**
+  - Worker šalje dospele podsetnike u ograničenim delovima (najviše 3 s i 50 po pozivu, uz
+    nastavak), pa prazni red za slanje.
+  - Zatim zakazuje tačno jedno sledeće buđenje (`WorkerWakeup`), za najraniji podsetnik ili
+    ponovni pokušaj. Kašnjenje se zaokružuje naviše od trenutnog vremena, najviše šest dana
+    unapred.
+  - Svaki zakazani poziv nosi svoje vreme. Kad stigne (i ranije nego što treba), worker ga
+    poništi i ponovo zakaže sledeći, pa nema paralelnih lanaca poziva.
+  - Ako zakazivanje ne uspe, worker vraća grešku i QStash ponavlja poziv.
+- **Oporavak.**
+  - Izgubljeno buđenje obnavljaju osvežavanje broja nepročitanih poruka i dnevni cron.
+  - Bez QStash-a podsetnici odlaze uz osvežavanje u otvorenoj aplikaciji ili uz cron. To je samo
+    rezervni režim.
+- **Van opsega.** Veza termina sa treningom (koji trening je urađen na kom terminu) nije deo T4.
 
 ### Gde se vidi i obaveštenja
 
@@ -649,5 +692,7 @@ klijenta iz T1.
 
 ### Uvođenje na produkciju
 
-- Migracija `scheduling.0001_scheduling` uključuje proširenje `btree_gist` (Neon ga podržava).
+- Migracije:
+  - `scheduling.0001_scheduling`, koja uključuje proširenje `btree_gist` (Neon ga podržava);
+  - `notifications.0003_worker_wakeup`.
 - Za tačne podsetnike i push podesiti `PUSH_WORKER_URL` (QStash), kao u T3.

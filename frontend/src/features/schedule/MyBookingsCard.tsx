@@ -3,7 +3,11 @@ import { Link } from 'react-router-dom'
 
 import { Button, Card, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
-import { useBookingAction, useMyBookings, useMyPackages, type Booking } from './api'
+import { useQueryClient } from '@tanstack/react-query'
+
+import { useAuth } from '../../lib/auth'
+import type { CoachDashboard } from '../coach/api'
+import { packagesFor, useBookingAction, useMyBookings, useMyPackages, type Booking } from './api'
 import { BookingStatusChip } from './BookingStatusChip'
 import { dayKey, dayLabel, timeLabel } from './time'
 
@@ -11,7 +15,11 @@ import { dayKey, dayLabel, timeLabel } from './time'
 export function MyBookingsCard() {
   const { t } = useTranslation()
   const mine = useMyBookings()
-  const packages = useMyPackages()
+  const { me } = useAuth()
+  // The collaboration the app knows (cached dashboard): another one's balance is never shown.
+  const dashboard = useQueryClient().getQueryData<CoachDashboard>(['coach-dashboard'])
+  const known = dashboard?.role === 'client' ? (dashboard.connection?.id ?? null) : undefined
+  const packages = packagesFor(useMyPackages(me?.id ?? null).data, known)
   const upcoming = mine.data?.upcoming ?? []
   const recent = mine.data?.recent ?? []
   return (
@@ -19,7 +27,7 @@ export function MyBookingsCard() {
       {mine.isLoading && <p className="text-sm text-muted">{t('common.loading')}</p>}
       {mine.isError && !mine.data && <FormError message={t('errors.loadFailed')} />}
       {mine.data && upcoming.length === 0 && <p className="text-sm text-muted">{t('schedule.mine.none')}</p>}
-      {packages.data?.filter((p) => !p.expired).map((p) => (
+      {packages.map((p) => (
         <p key={p.id} className="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand-dark">
           <span className="font-semibold">{p.name}:</span> {t('schedule.packages.left', { count: p.remaining, total: p.total })}
           {p.expires_on ? ` · ${t('schedule.packages.until', { date: dayLabel(p.expires_on) })}` : ''}
