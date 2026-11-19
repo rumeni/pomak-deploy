@@ -10,6 +10,7 @@ from rest_framework.test import APIClient, APITestCase
 
 from accounts.models import User
 from nutrition.models import Food, RecipeIngredient, SavedMeal, SavedMealItem
+from nutrition.serializers import RecipeSerializer
 from nutrition.views import FoodViewSet
 
 
@@ -249,3 +250,85 @@ class SharedFoodSavedMealRaceTests(TransactionTestCase):
         self.assertFalse(SavedMeal.objects.filter(owner=self.other).exists())
         self.food.refresh_from_db()
         self.assertIsNotNone(self.food.archived_at)
+
+class RecipeSavedMealLockRaceTests(TransactionTestCase):
+    """A saved meal must not acquire recipe R before its ingredient F."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('recipe-locks@example.test', 'test-password-123')
+        # Ensure sorting UUIDs alone would get the lock order WRONG: R < F.
+        self.recipe = Food.objects.create(
+            id=uuid.UUID(int=1), owner=self.user, source=Food.Source.RECIPE,
+            name='Recipe', kcal='100', state=Food.State.PREPARED,
+        )
+        self.ingredient = Food.objects.create(
+            id=uuid.UUID(int=2), owner=self.user, source=Food.Source.CUSTOM,
+            name='Ingredient', kcal='100',
+        )
+        RecipeIngredient.objects.create(recipe=self.recipe, food=self.ingredient, position=0, grams='100')
+
+    def api(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        return client
+
+    def test_simultaneous_recipe_edit_and_saved_meal_with_ingredient_do_not_deadlock(self):
+        got_ingredient_lock = threading.Event()
+        release_edit = threading.Event()
+        started_meal = threading.Event()
+        results = {}
+        errors = []
+        original = RecipeSerializer._locked_ingredients
+
+        def pause_after_ingredient_lock(serializer, ingredients, **kwargs):
+            fresh = original(serializer, ingredients, **kwargs)
+            got_ingredient_lock.set()
+            if not release_edit.wait(8):
+                raise AssertionError('Timed out holding ingredient lock')
+            return fresh
+
+        def run(label, fn):
+            connections.close_all()
+            try:
+                results[label] = fn()
+            except Exception as e:
+                errors.append((label, e))
+            finally:
+                connections.close_all()
+
+        def edit_recipe():
+            with mock.patch.object(RecipeSerializer, '_locked_ingredients', pause_after_ingredient_lock):
+                return self.api().patch(
+                    f'/api/nutrition/recipes/{self.recipe.pk}/',
+                    {'name': 'Renamed recipe'}, format='json',
+                )
+
+        def save_meal():
+            started_meal.set()
+            return self.api().post('/api/nutrition/saved-meals/', {
+                'name': 'Recipe and ingredient',
+                'items': [
+                    {'food_id': str(self.recipe.pk), 'grams': '100'},
+                    {'food_id': str(self.ingredient.pk), 'grams': '100'},
+                ],
+            }, format='json')
+
+        editing = threading.Thread(target=run, args=('edit', edit_recipe))
+        saving = threading.Thread(target=run, args=('meal', save_meal))
+        try:
+            editing.start()
+            self.assertTrue(got_ingredient_lock.wait(8), 'recipe did not lock ingredient')
+            saving.start()
+            self.assertTrue(started_meal.wait(8))
+            time.sleep(0.15)
+            self.assertTrue(saving.is_alive(), 'saved meal should wait on ingredient lock')
+        finally:
+            release_edit.set()
+            editing.join(12)
+            if saving.ident is not None:
+                saving.join(12)
+        self.assertFalse(editing.is_alive(), 'recipe edit got stuck')
+        self.assertFalse(saving.is_alive(), 'saved meal got stuck')
+        self.assertFalse(errors, errors)
+        self.assertEqual(results['edit'].status_code, 200, results['edit'].data)
+        self.assertEqual(results['meal'].status_code, 201, results['meal'].data)
