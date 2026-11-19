@@ -33,7 +33,13 @@ export default defineConfig({
       injectRegister: null,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       // Push and notification clicks (public/push-sw.js) inside the generated service worker.
-      workbox: { importScripts: ['push-sw.js'] },
+      workbox: {
+        importScripts: ['push-sw.js'],
+        // Large OCR worker, WASM and traineddata are served from our origin and must be
+        // available offline after PWA installation (not only after the first OCR attempt).
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,wasm,gz}'],
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+      },
       manifest: {
         name: 'POMAK',
         short_name: 'POMAK',
