@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { LanguageMenu } from '../../components/LanguageMenu'
 import coachPhoto from '../../assets/photos/coach.webp'
 import { Button, Card, EmptyState, Field, FormError, PageHeader } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
@@ -28,7 +27,7 @@ export function CoachPage() {
   const data = dashboard.data?.role === 'client' ? dashboard.data : null
   return (
     <>
-      <PageHeader title={t('coach.title')} photo={coachPhoto} action={<LanguageMenu />} />
+      <PageHeader title={t('coach.title')} photo={coachPhoto} />
       <div className="flex flex-col gap-3 px-4 pb-8">
         {dashboard.isLoading && <p className="text-muted">{t('common.loading')}</p>}
         {dashboard.isError && !dashboard.data && (

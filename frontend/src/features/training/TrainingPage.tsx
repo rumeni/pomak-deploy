@@ -8,7 +8,6 @@ import { ActiveWorkoutBanner } from '../workout/ActiveWorkoutBanner'
 import { HistoryList } from '../workout/HistoryList'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { useRoutines, type Routine } from './api'
-import { LanguageMenu } from '../../components/LanguageMenu'
 import { ProgramsSection } from './ProgramsSection'
 
 export function TrainingPage() {
@@ -28,7 +27,7 @@ export function TrainingPage() {
 
   return (
     <>
-      <PageHeader title={t('training.title')} photo={trainingPhoto} action={<LanguageMenu />} />
+      <PageHeader title={t('training.title')} photo={trainingPhoto} />
       <div className="flex flex-col gap-4 px-4 pb-8">
         <ActiveWorkoutBanner />
 

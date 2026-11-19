@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router-dom'
 
-import { LanguageMenu } from '../../components/LanguageMenu'
 import { PageHeader } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { useOnline } from '../../lib/useOnline'
@@ -29,7 +28,7 @@ export function SpaceSwitch() {
   )
 }
 
-/** Header of the coach space's main screens: switch, language and the coach's profile. */
+/** Header of the coach space's main screens: switch and the coach's profile (language is under Profil). */
 export function CoachHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   const { t } = useTranslation()
   const { me } = useAuth()
@@ -44,7 +43,6 @@ export function CoachHeader({ title, subtitle, action }: { title: string; subtit
         <>
           {action}
           <SpaceSwitch />
-          <LanguageMenu />
           <Link
             to="/trener/profil"
             aria-label={t('coachSpace.profileAria')}

@@ -15,7 +15,6 @@ import { MAX_SAVED_MEAL_ITEMS, MAX_SAVED_MEAL_NAME_LENGTH, savedMealConflict, sa
 import { copyEntry, savedItemFromEntry, totals, type DayTotals, type DisplayDay, type MacroTotal } from './model'
 import { discardRejectedDayOps, loadDayEntries, saveDrafts, setDayStatus, useDiaryDay } from './store'
 import type { DayStatus, DayTarget, DiaryEntry, MealKey } from './types'
-import { LanguageMenu } from '../../components/LanguageMenu'
 
 /** Dnevnik hrane za jedan dan: obroci, zbir i status dana. Datum je u adresi (?datum=). */
 export function DiaryPage() {
@@ -32,7 +31,7 @@ export function DiaryPage() {
 
   return (
     <>
-      <PageHeader title={t('nutrition.title')} photo={nutritionPhoto} action={<LanguageMenu />} />
+      <PageHeader title={t('nutrition.title')} photo={nutritionPhoto} />
       <div className="flex flex-col gap-4 px-4 pb-8">
         <div className="flex items-center justify-between rounded-3xl bg-card p-2 shadow-sm ring-1 ring-line/60">
           <NavButton label={t('diary.prevDay')} path="M15 18l-6-6 6-6" onClick={() => go(-1)} />
