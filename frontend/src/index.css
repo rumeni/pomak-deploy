@@ -238,7 +238,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
 .app-nav-link.is-active { color: var(--color-accent); }
 .app-nav-link.is-active svg { color: var(--color-accent); stroke-width: 2.25; }
 .app-nav-link:active { transform: scale(.94); }
-.app-nav-link:hover { color: #fff; }
+.app-nav-link:not(.is-active):hover { color: #fff; }
 .app-nav-brand { display: none; }
 .app-nav-brand-sub { display: block; margin: 6px 0 0 18px; font-size: 11px; font-weight: 800; letter-spacing: .32em; color: var(--color-accent); }
 @keyframes tab-enter-next { from { transform: translate3d(20px,0,0); opacity: .55; } to { transform: translate3d(0,0,0); opacity: 1; } }
