@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { formatDecimal, formatShortDate } from '../../lib/format'
-import type { Explanation, TargetInputs } from './api'
+import { normalizeGoal, type Explanation, type TargetInputs } from './api'
 
 const n = (value: number) => formatDecimal(value)
 
@@ -31,6 +31,7 @@ export function TargetExplanation({
     date: formatShortDate(inputs.weight_date),
   })
   const steps: [string, string][] = [
+    [t('target.stepGoal'), t(`target.goal_${normalizeGoal(inputs.goal)}`)],
     [t('target.stepBmr'), `${n(e.bmr)} kcal`],
     [t('target.stepActivity', { activity: t(`target.activity_${inputs.activity}`) }), `× ${n(e.activity_factor)} = ${n(e.tdee)} kcal`],
     [
@@ -66,6 +67,9 @@ export function TargetExplanation({
           carbs: carbs === null ? '?' : n(carbs),
         })}
       </p>
+      {e.protein_weight_adjusted && e.protein_weight_kg != null && (
+        <p className="text-muted">{t('target.proteinAdjusted', { weight: n(e.protein_weight_kg) })}</p>
+      )}
     </div>
   )
 }

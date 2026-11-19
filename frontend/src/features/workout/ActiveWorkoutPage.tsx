@@ -26,6 +26,8 @@ import {
   rpeTargetWeight,
   setExerciseNotes,
   SetInputError,
+  setProgress,
+  unconfirmedWithValues,
   targetRpe,
   suggestion,
   unconfirmSet,
@@ -37,6 +39,7 @@ import {
 import { loadPrevious } from './previous'
 import { cancelRestEnd, restEndedFeedback, restNotificationAction, scheduleRestEnd } from './restNotification'
 import { usePersistentWorkout } from './store'
+import { ConfirmSetsHint } from './ConfirmSetsHint'
 import { useQueryClient } from '@tanstack/react-query'
 import type { CoachDashboard } from '../coach/api'
 import { useMyInstructions } from '../coach/inboxApi'
@@ -66,6 +69,8 @@ export function ActiveWorkoutPage() {
   // finish form (its local feeling/notes belong to the original workout).
   const [finishId, setFinishId] = useState<string | null>(null)
   const [editingCheckIn, setEditingCheckIn] = useState(false)
+  // Unconfirmed sets with results: asked before the finish screen (back to the workout, or finish without them).
+  const [finishCheck, setFinishCheck] = useState<string | null>(null)
   const now = useNow()
   const workout = row?.workout
 
@@ -173,6 +178,7 @@ export function ActiveWorkoutPage() {
   }
 
   const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(workout.startedAt).getTime()) / 1000))
+  const progress = setProgress(workout)
 
   return (
     <div className="min-h-full pb-48">
@@ -181,16 +187,18 @@ export function ActiveWorkoutPage() {
         title={workout.name}
         onBack={() => navigate('/trening')}
         action={
-          <Button className="min-h-10 px-4 text-sm" onClick={() => setFinishId(workout.id)}>
+          <Button className="min-h-10 px-4 text-sm" onClick={() => (unconfirmedWithValues(workout) > 0 ? setFinishCheck(workout.id) : setFinishId(workout.id))}>
             {t('workout.finish')}
           </Button>
         }
       />
-      <p className="mx-auto max-w-xl px-4 pt-2 text-sm font-medium tabular-nums text-muted">
-        {t('workout.duration')}: {formatDuration(elapsed)}
+      <p className="mx-auto flex max-w-xl flex-wrap justify-between gap-x-4 px-4 pt-2 text-sm font-medium tabular-nums text-muted">
+        <span>{t('workout.duration')}: {formatDuration(elapsed)}</span>
+        <span aria-live="polite">{t('workout.setsProgress', { done: progress.done, total: progress.total })}</span>
       </p>
 
       <div className="mx-auto flex max-w-xl flex-col gap-3 p-4">
+        <ConfirmSetsHint ownerId={row.ownerId} />
         <ReadinessRow readiness={workout.readiness} onOpen={() => setEditingCheckIn(true)} />
         {workout.exercises.length === 0 && <p className="py-6 text-center text-muted">{t('workout.noExercises')}</p>}
         {workout.exercises.map((item, index) => (
@@ -211,6 +219,16 @@ export function ActiveWorkoutPage() {
         </Button>
       </div>
 
+      {/* Only for the workout it was opened for: another tab replacing the workout closes it. */}
+      {finishCheck === workout.id && (
+        <BottomSheet label={t('workout.unconfirmedTitle')} title={t('workout.unconfirmedTitle')} onClose={() => setFinishCheck(null)}>
+          <p className="text-sm">{t('workout.unconfirmedWarning', { count: unconfirmedWithValues(workout) })}</p>
+          <div className="mt-4 flex flex-col gap-2">
+            <Button onClick={() => setFinishCheck(null)}>{t('workout.backToWorkout')}</Button>
+            <Button variant="ghost" onClick={() => { const id = finishCheck; setFinishCheck(null); if (id === workout.id) setFinishId(id) }}>{t('workout.finishWithout')}</Button>
+          </div>
+        </BottomSheet>
+      )}
       {workout.rest && <RestTimer rest={workout.rest} now={now} update={update} />}
       {pickerOpen && <ExercisePicker onClose={() => setPickerOpen(false)} onAdd={(list) => void addExercises(list)} />}
       {replaceFor && (
@@ -330,6 +348,7 @@ function WorkoutExerciseCard({
     <section className="rounded-2xl bg-card p-3 shadow-sm ring-1 ring-line/60">
       <div className="flex items-start gap-1 px-1">
         <ExerciseHeading exercise={exercise}>
+          <p className="text-xs font-semibold tabular-nums text-brand-dark">{t('workout.setsProgress', { done: doneSets, total: item.sets.length })}</p>
           {previous && (
             <p className="text-xs text-muted">
               {t('workout.lastTime', { date: new Date(previous.started_at).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'long' }) })}
@@ -410,7 +429,7 @@ function WorkoutExerciseCard({
           </span>
         ))}
         {showRpe && <span className="text-center text-[11px] font-medium text-muted">{t('rpe.col')}</span>}
-        <span />
+        <span className="text-center text-[11px] font-medium text-muted">{t('workout.colDone')}</span>
 
         {item.sets.map((set, index) => {
           const hint = suggestion(workout, item, index)
@@ -579,11 +598,19 @@ function SetRow({
         onClick={onToggleDone}
         aria-pressed={set.done}
         aria-label={set.done ? t('workout.unconfirmAria', { n: label }) : t('workout.confirmAria', { n: label })}
-        className={`flex min-h-11 items-center justify-center rounded-lg ${set.done ? 'bg-brand text-white' : 'bg-surface text-muted ring-1 ring-line'}`}
+        className="flex min-h-11 items-center justify-center rounded-lg"
       >
-        <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M5 12l5 5 9-10" />
-        </svg>
+        {/* Not confirmed: an empty box. Confirmed: a filled box with a check. */}
+        <span
+          data-confirmed={set.done ? 'true' : 'false'}
+          className={`flex size-8 items-center justify-center rounded-md border-2 ${set.done ? 'border-brand bg-brand text-white' : 'border-muted/60 bg-card'}`}
+        >
+          {set.done && (
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 12l5 5 9-10" />
+            </svg>
+          )}
+        </span>
       </button>
     </>
   )

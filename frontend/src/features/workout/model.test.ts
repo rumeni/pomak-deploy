@@ -28,6 +28,13 @@ import {
   unconfirmSet,
   updateSet,
   type PreviousPerformance,
+  emptyActiveSet,
+  hasEnteredValues,
+  setProgress,
+  startEmpty,
+  unconfirmedWithValues,
+  type ActiveExercise,
+  type ActiveSet,
 } from './model'
 
 const bench: Exercise = {
@@ -597,3 +604,23 @@ describe('timed prescriptions from a program', () => {
   })
 })
 
+
+describe('set progress and unconfirmed results', () => {
+  const exercise = (sets: Partial<ActiveSet>[]): ActiveExercise => ({
+    ...newActiveExercise(bench),
+    sets: sets.map((s) => ({ ...emptyActiveSet(), ...s })),
+  })
+  const workoutWith = (...exercises: ActiveExercise[]) => ({ ...startEmpty('Test', new Date('2026-11-17T10:00:00Z')), exercises })
+
+  it('counts every set, warm-ups included', () => {
+    const w = workoutWith(exercise([{ set_type: 'warmup', done: true }, { done: true }, {}]), exercise([{}]))
+    expect(setProgress(w)).toEqual({ done: 2, total: 4 })
+  })
+
+  it('warns only about unconfirmed sets that have something typed in', () => {
+    const w = workoutWith(exercise([{ weight: '60', reps: '8' }, { rpe: 8 }, {}, { weight: '50', reps: '5', done: true }]))
+    expect(unconfirmedWithValues(w)).toBe(2)
+    expect(hasEnteredValues({ ...emptyActiveSet(), duration: '30' })).toBe(true)
+    expect(hasEnteredValues({ ...emptyActiveSet(), weight: '   ' })).toBe(false)
+  })
+})

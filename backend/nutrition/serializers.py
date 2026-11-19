@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from rest_framework.exceptions import APIException
 
 from core.i18n import localized_name
 from core.text import FOOD_PREMIGRATION_KEY_LIMIT, search_key_fits
@@ -554,13 +555,16 @@ class EstimateSerializer(serializers.Serializer):
     """Izbori korisnika za procenu; telesni podaci se uzimaju iz profila i poslednjeg merenja težine."""
 
     activity = serializers.ChoiceField(choices=list(targets.ACTIVITY_FACTORS))
-    goal = serializers.ChoiceField(choices=list(targets.PACES))
+    # The four goals; older apps still send lose / maintain / gain (taken as the new ones).
+    goal = serializers.ChoiceField(choices=[*targets.GOALS, *targets.LEGACY_GOALS])
     pace = serializers.FloatField(default=0)
     # Trudnoća, dojenje, poremećaj ishrane ili bolest zbog koje ishranu vodi lekar.
     special_conditions = serializers.BooleanField()
 
     def validate(self, attrs):
-        if attrs['pace'] not in targets.PACES[attrs['goal']]:
+        # Legacy values stay as sent (they keep the earlier method); the pace rule is the same.
+        # Recomposition and maintenance have no pace: only 0 is accepted.
+        if attrs['pace'] not in targets.PACES[targets.normalize_goal(attrs['goal'])]:
             raise serializers.ValidationError({'pace': _('Choose one of the offered paces.')})
         return attrs
 
@@ -587,17 +591,37 @@ class EstimateSerializer(serializers.Serializer):
         ))
 
 
+class EstimateChanged(APIException):
+    status_code = 409
+
+    def __init__(self, estimate):
+        super().__init__({'code': 'estimate_changed', 'detail': _('The proposal has changed. Check the new one.')})
+        self.detail['estimate'] = estimate
+
+
+class ExpectedEstimateSerializer(serializers.Serializer):
+    """The displayed method and all four values, not a client-supplied prescription."""
+
+    method = serializers.CharField(max_length=40)
+    kcal = serializers.IntegerField()
+    protein_g = serializers.IntegerField()
+    carbs_g = serializers.IntegerField()
+    fat_g = serializers.IntegerField()
+
+
 class TargetWriteSerializer(EstimateSerializer):
     """Novi cilj: procena aplikacije (server računa ponovo, ne veruje poslatim brojevima) ili moj cilj."""
 
     mode = serializers.ChoiceField(choices=[NutritionTarget.Mode.APP, NutritionTarget.Mode.MANUAL])
     activity = serializers.ChoiceField(choices=list(targets.ACTIVITY_FACTORS), required=False)
-    goal = serializers.ChoiceField(choices=list(targets.PACES), required=False)
+    goal = serializers.ChoiceField(choices=[*targets.GOALS, *targets.LEGACY_GOALS], required=False)
     special_conditions = serializers.BooleanField(required=False, default=False)
     kcal = serializers.IntegerField(min_value=800, max_value=8000, required=False)
     protein_g = serializers.IntegerField(min_value=0, max_value=600, required=False, allow_null=True)
     carbs_g = serializers.IntegerField(min_value=0, max_value=1500, required=False, allow_null=True)
     fat_g = serializers.IntegerField(min_value=0, max_value=500, required=False, allow_null=True)
+    # The proposal the user saw and accepted (the app): saved only if it is still the same.
+    expected = ExpectedEstimateSerializer(required=False)
 
     def validate(self, attrs):
         if attrs['mode'] == NutritionTarget.Mode.MANUAL:
@@ -609,6 +633,8 @@ class TargetWriteSerializer(EstimateSerializer):
             return attrs
         if 'activity' not in attrs or 'goal' not in attrs:
             raise serializers.ValidationError(_('Choose the activity level and goal.'))
+        if attrs['goal'] not in targets.LEGACY_GOALS and 'expected' not in attrs:
+            raise serializers.ValidationError({'expected': 'Review the proposal before accepting it.'})
         return super().validate(attrs)
 
     def save_target(self, user, valid_from):
@@ -618,8 +644,15 @@ class TargetWriteSerializer(EstimateSerializer):
             values.update({f: data.get(f) for f in ('kcal', 'protein_g', 'carbs_g', 'fat_g')})
         else:
             result = self.estimate(user, valid_from)
+            seen = data.get('expected')
             if not result['supported']:
+                if seen is not None:
+                    raise EstimateChanged(result)
                 raise serializers.ValidationError({'reason': result['reason']})
+            if seen is not None and any(seen[f] != result[f] for f in ('method', 'kcal', 'protein_g', 'carbs_g', 'fat_g')):
+                # Something changed since the proposal was shown (e.g. a new weight): never save
+                # other numbers than the ones accepted; the app shows the new proposal.
+                raise EstimateChanged(result)
             values.update({f: result[f] for f in ('kcal', 'protein_g', 'carbs_g', 'fat_g', 'method', 'inputs', 'explanation')})
         target, _created = NutritionTarget.objects.update_or_create(owner=user, valid_from=valid_from, defaults=values)
         return target
