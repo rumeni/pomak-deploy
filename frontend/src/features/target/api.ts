@@ -79,8 +79,14 @@ export interface EstimateChoices {
 }
 
 export type TargetWrite =
-  | ({ mode: 'app' } & EstimateChoices)
+  | ({ mode: 'app'; expected?: Pick<Target, 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g'> } & EstimateChoices)
   | { mode: 'manual'; kcal: number; protein_g: number | null; carbs_g: number | null; fat_g: number | null }
+
+/** The server's new proposal when the accepted one is no longer what it would save (409). */
+export function changedEstimate(error: unknown): Estimate | null {
+  const data = (error as { response?: { status?: number; data?: { code?: string; estimate?: Estimate } } } | null)?.response
+  return data?.status === 409 && data.data?.code === 'estimate_changed' ? data.data.estimate ?? null : null
+}
 
 export function useTargets() {
   return useQuery({

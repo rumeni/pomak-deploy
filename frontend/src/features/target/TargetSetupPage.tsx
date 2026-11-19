@@ -14,6 +14,7 @@ import { uuid } from '../../lib/uuid'
 import {
   ACTIVITIES,
   estimateTarget,
+  changedEstimate,
   GOALS,
   hasPace,
   PACES,
@@ -155,9 +156,14 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
     }
   }
 
+  // The server's newer proposal (the accepted one changed meanwhile, e.g. a new weight): shown instead.
+  const newer = save.isError ? changedEstimate(save.error) : null
+  const shown = newer ?? result
   const accept = () => {
-    if (!activity || !goal) return
-    submit(validFrom, { mode: 'app', activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes' })
+    if (!activity || !goal || !shown?.supported) return
+    // Saved only as shown: if the server would save other numbers, it says so and shows them.
+    const expected = { kcal: shown.kcal, protein_g: shown.protein_g, carbs_g: shown.carbs_g, fat_g: shown.fat_g }
+    submit(validFrom, { mode: 'app', activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes', expected })
   }
 
   return (
@@ -239,17 +245,17 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
 
       <StartDateField value={validFrom} onChange={changed(setValidFrom)} />
 
-      <FormError message={error ?? (save.isError ? errorMessage(save.error) : null)} />
+      <FormError message={error ?? (newer ? t('target.estimateChanged') : save.isError ? errorMessage(save.error) : null)} />
       {!result && (
         <Button onClick={() => void calculate()} disabled={pending}>
           {pending ? t('target.calculating') : t('target.calculate')}
         </Button>
       )}
 
-      {result && !result.supported && (
+      {shown && !shown.supported && (
         <Card>
           <h2 className="font-semibold">{t('target.unsupportedTitle')}</h2>
-          <p className="mt-1 text-sm">{t(`target.unsupported_${result.reason}`, { floor: result.floor })}</p>
+          <p className="mt-1 text-sm">{t(`target.unsupported_${shown.reason}`, { floor: shown.floor })}</p>
           <div className="mt-4">
             <Button variant="ghost" onClick={onManual}>
               {t('target.enterOwn')}
@@ -258,24 +264,24 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
         </Card>
       )}
 
-      {result?.supported && (
+      {shown?.supported && (
         <Card>
           <p className="text-sm font-medium text-muted">{t('target.proposal')}</p>
           <p className="text-3xl font-bold tabular-nums">
-            {formatDecimal(result.kcal)} <span className="text-base font-medium text-muted">{t('target.kcalPerDay')}</span>
+            {formatDecimal(shown.kcal)} <span className="text-base font-medium text-muted">{t('target.kcalPerDay')}</span>
           </p>
           <div className="mt-3">
             <TargetExplanation
-              kcal={result.kcal}
-              protein={result.protein_g}
-              carbs={result.carbs_g}
-              fat={result.fat_g}
-              inputs={result.inputs}
-              explanation={result.explanation}
+              kcal={shown.kcal}
+              protein={shown.protein_g}
+              carbs={shown.carbs_g}
+              fat={shown.fat_g}
+              inputs={shown.inputs}
+              explanation={shown.explanation}
             />
           </div>
           <p className="mt-3 rounded-xl bg-brand-soft p-3 text-sm text-brand-dark">{t('target.estimateNote')}</p>
-          <p className="mt-2 text-xs text-muted">{t('target.methodNote', { method: result.method })}</p>
+          <p className="mt-2 text-xs text-muted">{t('target.methodNote', { method: shown.method })}</p>
           <div className="mt-4 flex flex-col gap-2">
             <Button onClick={accept} disabled={save.isPending}>
               {save.isPending ? t('common.saving') : t('target.accept', { date: formatShortDate(validFrom) })}

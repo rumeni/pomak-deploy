@@ -18,6 +18,10 @@ import math
 from dataclasses import dataclass
 
 METHOD = 'msj-v2'
+# Older apps send lose / maintain / gain and show what the server estimated for them: those
+# requests keep the earlier method, so what such an app shows is exactly what it saves.
+LEGACY_METHOD = 'msj-v1'
+LEGACY_PROTEIN_G_PER_KG = 1.6
 
 # Mifflin MD, St Jeor ST i sar. (1990), Am J Clin Nutr 51(2):241-7.
 # BMR = 10·kg + 6,25·cm − 5·godine + s;  s = +5 (muškarci), −161 (žene)
@@ -111,6 +115,7 @@ def estimate(i: Inputs) -> dict:
     """Cilj i objašnjenje svakog koraka, ili razlog zašto nema automatske preporuke."""
     if not MIN_AGE <= i.age <= MAX_AGE:
         return {'supported': False, 'reason': 'age'}
+    legacy = i.goal in LEGACY_GOALS
     goal = normalize_goal(i.goal)
     rule = GOALS[goal]
     bmr = 10 * i.weight_kg + 6.25 * i.height_cm - 5 * i.age + MSJ_SEX_CONSTANT[i.sex]
@@ -124,8 +129,10 @@ def estimate(i: Inputs) -> dict:
     if kcal < floor:
         return {'supported': False, 'reason': 'below_floor', 'floor': floor}
 
-    weight_for_protein = protein_weight(i.weight_kg, i.height_cm)
-    protein = round_half_up(rule['protein_g_per_kg'] * weight_for_protein)
+    # msj-v1 (older apps): 1.6 g per kg of actual weight for every goal.
+    weight_for_protein = i.weight_kg if legacy else protein_weight(i.weight_kg, i.height_cm)
+    protein_per_kg = LEGACY_PROTEIN_G_PER_KG if legacy else rule['protein_g_per_kg']
+    protein = round_half_up(protein_per_kg * weight_for_protein)
     fat = round_half_up(kcal * FAT_SHARE / 9)
     raw_carbs = (kcal - protein * 4 - fat * 9) / 4
     # A rounded zero must not conceal a negative macro balance.
@@ -139,7 +146,7 @@ def estimate(i: Inputs) -> dict:
         'protein_g': protein,
         'carbs_g': carbs,
         'fat_g': fat,
-        'method': METHOD,
+        'method': LEGACY_METHOD if legacy else METHOD,
         'inputs': {
             'sex': i.sex,
             'age': i.age,
@@ -147,7 +154,7 @@ def estimate(i: Inputs) -> dict:
             'weight_kg': i.weight_kg,
             'weight_date': i.weight_date.isoformat(),
             'activity': i.activity,
-            'goal': goal,
+            'goal': i.goal if legacy else goal,
             'pace': i.pace if rule['sign'] else 0.0,
         },
         'explanation': {
@@ -157,7 +164,7 @@ def estimate(i: Inputs) -> dict:
             'daily_adjustment': round_half_up(daily_adjustment) if daily_adjustment >= 0 else -round_half_up(-daily_adjustment),
             'weekly_change_kg': round(rule['sign'] * weekly_kg, 2),
             'floor': floor,
-            'protein_g_per_kg': rule['protein_g_per_kg'],
+            'protein_g_per_kg': protein_per_kg,
             # The weight the protein is based on, and whether it was adjusted (high body mass).
             'protein_weight_kg': round(weight_for_protein, 1),
             'protein_weight_adjusted': weight_for_protein < i.weight_kg,

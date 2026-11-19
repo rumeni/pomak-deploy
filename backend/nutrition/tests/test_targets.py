@@ -52,10 +52,13 @@ class MethodTests(SimpleTestCase):
         self.assertEqual((recomp['explanation']['daily_adjustment'], recomp['explanation']['weekly_change_kg'], recomp['inputs']['pace']), (0, 0.0, 0.0))
         self.assertFalse(recomp['explanation']['protein_weight_adjusted'])
 
-    def test_legacy_goals_are_the_new_ones(self):
-        self.assertEqual(targets.estimate(inputs(goal='lose')), targets.estimate(inputs(goal='fat_loss')))
-        self.assertEqual(targets.estimate(inputs(goal='maintain', pace=0.0))['inputs']['goal'], 'maintenance')
-        self.assertEqual(targets.estimate(inputs(goal='gain', pace=0.1))['inputs']['goal'], 'muscle_gain')
+    def test_legacy_goals_keep_the_earlier_method_exactly(self):
+        # An older app shows and saves msj-v1: the very numbers of the original v1 example.
+        r = targets.estimate(inputs(goal='lose'))
+        self.assertEqual((r['kcal'], r['protein_g'], r['fat_g'], r['carbs_g']), (1750, 112, 49, 215))
+        self.assertEqual((r['method'], r['inputs']['goal'], r['explanation']['protein_g_per_kg']), ('msj-v1', 'lose', 1.6))
+        self.assertEqual(targets.estimate(inputs(goal='maintain', pace=0.0))['method'], 'msj-v1')
+        self.assertEqual(targets.estimate(inputs(goal='gain', pace=0.1))['inputs']['goal'], 'gain')
 
     def test_protein_weight_is_continuous_and_never_jumps(self):
         reference = 25 * 1.8 ** 2  # 81 kg pri 180 cm
@@ -128,7 +131,7 @@ class TargetApiTests(TargetApiBase):
         self.assertEqual(res.status_code, 200, res.data)
         t = NutritionTarget.objects.get()
         # Server računa sam; poslati broj kalorija se ignoriše
-        self.assertEqual((t.kcal, t.method, t.mode, t.set_by, t.inputs['activity']), (1750, 'msj-v2', 'app', self.user, 'moderate'))
+        self.assertEqual((t.kcal, t.method, t.mode, t.set_by, t.inputs['activity']), (1750, 'msj-v1', 'app', self.user, 'moderate'))
 
     def test_one_target_per_date_and_history_kept(self):
         today = timezone.localdate()
@@ -166,10 +169,11 @@ class GoalApiTests(TargetApiBase):
         self.assertEqual(response.status_code, 400)  # no weight-change pace for recomposition
         ok = self.client.post('/api/nutrition/targets/estimate/', {**self.app_body(goal='recomposition', pace=0), 'valid_from': FUTURE}, format='json')
         self.assertEqual((ok.status_code, ok.data['inputs']['goal'], ok.data['explanation']['weekly_change_kg']), (200, 'recomposition', 0.0))
-        # An older app sends "lose": saved as fat loss with the current method.
+        # An older app sends "lose": it saves exactly what its estimate showed (msj-v1).
+        shown = self.client.post('/api/nutrition/targets/estimate/', {**self.app_body(goal='lose'), 'valid_from': FUTURE}, format='json').data
         self.assertEqual(self.client.put(f'/api/nutrition/targets/{FUTURE}/', self.app_body(goal='lose'), format='json').status_code, 200)
         saved = NutritionTarget.objects.get(owner=self.user)
-        self.assertEqual((saved.method, saved.inputs['goal']), ('msj-v2', 'fat_loss'))
+        self.assertEqual((saved.method, saved.inputs['goal'], saved.kcal, saved.protein_g), ('msj-v1', 'lose', shown['kcal'], shown['protein_g']))
         self.assertEqual(self.client.post('/api/nutrition/targets/estimate/', {**self.app_body(goal='bulk'), 'valid_from': FUTURE}, format='json').status_code, 400)
 
     def test_earlier_targets_stay_as_they_were(self):
@@ -178,4 +182,16 @@ class GoalApiTests(TargetApiBase):
                                        explanation={'protein_g_per_kg': 1.6})
         row = next(t for t in self.client.get('/api/nutrition/targets/').data if t['valid_from'] == '2026-01-01')
         self.assertEqual((row['method'], row['inputs']['goal'], row['protein_g'], row['kcal']), ('msj-v1', 'lose', 112, 1800))
+
+    def test_an_accepted_proposal_is_saved_only_as_shown(self):
+        shown = self.client.post('/api/nutrition/targets/estimate/', {**self.app_body(goal='fat_loss'), 'valid_from': FUTURE}, format='json').data
+        expected = {f: shown[f] for f in ('kcal', 'protein_g', 'carbs_g', 'fat_g')}
+        # The weight changed after the proposal was shown (another device): not saved.
+        Measurement.objects.create(user=self.user, kind='weight', value=80, measured_on=datetime.date(2026, 9, 25))
+        stale = self.client.put(f'/api/nutrition/targets/{FUTURE}/', {**self.app_body(goal='fat_loss'), 'expected': expected}, format='json')
+        self.assertEqual((stale.status_code, stale.data['code']), (409, 'estimate_changed'))
+        self.assertFalse(NutritionTarget.objects.filter(owner=self.user).exists())
+        fresh = {f: stale.data['estimate'][f] for f in expected}
+        ok = self.client.put(f'/api/nutrition/targets/{FUTURE}/', {**self.app_body(goal='fat_loss'), 'expected': fresh}, format='json')
+        self.assertEqual(ok.status_code, 200)
 

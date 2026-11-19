@@ -366,6 +366,7 @@ export const en = {
     goalText_recomposition: 'Less fat and more muscle at about the same weight: maintenance calories, more protein and regular strength training.',
     goalText_maintenance: 'Calories to maintain your current weight.',
     stepGoal: 'Goal',
+    estimateChanged: 'The proposal changed meanwhile (e.g. a new weight). Check the new one and accept it again.',
     proteinAdjusted: 'Protein is based on an adjusted weight of {{weight}} kg, so the recommendation does not grow unrealistically with body mass. You can always set the target yourself.',
     guidance: {
       title: 'How to follow your progress',

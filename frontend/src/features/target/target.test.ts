@@ -38,3 +38,14 @@ describe('nutrition goals', () => {
     expect([hasPace('recomposition'), hasPace('maintenance'), hasPace('fat_loss')]).toEqual([false, false, true])
   })
 })
+
+describe('an accepted proposal that changed', () => {
+  it('takes the server\'s newer proposal only from an estimate_changed answer', async () => {
+    const { changedEstimate } = await import('./api')
+    const estimate = { supported: false, reason: 'age' }
+    expect(changedEstimate({ response: { status: 409, data: { code: 'estimate_changed', estimate } } })).toEqual(estimate)
+    expect(changedEstimate({ response: { status: 409, data: { code: 'collaboration_changed' } } })).toBeNull()
+    expect(changedEstimate({ response: { status: 400, data: {} } })).toBeNull()
+    expect(changedEstimate(null)).toBeNull()
+  })
+})

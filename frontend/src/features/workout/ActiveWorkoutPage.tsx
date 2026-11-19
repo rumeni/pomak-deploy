@@ -70,7 +70,7 @@ export function ActiveWorkoutPage() {
   const [finishId, setFinishId] = useState<string | null>(null)
   const [editingCheckIn, setEditingCheckIn] = useState(false)
   // Unconfirmed sets with results: asked before the finish screen (back to the workout, or finish without them).
-  const [finishCheck, setFinishCheck] = useState(false)
+  const [finishCheck, setFinishCheck] = useState<string | null>(null)
   const now = useNow()
   const workout = row?.workout
 
@@ -187,7 +187,7 @@ export function ActiveWorkoutPage() {
         title={workout.name}
         onBack={() => navigate('/trening')}
         action={
-          <Button className="min-h-10 px-4 text-sm" onClick={() => (unconfirmedWithValues(workout) > 0 ? setFinishCheck(true) : setFinishId(workout.id))}>
+          <Button className="min-h-10 px-4 text-sm" onClick={() => (unconfirmedWithValues(workout) > 0 ? setFinishCheck(workout.id) : setFinishId(workout.id))}>
             {t('workout.finish')}
           </Button>
         }
@@ -219,12 +219,13 @@ export function ActiveWorkoutPage() {
         </Button>
       </div>
 
-      {finishCheck && (
-        <BottomSheet label={t('workout.unconfirmedTitle')} title={t('workout.unconfirmedTitle')} onClose={() => setFinishCheck(false)}>
+      {/* Only for the workout it was opened for: another tab replacing the workout closes it. */}
+      {finishCheck === workout.id && (
+        <BottomSheet label={t('workout.unconfirmedTitle')} title={t('workout.unconfirmedTitle')} onClose={() => setFinishCheck(null)}>
           <p className="text-sm">{t('workout.unconfirmedWarning', { count: unconfirmedWithValues(workout) })}</p>
           <div className="mt-4 flex flex-col gap-2">
-            <Button onClick={() => setFinishCheck(false)}>{t('workout.backToWorkout')}</Button>
-            <Button variant="ghost" onClick={() => { setFinishCheck(false); setFinishId(workout.id) }}>{t('workout.finishWithout')}</Button>
+            <Button onClick={() => setFinishCheck(null)}>{t('workout.backToWorkout')}</Button>
+            <Button variant="ghost" onClick={() => { const id = finishCheck; setFinishCheck(null); if (id === workout.id) setFinishId(id) }}>{t('workout.finishWithout')}</Button>
           </div>
         </BottomSheet>
       )}

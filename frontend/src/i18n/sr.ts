@@ -372,6 +372,7 @@ export const sr = {
     goalText_recomposition: 'Manje masnog tkiva i više mišića uz približno istu težinu: kalorije za održavanje, više proteina i redovan trening snage.',
     goalText_maintenance: 'Kalorije za održavanje trenutne težine.',
     stepGoal: 'Cilj',
+    estimateChanged: 'Predlog se u međuvremenu promenio (npr. nova težina). Pogledaj novi i prihvati ga ponovo.',
     proteinAdjusted: 'Proteini su računati prema prilagođenoj težini od {{weight}} kg, da preporuka ne raste nerealno sa telesnom masom. Cilj uvek možeš i sam da podesiš.',
     guidance: {
       title: 'Kako da pratiš napredak',

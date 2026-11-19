@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from rest_framework.exceptions import APIException
 
 from core.i18n import localized_name
 from core.text import FOOD_PREMIGRATION_KEY_LIMIT, search_key_fits
@@ -561,9 +562,9 @@ class EstimateSerializer(serializers.Serializer):
     special_conditions = serializers.BooleanField()
 
     def validate(self, attrs):
-        attrs['goal'] = targets.normalize_goal(attrs['goal'])
+        # Legacy values stay as sent (they keep the earlier method); the pace rule is the same.
         # Recomposition and maintenance have no pace: only 0 is accepted.
-        if attrs['pace'] not in targets.PACES[attrs['goal']]:
+        if attrs['pace'] not in targets.PACES[targets.normalize_goal(attrs['goal'])]:
             raise serializers.ValidationError({'pace': _('Choose one of the offered paces.')})
         return attrs
 
@@ -590,6 +591,14 @@ class EstimateSerializer(serializers.Serializer):
         ))
 
 
+class EstimateChanged(APIException):
+    status_code = 409
+
+    def __init__(self, estimate):
+        super().__init__({'code': 'estimate_changed', 'detail': _('The proposal has changed. Check the new one.')})
+        self.detail['estimate'] = estimate
+
+
 class TargetWriteSerializer(EstimateSerializer):
     """Novi cilj: procena aplikacije (server računa ponovo, ne veruje poslatim brojevima) ili moj cilj."""
 
@@ -601,6 +610,8 @@ class TargetWriteSerializer(EstimateSerializer):
     protein_g = serializers.IntegerField(min_value=0, max_value=600, required=False, allow_null=True)
     carbs_g = serializers.IntegerField(min_value=0, max_value=1500, required=False, allow_null=True)
     fat_g = serializers.IntegerField(min_value=0, max_value=500, required=False, allow_null=True)
+    # The proposal the user saw and accepted (the app): saved only if it is still the same.
+    expected = serializers.DictField(child=serializers.IntegerField(allow_null=True), required=False)
 
     def validate(self, attrs):
         if attrs['mode'] == NutritionTarget.Mode.MANUAL:
@@ -623,6 +634,11 @@ class TargetWriteSerializer(EstimateSerializer):
             result = self.estimate(user, valid_from)
             if not result['supported']:
                 raise serializers.ValidationError({'reason': result['reason']})
+            seen = data.get('expected')
+            if seen is not None and any(seen.get(f) != result[f] for f in ('kcal', 'protein_g', 'carbs_g', 'fat_g')):
+                # Something changed since the proposal was shown (e.g. a new weight): never save
+                # other numbers than the ones accepted; the app shows the new proposal.
+                raise EstimateChanged(result)
             values.update({f: result[f] for f in ('kcal', 'protein_g', 'carbs_g', 'fat_g', 'method', 'inputs', 'explanation')})
         target, _created = NutritionTarget.objects.update_or_create(owner=user, valid_from=valid_from, defaults=values)
         return target
