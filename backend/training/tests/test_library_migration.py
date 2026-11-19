@@ -1,6 +1,7 @@
 import importlib
 
 from django.conf import settings
+from django.core.management import call_command
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
@@ -21,6 +22,16 @@ class LibraryUpgradeTests(TransactionTestCase):
 
     # The seeded library is restored afterwards for the tests that follow.
     serialized_rollback = True
+
+    @classmethod
+    def _fixture_setup(cls):
+        # Other TransactionTestCase classes may have emitted post_migrate and
+        # recreated content types after their flush. Serialized rollback would
+        # try to insert those same rows again (UNIQUE app_label/model).
+        # Empty the isolated TEST database without firing post_migrate before
+        # Django restores its migrated seed snapshot.
+        call_command('flush', verbosity=0, interactive=False, inhibit_post_migrate=True)
+        super()._fixture_setup()
 
     def migrate(self, targets):
         executor = MigrationExecutor(connection)
