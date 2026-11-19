@@ -66,8 +66,17 @@ def barcode_clash_error(clash):
 
 
 def community_used_by_other(food) -> bool:
-    """Once another person uses the shared food in a recipe, its values are immutable."""
-    return RecipeIngredient.objects.filter(food_id=food.pk).exclude(recipe__owner_id=food.created_by_id).exists()
+    """Other users' recipes AND reusable saved meals must see stable shared-food values.
+
+    Diary entries already snapshot nutrients, but SavedMealItem resolves the food's
+    current values every time the user adds that saved meal to the diary.
+    """
+    return (
+        RecipeIngredient.objects.filter(food_id=food.pk)
+        .exclude(recipe__owner_id=food.created_by_id).exists()
+        or SavedMealItem.objects.filter(food_id=food.pk)
+        .exclude(saved_meal__owner_id=food.created_by_id).exists()
+    )
 
 
 def can_edit_food(food, request) -> bool:
