@@ -35,10 +35,21 @@ export default defineConfig({
       // Push and notification clicks (public/push-sw.js) inside the generated service worker.
       workbox: {
         importScripts: ['push-sw.js'],
-        // Large OCR worker, WASM and traineddata are served from our origin and must be
-        // available offline after PWA installation (not only after the first OCR attempt).
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,wasm,gz}'],
+        // OCR is large and optional: never download it for users who do not scan.
+        // After the first online scan, CacheFirst keeps the worker, selected LSTM core
+        // and language model locally for later offline use.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
+        globIgnores: ['ocr/**', '**/ocr/**'],
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+        runtimeCaching: [{
+          urlPattern: /\/ocr\//,
+          handler: 'CacheFirst',
+          options: {
+            cacheName: 'pomak-ocr-v1',
+            cacheableResponse: { statuses: [200] },
+            expiration: { maxEntries: 8, maxAgeSeconds: 365 * 24 * 60 * 60 },
+          },
+        }],
       },
       manifest: {
         name: 'POMAK',
