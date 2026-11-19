@@ -180,6 +180,85 @@ class RecipeTests(APITestCase):
         self.assertEqual(result.data['kcal'], '50.0')
         self.assertEqual(result.data['ingredients'][0]['food']['id'], str(sauce.pk))
 
+    def test_legacy_put_keeps_identical_archived_ingredient_list(self):
+        """Older APKs send the full list even when only editing the recipe metadata."""
+        sauce = Food.objects.create(owner=self.user, source=Food.Source.CUSTOM, name='Old sauce', kcal=100)
+        recipe = self.create(
+            mass_g=None, servings=1,
+            ingredients=[{'food_id': str(sauce.pk), 'grams': '100', 'portion_name': 'Kašika'}],
+        )
+        old_ids = list(Food.objects.get(pk=recipe['id']).ingredients.values_list('pk', flat=True))
+        Food.objects.filter(pk=sauce.pk).update(archived_at=timezone.now())
+        response = self.client.put(f"{URL}{recipe['id']}/", self.body(
+            id=recipe['id'], name='Updated from old APK', mass_g='200', servings=2,
+            ingredients=[{'food_id': str(sauce.pk), 'grams': '100.0', 'portion_name': 'Kašika'}],
+        ), format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual((response.data['name'], response.data['servings'], response.data['kcal']),
+                         ('Updated from old APK', 2, '50.0'))
+        self.assertEqual(list(Food.objects.get(pk=recipe['id']).ingredients.values_list('pk', flat=True)), old_ids)
+
+    def test_legacy_put_rejects_changed_or_new_archived_ingredients(self):
+        archived = Food.objects.create(owner=self.user, source=Food.Source.CUSTOM, name='Archived', kcal=100)
+        extra = Food.objects.create(owner=self.user, source=Food.Source.CUSTOM, name='Extra archived', kcal=200)
+        recipe = self.create(mass_g=None, ingredients=[{'food_id': str(archived.pk), 'grams': '100', 'portion_name': ''}])
+        Food.objects.filter(pk__in=[archived.pk, extra.pk]).update(archived_at=timezone.now())
+        variants = (
+            [{'food_id': str(archived.pk), 'grams': '101', 'portion_name': ''}],
+            [{'food_id': str(archived.pk), 'grams': '100', 'portion_name': 'Changed'}],
+            [{'food_id': str(extra.pk), 'grams': '100', 'portion_name': ''}],
+            [{'food_id': str(archived.pk), 'grams': '100', 'portion_name': ''},
+             {'food_id': str(extra.pk), 'grams': '20', 'portion_name': ''}],
+        )
+        for ingredients in variants:
+            with self.subTest(ingredients=ingredients):
+                response = self.client.put(f"{URL}{recipe['id']}/", self.body(
+                    id=recipe['id'], name='Must not save', mass_g=None, ingredients=ingredients,
+                ), format='json')
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertEqual(Food.objects.get(pk=recipe['id']).name, 'Pirinač na ulju')
+                self.assertEqual(
+                    list(Food.objects.get(pk=recipe['id']).ingredients.values_list('food_id', flat=True)),
+                    [archived.pk],
+                )
+        # A new recipe has no historical grandfathered list.
+        response = self.client.post(URL, self.body(
+            mass_g=None, ingredients=[{'food_id': str(archived.pk), 'grams': '100'}],
+        ), format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+
+    def test_legacy_put_rejects_archived_ingredient_of_other_user(self):
+        other = User.objects.create_user('archive-other@example.test', 'jaka-lozinka-123')
+        private = Food.objects.create(owner=other, source=Food.Source.CUSTOM, name='Private', kcal=100, archived_at=timezone.now())
+        recipe = self.create()
+        response = self.client.put(f"{URL}{recipe['id']}/", self.body(
+            id=recipe['id'], ingredients=[{'food_id': str(private.pk), 'grams': '100'}],
+        ), format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+
+    def test_legacy_put_rechecks_current_list_after_replacement(self):
+        old = Food.objects.create(owner=self.user, source=Food.Source.CUSTOM, name='Old', kcal=100)
+        newer = Food.objects.create(owner=self.user, source=Food.Source.CUSTOM, name='New', kcal=150)
+        recipe = self.create(mass_g=None, ingredients=[{'food_id': str(old.pk), 'grams': '100', 'portion_name': ''}])
+        Food.objects.filter(pk=old.pk).update(archived_at=timezone.now())
+        real_lock = RecipeSerializer._locked_ingredients
+
+        def replace_between_validation_and_recipe_lock(serializer, ingredients, **kwargs):
+            fresh = real_lock(serializer, ingredients, **kwargs)
+            # Simulate a replacement committed after the older client validated
+            # its payload, but before that request acquired the recipe lock.
+            Food.objects.get(pk=recipe['id']).ingredients.update(food=newer)
+            return fresh
+
+        with mock.patch.object(RecipeSerializer, '_locked_ingredients', replace_between_validation_and_recipe_lock):
+            response = self.client.put(f"{URL}{recipe['id']}/", self.body(
+                id=recipe['id'], name='Stale edit', mass_g=None,
+                ingredients=[{'food_id': str(old.pk), 'grams': '100', 'portion_name': ''}],
+            ), format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('ingredients', response.data)
+        self.assertEqual(Food.objects.get(pk=recipe['id']).name, 'Pirinač na ulju')
+
     def test_recipe_values_cannot_be_overwritten_through_foods(self):
         recipe = self.create()
         res = self.client.patch(f"/api/nutrition/foods/{recipe['id']}/", {'kcal': '10'}, format='json')
