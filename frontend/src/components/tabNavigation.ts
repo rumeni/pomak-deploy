@@ -62,7 +62,8 @@ export function dockSwipeTarget(
   // If the finger stops just short of a segment boundary, treat a decisive
   // directional swipe as navigation by one tab rather than snapping back.
   if (target === active && Math.abs(dx) >= segment * 0.55) {
-    target = Math.max(0, Math.min(count - 1, active + (dx < 0 ? 1 : -1)))
+    // Increasing X moves right in the dock, decreasing X moves left.
+    target = Math.max(0, Math.min(count - 1, active + (dx > 0 ? 1 : -1)))
   }
   return target === active ? null : target
 }

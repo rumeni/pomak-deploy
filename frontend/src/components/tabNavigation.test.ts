@@ -36,6 +36,9 @@ describe('dock finger-release navigation', () => {
   it('follows finger release for navigation in both directions', () => {
     expect(dockSwipeTarget(0, 51, 670, 187, 672, 12, 350, 5)).toBe(2)
     expect(dockSwipeTarget(2, 187, 670, 255, 672, 12, 350, 5)).toBe(3)
+    // A release just short of a segment boundary still follows swipe direction.
+    expect(dockSwipeTarget(4, 342, 670, 300, 670, 12, 350, 5)).toBe(3)
+    expect(dockSwipeTarget(2, 204, 670, 160, 670, 12, 350, 5)).toBe(1)
   })
 
   it('ignores micro drags, vertical scroll and swipes beyond the first/last tab', () => {
