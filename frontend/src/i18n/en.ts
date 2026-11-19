@@ -1524,7 +1524,7 @@ export const en = {
     addAgainConfirm: 'You already have routines from this program. Add them again?',
     showAll: 'Show all programs ({{count}})',
     showRecommended: 'Show recommended only',
-    collapsedIntro: 'Ready-made programs by level. Tap to see them.',
+    collapsedIntro: 'Ready-made programs by level ({{count}}). Tap to see them.',
     hideSection: 'Hide',
     hiddenNotice: 'Suggestions are hidden. You can bring them back in Profile.',
     undo: 'Undo',

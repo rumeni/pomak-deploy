@@ -107,7 +107,7 @@ export function ProgramsSection({ routines }: { routines: Routine[] | undefined 
   return (
     <section className="flex flex-col gap-3" aria-labelledby="programs-title">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 id="programs-title" className="text-xl font-extrabold tracking-tight">
             {collapsible ? (
               <button
@@ -115,22 +115,23 @@ export function ProgramsSection({ routines }: { routines: Routine[] | undefined 
                 aria-expanded={open}
                 aria-controls="programs-list"
                 onClick={() => setExpanded(!open)}
-                className="flex min-h-11 items-center gap-2 text-left"
+                className="min-h-11 text-left"
               >
                 {t('programs.title')}
-                <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-semibold tabular-nums">{data.length}</span>
-                <Chevron open={open} />
+                <span className="ml-1.5 inline-block align-middle">
+                  <Chevron open={open} />
+                </span>
               </button>
             ) : (
               t('programs.title')
             )}
           </h2>
-          <p className="text-sm text-muted">{open ? t('programs.intro') : t('programs.collapsedIntro')}</p>
+          <p className="text-sm text-muted">{open ? t('programs.intro') : t('programs.collapsedIntro', { count: data.length })}</p>
         </div>
         <button
           type="button"
           onClick={hide}
-          className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-semibold text-muted active:bg-brand-soft"
+          className="min-h-11 shrink-0 rounded-xl px-2 text-sm font-semibold text-muted active:bg-brand-soft"
         >
           {t('programs.hideSection')}
         </button>

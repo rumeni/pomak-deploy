@@ -1574,7 +1574,7 @@ export const sr = {
     addAgainConfirm: 'Već imaš rutine iz ovog programa. Dodati ih ponovo?',
     showAll: 'Prikaži sve programe ({{count}})',
     showRecommended: 'Prikaži samo preporučene',
-    collapsedIntro: 'Gotovi programi po nivou. Dodirni da ih vidiš.',
+    collapsedIntro: 'Gotovi programi po nivou ({{count}}). Dodirni da ih vidiš.',
     hideSection: 'Sakrij',
     hiddenNotice: 'Predlozi su sakriveni. Možeš ih vratiti u Profilu.',
     undo: 'Poništi',
