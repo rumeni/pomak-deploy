@@ -28,7 +28,7 @@ sync can never insert facts after consent was revoked or the collaboration ended
 deleted workout cannot get its tasks back from a sync that read it just before.
 """
 
-from collections import defaultdict
+from itertools import groupby
 from datetime import timedelta
 
 from django.db import transaction
@@ -71,34 +71,64 @@ def _best_lifts(session) -> dict:
     return best
 
 
-def _records(session) -> list:
-    """Lifts where this workout beat every earlier workout of the client (a first lift is no record).
+def _records_for_sessions(owner_id, sessions) -> dict:
+    """Judge any set of workouts against one chronological history scan.
 
-    Judged on the current data of the workouts, so a corrected workout is judged again correctly.
+    New (including late/offline) workouts need a record score relative to the owner's
+    earlier workouts, NOT relative to the order those events reached the server.
+    Same started_at workouts must not count against one another (strictly earlier).
+    The returned dict also includes sessions without working lifts, with empty lists.
     """
-    lifts = _best_lifts(session)
-    if not lifts:
-        return []
-    earlier = WorkoutSession.objects.filter(
-        owner_id=session.owner_id, started_at__lt=session.started_at,
-        exercises__exercise_id__in=lifts.keys(),
-    ).distinct().prefetch_related('exercises__exercise', 'exercises__sets')
-    previous = defaultdict(lambda: None)
-    for other in earlier:
-        for exercise_id, (value, _) in _best_lifts(other).items():
-            if previous[exercise_id] is None or value > previous[exercise_id]:
-                previous[exercise_id] = value
-    return [
-        # Both names: the task is stored once and read in either language.
-        {'exercise_id': str(exercise_id), 'exercise': exercise.name, 'exercise_en': getattr(exercise, 'name_en', '') or '',
-         'e1rm': str(value.quantize(1))}
-        for exercise_id, (value, exercise) in lifts.items()
-        if previous[exercise_id] is not None and value > previous[exercise_id]
-    ]
+    result = {session.pk: [] for session in sessions}
+    if not result:
+        return result
+
+    selected_lifts = {session.pk: _best_lifts(session) for session in sessions}
+    exercise_ids = {exercise_id for lifts in selected_lifts.values() for exercise_id in lifts}
+    if not exercise_ids:
+        return result
+
+    history = _with_details(
+        WorkoutSession.objects.filter(
+            owner_id=owner_id,
+            started_at__lte=max(session.started_at for session in sessions),
+            exercises__exercise_id__in=exercise_ids,
+        ).distinct().order_by('started_at', 'id')
+    )
+    previous = {}
+    for _, same_time in groupby(history, key=lambda session: session.started_at):
+        # Evaluate the entire timestamp with the previous best BEFORE updating it.
+        batch = [
+            (session, selected_lifts[session.pk] if session.pk in selected_lifts else _best_lifts(session))
+            for session in same_time
+        ]
+        for session, lifts in batch:
+            if session.pk not in result:
+                continue
+            result[session.pk] = [
+                {'exercise_id': str(exercise_id), 'exercise': exercise.name,
+                 'exercise_en': getattr(exercise, 'name_en', '') or '', 'e1rm': str(value.quantize(1))}
+                for exercise_id, (value, exercise) in lifts.items()
+                if exercise_id in previous and value > previous[exercise_id]
+            ]
+        for _, lifts in batch:
+            for exercise_id, (value, _) in lifts.items():
+                if exercise_id in exercise_ids and (exercise_id not in previous or value > previous[exercise_id]):
+                    previous[exercise_id] = value
+    return result
 
 
-def _workout_tasks(connection, session) -> list:
-    """The tasks one workout should have now (unsaved)."""
+def _records(session) -> list:
+    """Record facts for a single corrected workout, using the shared evaluator."""
+    return _records_for_sessions(session.owner_id, [session])[session.pk]
+
+
+def _workout_tasks(connection, session, *, records=None) -> list:
+    """The tasks one workout should have now (unsaved).
+
+    The sync passes precomputed records from one chronological history scan;
+    correction paths can still judge a single session directly.
+    """
     event_at = session.finished_at or session.started_at
     base = {'workout_id': str(session.id), 'workout': session.name}
     tasks = [CoachTask(connection=connection, kind=CoachTask.Kind.WORKOUT_REVIEW, key=str(session.id),
@@ -109,7 +139,8 @@ def _workout_tasks(connection, session) -> list:
         if score is not None and score < LOW_READINESS:
             tasks.append(CoachTask(connection=connection, kind=CoachTask.Kind.LOW_READINESS, key=str(session.id),
                                    event_at=session.started_at, data={**base, 'score': score, 'answers': answers}))
-    records = _records(session)
+    if records is None:
+        records = _records(session)
     if records:
         tasks.append(CoachTask(connection=connection, kind=CoachTask.Kind.PERSONAL_RECORD, key=str(session.id),
                                event_at=event_at, data={**base, 'records': records}))
@@ -147,8 +178,13 @@ def _sync_workouts(connection) -> None:
 
     sessions = new + late
     if sessions:
+        # One pass across the client's history, independent of the number of
+        # newly received workouts. Never run _records() once per event.
+        records_by_id = _records_for_sessions(connection.client_id, sessions)
         CoachTask.objects.bulk_create(
-            [task for session in sessions for task in _workout_tasks(connection, session)], ignore_conflicts=True,
+            [task for session in sessions
+             for task in _workout_tasks(connection, session, records=records_by_id[session.pk])],
+            ignore_conflicts=True,
         )
     if new:
         # Only forward: a concurrent sync that got further must not be moved back.
@@ -217,14 +253,11 @@ def _set_record_task(connection, session, records) -> None:
 
 
 def _rejudge_later_records(connection, owner_id, after) -> None:
-    """Rejudge the newest reviewed workouts with one chronological pass over their history.
+    """Rejudge the newest reviewed later workouts with the same batched evaluator.
 
-    A per-workout call to _records reloaded the entire preceding history up to 100 times. A
-    single ordered prefetch keeps query count bounded. Workouts with an identical started_at
-    are judged against the SAME earlier best (the strict < comparison in _records).
+    A correction/deletion must update existing record tasks without creating
+    review tasks for workouts not yet discovered by the regular sync.
     """
-    from itertools import groupby
-
     reviewed = CoachTask.objects.filter(
         connection=connection, kind=CoachTask.Kind.WORKOUT_REVIEW, key=Cast(OuterRef('id'), output_field=CharField()),
     )
@@ -235,41 +268,9 @@ def _rejudge_later_records(connection, owner_id, after) -> None:
     if not later:
         return
 
-    later_lifts = {session.pk: _best_lifts(session) for session in later}
-    target_ids = {exercise_id for lifts in later_lifts.values() for exercise_id in lifts}
-    # A correction can remove all working lifts: its previous record task must disappear too.
+    records_by_id = _records_for_sessions(owner_id, later)
     for session in later:
-        if not later_lifts[session.pk]:
-            _set_record_task(connection, session, [])
-    if not target_ids:
-        return
-
-    newest = max(session.started_at for session in later)
-    history = _with_details(
-        WorkoutSession.objects.filter(
-            owner_id=owner_id, started_at__lte=newest,
-            exercises__exercise_id__in=target_ids,
-        ).distinct().order_by('started_at', 'id')
-    )
-    selected = {session.pk: session for session in later}
-    previous = {}
-    for _started_at, same_time in groupby(history, key=lambda session: session.started_at):
-        # Do not update previous until ALL workouts at this timestamp have been evaluated.
-        batch = [(session, later_lifts.get(session.pk) or _best_lifts(session)) for session in same_time]
-        for session, lifts in batch:
-            if session.pk not in selected:
-                continue
-            records = [
-                {'exercise_id': str(exercise_id), 'exercise': exercise.name,
-                 'exercise_en': getattr(exercise, 'name_en', '') or '', 'e1rm': str(value.quantize(1))}
-                for exercise_id, (value, exercise) in lifts.items()
-                if exercise_id in target_ids and exercise_id in previous and value > previous[exercise_id]
-            ]
-            _set_record_task(connection, selected[session.pk], records)
-        for _session, lifts in batch:
-            for exercise_id, (value, _) in lifts.items():
-                if exercise_id in target_ids and (exercise_id not in previous or value > previous[exercise_id]):
-                    previous[exercise_id] = value
+        _set_record_task(connection, session, records_by_id[session.pk])
 
 
 def reconcile_workout(session_id) -> None:

@@ -9,7 +9,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 from nutrition import open_food_facts, serializers as food_serializers
 from nutrition.views import FoodViewSet
-from nutrition.models import Food, FoodReport, RecipeIngredient
+from nutrition.models import Food, FoodReport, RecipeIngredient, SavedMeal, SavedMealItem
 
 URL = '/api/nutrition/foods/'
 
@@ -70,6 +70,25 @@ class CommunityFoodTests(APITestCase):
         self.assertEqual(str(Food.objects.get(pk=recipe.pk).kcal), '61.0')
         # A report remains possible after the edit is locked.
         self.assertEqual(self.client.post(f'{URL}{food.pk}/report/', {'reason': 'Pogrešna deklaracija'}, format='json').status_code, 204)
+
+    def test_other_users_saved_meal_also_freezes_shared_food_and_own_meal_does_not(self):
+        shared = self.create(shared=True).json()
+        food = Food.objects.get(pk=shared['id'])
+        mine = SavedMeal.objects.create(owner=self.author, name='Moj obrok')
+        SavedMealItem.objects.create(saved_meal=mine, food=food, position=0, grams='100')
+        # The author's own saved meal does not freeze corrections.
+        self.assertTrue(self.client.get(f'{URL}{food.pk}/').json()['can_edit'])
+        self.assertEqual(self.client.patch(f'{URL}{food.pk}/', {'kcal': '62'}, format='json').status_code, 200)
+
+        theirs = SavedMeal.objects.create(owner=self.other, name='Tuđi sačuvani obrok')
+        SavedMealItem.objects.create(saved_meal=theirs, food=food, position=0, grams='100')
+        self.assertFalse(self.client.get(f'{URL}{food.pk}/').json()['can_edit'])
+        response = self.client.patch(f'{URL}{food.pk}/', {'name': 'Pokvareno', 'kcal': '0'}, format='json')
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(self.client.delete(f'{URL}{food.pk}/').status_code, 409)
+        food.refresh_from_db()
+        self.assertEqual(food.name, 'Jogurt 2,8% (Moravka)')
+        self.assertEqual(food.kcal, 62)
 
     def test_shared_food_daily_limit_does_not_restrict_private_or_idempotent_retries(self):
         for i in range(food_serializers.MAX_SHARED_FOODS_PER_24_HOURS):

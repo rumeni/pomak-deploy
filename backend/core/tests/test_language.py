@@ -25,8 +25,9 @@ class LanguageTests(APITestCase):
                 'This food cannot be changed because a recipe using it would become invalid.')
             self.assertIn('recept', translated)
             translated = translation.gettext(
-                'This shared food is used in another user\'s recipe. Report an error instead.')
+                'This shared food is used in another user\'s recipe or saved meal. Report an error instead.')
             self.assertIn('tuđem receptu', translated)
+            self.assertIn('sačuvanom obroku', translated)
 
     def test_english(self):
         res = self.client.post('/api/auth/login/', {'email': 'a@b.rs', 'password': 'x'}, HTTP_ACCEPT_LANGUAGE='en')
