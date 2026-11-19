@@ -104,6 +104,30 @@ try {
   assert.match(body, /POMAK/i, 'Offline page did not render the app')
   console.log('Offline root navigation renders POMAK')
 
+  // OCR must run without executing CDN code. Its worker, WASM and Croatian model
+  // are shipped on our own origin and must be available after service-worker install.
+  const offlineOcr = await page.evaluate(async () => {
+    const paths = [
+      '/ocr/worker.min.js',
+      '/ocr/core/tesseract-core.wasm.js',
+      '/ocr/core/tesseract-core-simd-lstm.wasm',
+      '/ocr/lang/hrv.traineddata.gz',
+    ]
+    return Promise.all(paths.map(async (path) => {
+      try {
+        const response = await fetch(path, { cache: 'no-store' })
+        return { path, status: response.status, bytes: (await response.arrayBuffer()).byteLength }
+      } catch (error) {
+        return { path, error: String(error) }
+      }
+    }))
+  })
+  for (const resource of offlineOcr) {
+    assert.equal(resource.status, 200, 'Offline OCR asset missing: ' + JSON.stringify(resource))
+    assert.ok(resource.bytes > 100, 'Offline OCR asset is empty: ' + resource.path)
+  }
+  console.log('Offline OCR worker, WASM and Croatian data load from the service worker')
+
   // SPA fallback must work when navigating to a deep link with no network.
   const routeResponse = await page.goto(url + '/trener', { waitUntil: 'domcontentloaded', timeout: 15000 })
   assert.equal(routeResponse?.status(), 200, 'Offline SPA route did not resolve')
