@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from uuid import UUID
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers, status
@@ -443,7 +443,12 @@ class ClientPackagesView(APIView):
             if not same:
                 raise ValidationError({'id': 'This package ID is already in use for another request.'})
             return Response(self.listing(connection))
-        SessionPackage.objects.create(id=package_id, coach=request.user, client_id=client_id, connection=connection, **data)
+        try:
+            with transaction.atomic():
+                SessionPackage.objects.create(id=package_id, coach=request.user, client_id=client_id, connection=connection, **data)
+        except IntegrityError:
+            # The same ID taken at this very moment (by another collaboration): a clear refusal.
+            raise ValidationError({'id': 'This package ID is already in use for another request.'}) from None
         return Response(self.listing(connection), status=status.HTTP_201_CREATED)
 
     @staticmethod

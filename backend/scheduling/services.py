@@ -198,11 +198,14 @@ def cancel(booking_id, *, user, reason='', charge=False):
 
 
 def cancel_future_of(connection, now=None):
-    """The collaboration ended: its future sessions are cancelled (call with it locked)."""
+    """The collaboration ended: its future sessions are cancelled (call with it locked). Their
+    sessions go back to the packages, which stay at zero used or more, as for any cancellation."""
     now = now or timezone.now()
-    Booking.objects.filter(connection=connection, status__in=Booking.HOLDS_TIME, starts_at__gt=now).update(
-        status=Booking.Status.CANCELLED, cancelled_at=now, cancelled_by=Booking.By.SYSTEM, updated_at=now,
-    )
+    future = Booking.objects.filter(connection=connection, status__in=Booking.HOLDS_TIME, starts_at__gt=now)
+    packages = set(future.exclude(package__isnull=True).values_list('package_id', flat=True))
+    future.update(status=Booking.Status.CANCELLED, cancelled_at=now, cancelled_by=Booking.By.SYSTEM, updated_at=now)
+    for package_id in packages:
+        keep_used_non_negative(package_id)
 
 
 def _announce_new(booking, connection):
@@ -335,18 +338,27 @@ def send_due_reminders(now=None, *, budget=None, limit=50) -> bool:
     from notifications.push import notify
 
     deadline = clock.monotonic() + budget if budget else None
+    fixed_now = now
     now = now or timezone.now()
     rows = list(BookingReminder.objects.filter(sent_at__isnull=True, due_at__lte=now)
                 .order_by('due_at').values_list('pk', 'booking__connection_id', 'booking_id')[:limit + 1])
+    busy_left = False
     for reminder_id, connection_id, booking_id in rows[:limit]:
         if deadline and clock.monotonic() > deadline:
             return True
         with transaction.atomic():
-            CoachConnection.objects.select_for_update().filter(pk=connection_id).first()
-            booking = Booking.objects.select_for_update(of=('self',)).select_related('client__profile').filter(pk=booking_id).first()
-            reminder = BookingReminder.objects.select_for_update(skip_locked=True).filter(pk=reminder_id, sent_at__isnull=True).first()
-            if reminder is None or booking is None:
+            # Never wait: a collaboration or booking busy right now (a cancellation in progress)
+            # is skipped and handled by the next call, so the time budget holds.
+            if not CoachConnection.objects.select_for_update(skip_locked=True).filter(pk=connection_id).exists():
+                busy_left = True
                 continue
+            booking = (Booking.objects.select_for_update(skip_locked=True, of=('self',)).select_related('client__profile')
+                       .filter(pk=booking_id).first())
+            reminder = BookingReminder.objects.select_for_update(skip_locked=True).filter(pk=reminder_id, sent_at__isnull=True).first()
+            if booking is None or reminder is None:
+                busy_left = busy_left or BookingReminder.objects.filter(pk=reminder_id, sent_at__isnull=True).exists()
+                continue
+            now = fixed_now or timezone.now()  # after the locks
             reminder.sent_at = now
             reminder.save(update_fields=['sent_at'])
             if not _reminder_stands(booking, reminder, now):
@@ -358,4 +370,4 @@ def send_due_reminders(now=None, *, budget=None, limit=50) -> bool:
             notify(booking.client, title='POMAK', body=body, url='/trener', tag=f'reminder-{booking.pk}',
                    valid_until=min(booking.starts_at, reminder.due_at + REMINDER_GRACE),
                    guard={'kind': 'booking_reminder', 'booking': str(booking.pk), 'start': booking.starts_at.isoformat()})
-    return len(rows) > limit
+    return len(rows) > limit or busy_left

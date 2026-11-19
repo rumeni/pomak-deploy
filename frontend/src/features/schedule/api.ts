@@ -255,9 +255,15 @@ export function useClientPackages(clientId: string) {
   })
 }
 
-/** Written into the cache only if it is still about the collaboration shown. */
+/**
+ * Written into the cache only over the same collaboration's data; a cache that was purged (lost
+ * access) or shows another collaboration is reloaded instead, never filled by a late answer.
+ */
 function storeIfCurrent(qc: ReturnType<typeof useQueryClient>, clientId: string, data: ClientPackages) {
-  qc.setQueryData<ClientPackages>([...PACKAGES, clientId], (old) => (!old || old.connection_id === data.connection_id ? data : old))
+  const key = [...PACKAGES, clientId]
+  const old = qc.getQueryData<ClientPackages>(key)
+  if (old && old.connection_id === data.connection_id) qc.setQueryData(key, data)
+  else void qc.invalidateQueries({ queryKey: key })
 }
 
 export function useAddPackage(clientId: string) {

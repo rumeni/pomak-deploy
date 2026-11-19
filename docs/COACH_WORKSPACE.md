@@ -602,6 +602,7 @@ klijenta iz T1.
 - **Trener** otkazuje dok se termin ne završi, uz razlog. Ako termin koristi paket, trener bira
   da li se otkazani termin ipak računa u paket (npr. kasno otkazivanje).
 - **Kraj saradnje** otkazuje sve buduće termine te saradnje. Prošli ostaju u oba kalendara.
+  Treninzi iz paketa se vraćaju, kao kod svakog otkazivanja, a iskorišćeno ne pada ispod nule.
 - **„Moji termini“ kod klijenta** odvajaju predstojeće termine od nedavno otkazanih i odbijenih,
   pa otkazani ne potiskuju prave.
 
@@ -665,8 +666,14 @@ klijenta iz T1.
   - Svaki zakazani poziv nosi svoje vreme. Kad stigne (i ranije nego što treba), worker ga
     poništi i ponovo zakaže sledeći, pa nema paralelnih lanaca poziva.
   - Ako zakazivanje ne uspe, worker vraća grešku i QStash ponavlja poziv.
+- **Bez čekanja na zaključavanje.** Worker ne čeka na saradnju ili termin koji je upravo
+  zaključan (otkazivanje u toku). Takav podsetnik preskoči i pošalje u sledećem pozivu, pa
+  vremensko ograničenje važi. Vreme se čita posle zaključavanja.
 - **Oporavak.**
   - Izgubljeno buđenje obnavljaju osvežavanje broja nepročitanih poruka i dnevni cron.
+  - Ako ne uspe ni prvo predavanje posla, ni poslednji zakazani poziv, a u međuvremenu nema
+    nikakvog saobraćaja, podsetnik može da zakasni više od 30 minuta i tada se ne šalje.
+    Podsetnici su zato samo najbolji pokušaj, ne garancija.
   - Bez QStash-a podsetnici odlaze uz osvežavanje u otvorenoj aplikaciji ili uz cron. To je samo
     rezervni režim.
 - **Van opsega.** Veza termina sa treningom (koji trening je urađen na kom terminu) nije deo T4.

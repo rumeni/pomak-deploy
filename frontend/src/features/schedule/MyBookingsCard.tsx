@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom'
 
 import { Button, Card, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
-import { useQueryClient } from '@tanstack/react-query'
-
 import { useAuth } from '../../lib/auth'
-import type { CoachDashboard } from '../coach/api'
+import { isAccessRevoked } from '../coach/access'
+import { useCoachDashboard } from '../coach/api'
 import { packagesFor, useBookingAction, useMyBookings, useMyPackages, type Booking } from './api'
 import { BookingStatusChip } from './BookingStatusChip'
 import { dayKey, dayLabel, timeLabel } from './time'
@@ -16,10 +15,12 @@ export function MyBookingsCard() {
   const { t } = useTranslation()
   const mine = useMyBookings()
   const { me } = useAuth()
-  // The collaboration the app knows (cached dashboard): another one's balance is never shown.
-  const dashboard = useQueryClient().getQueryData<CoachDashboard>(['coach-dashboard'])
+  // The collaboration the app knows now (the live dashboard): another one's balance is never shown.
+  const dashboard = useCoachDashboard().data
   const known = dashboard?.role === 'client' ? (dashboard.connection?.id ?? null) : undefined
-  const packages = packagesFor(useMyPackages(me?.id ?? null).data, known)
+  const myPackages = useMyPackages(me?.id ?? null)
+  // The server says there is no coach (any more): nothing from before is shown.
+  const packages = myPackages.isError && isAccessRevoked(myPackages.error) ? [] : packagesFor(myPackages.data, known)
   const upcoming = mine.data?.upcoming ?? []
   const recent = mine.data?.recent ?? []
   return (

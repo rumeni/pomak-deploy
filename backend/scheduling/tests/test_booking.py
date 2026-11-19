@@ -492,6 +492,24 @@ class PackageTests(BookingTestCase):
         self.as_user(self.ana)
         self.assertEqual(self.client.get('/api/schedule/packages/').data['packages'][0]['remaining'], 5)
 
+    def test_ending_the_collaboration_gives_sessions_back_without_a_negative_balance(self):
+        self.add_package(total=5)
+        self.book(self.ana, at(2, 9))
+        self.correct(self.package(), -1)  # used: 1 session - 1 = 0
+        self.as_user(self.ana)
+        self.assertEqual(self.client.delete('/api/coach/connection/', {}, format='json').status_code, 204)
+        package = SessionPackage.objects.get()
+        self.assertEqual(services.package_used(package), 0)
+
+    def test_a_package_id_taken_by_another_collaboration_is_refused_cleanly(self):
+        package_id = str(uuid4())
+        self.add_package(package_id=package_id)
+        self.as_user(self.coach)
+        response = self.client.post(f'/api/schedule/clients/{self.ben.pk}/packages/', {
+            'id': package_id, 'connection_id': str(self.ben_link.pk), 'name': 'X', 'total': 1,
+            'valid_from': timezone.localdate().isoformat()}, format='json')
+        self.assertEqual(response.status_code, 400)
+
     def test_an_expired_or_closed_package_is_not_used(self):
         self.add_package(total=5, expires_on=(timezone.localdate() + timedelta(days=1)).isoformat())
         self.assertIsNone(self.book(self.ana, at(3, 9)).data['package'])  # the session is after it expires
