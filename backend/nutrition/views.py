@@ -40,7 +40,7 @@ SEARCH_LIMIT = 50
 
 class CommunityFoodInUse(APIException):
     status_code = 409
-    default_detail = _('This shared food is used in another user\'s recipe. Report an error instead.')
+    default_detail = _('This shared food is used in another user\'s recipe or saved meal. Report an error instead.')
     default_code = 'community_food_in_use'
 
 
