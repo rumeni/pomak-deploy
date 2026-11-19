@@ -1,4 +1,9 @@
 import uuid
+from unittest import mock
+
+from django.utils import timezone
+
+from nutrition.serializers import RecipeSerializer
 
 from rest_framework.test import APITestCase
 
@@ -105,6 +110,60 @@ class RecipeTests(APITestCase):
         other = self.create()
         res = post(self.body(ingredients=[{'food_id': other['id'], 'grams': '100'}]))
         self.assertEqual(res.status_code, 400)
+
+    def test_archived_food_is_rejected_as_a_new_ingredient(self):
+        stale = Food.objects.create(owner=self.user, source='custom', name='Obrisano', kcal=100, archived_at=timezone.now())
+        body = self.body(mass_g=None, ingredients=[{'food_id': str(stale.id), 'grams': '100'}])
+        response = self.client.post(URL, body, format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('food_id', response.data['ingredients'][0])
+        self.assertFalse(Food.objects.filter(source=Food.Source.RECIPE).exists())
+
+        recipe = self.create()
+        change = self.client.patch(f"{URL}{recipe['id']}/", {'ingredients': body['ingredients']}, format='json')
+        self.assertEqual(change.status_code, 400, change.data)
+        self.assertEqual(self.client.get(f"{URL}{recipe['id']}/").data['kcal'], recipe['kcal'])
+
+    def test_recipe_rechecks_food_values_after_earlier_validation(self):
+        sauce = Food.objects.create(owner=self.user, source='custom', name='Sos', kcal=100)
+        original = RecipeSerializer._locked_ingredients
+
+        def update_just_before_lock(serializer, ingredients, **kwargs):
+            # Simulate a concurrent edit committed after DRF validation but before
+            # the recipe transaction acquired ingredient row locks.
+            Food.objects.filter(pk=sauce.pk).update(kcal=200)
+            return original(serializer, ingredients, **kwargs)
+
+        with mock.patch.object(RecipeSerializer, '_locked_ingredients', update_just_before_lock):
+            response = self.client.post(URL, self.body(
+                mass_g=None, ingredients=[{'food_id': str(sauce.pk), 'grams': '100'}],
+            ), format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['kcal'], '200.0')
+
+    def test_recipe_rechecks_archive_after_earlier_validation(self):
+        sauce = Food.objects.create(owner=self.user, source='custom', name='Sos', kcal=100)
+        original = RecipeSerializer._locked_ingredients
+
+        def archive_just_before_lock(serializer, ingredients, **kwargs):
+            Food.objects.filter(pk=sauce.pk).update(archived_at=timezone.now())
+            return original(serializer, ingredients, **kwargs)
+
+        with mock.patch.object(RecipeSerializer, '_locked_ingredients', archive_just_before_lock):
+            response = self.client.post(URL, self.body(
+                mass_g=None, ingredients=[{'food_id': str(sauce.pk), 'grams': '100'}],
+            ), format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('ingredients', response.data)
+        self.assertFalse(Food.objects.filter(source=Food.Source.RECIPE).exists())
+
+    def test_metadata_only_edit_keeps_historical_archived_ingredient(self):
+        sauce = Food.objects.create(owner=self.user, source='custom', name='Sos', kcal=100)
+        recipe = self.create(mass_g=None, ingredients=[{'food_id': str(sauce.pk), 'grams': '100'}])
+        Food.objects.filter(pk=sauce.pk).update(archived_at=timezone.now())
+        response = self.client.patch(f"{URL}{recipe['id']}/", {'name': 'Isti recept'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['kcal'], '100.0')
 
     def test_recipe_values_cannot_be_overwritten_through_foods(self):
         recipe = self.create()

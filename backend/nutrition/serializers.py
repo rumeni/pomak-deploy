@@ -460,7 +460,7 @@ class RecipeIngredientSerializer(serializers.ModelSerializer):
         extra_kwargs = {'grams': {'min_value': Decimal('0.1'), 'max_value': Decimal('5000')}}
 
     def validate(self, attrs):
-        food = Food.visible_to(self.context['request'].user).filter(pk=attrs.pop('food_id')).first()
+        food = Food.visible_to(self.context['request'].user).filter(pk=attrs.pop('food_id'), archived_at__isnull=True).first()
         if food is None:
             raise serializers.ValidationError({'food_id': _('This food is not available.')})
         if food.source == Food.Source.RECIPE:
@@ -520,9 +520,33 @@ class RecipeSerializer(serializers.ModelSerializer):
         recipes.check_plausible(result['values'])
         return attrs
 
+    def _locked_ingredients(self, ingredients, *, allow_archived=False):
+        """Re-read ingredients under row locks before computing or linking a recipe.
+
+        Food edits/archive take the Food lock before recalculating dependent recipes.
+        Using the same order here prevents a recipe from capturing stale nutrition or
+        being linked to a food archived while its request was being validated.
+        """
+        ids = sorted({item['food'].pk for item in ingredients}, key=str)
+        visible = Food.visible_to(self.context['request'].user).filter(pk__in=ids)
+        if not allow_archived:
+            visible = visible.filter(archived_at__isnull=True)
+        foods = {food.pk: food for food in visible.order_by('pk').select_for_update()}
+        if len(foods) != len(ids):
+            raise serializers.ValidationError({'ingredients': _('This food is not available.')})
+        if any(food.source == Food.Source.RECIPE for food in foods.values()):
+            raise serializers.ValidationError({'ingredients': _('A recipe cannot contain another recipe.')})
+        return [{**item, 'food': foods[item['food'].pk]} for item in ingredients]
+
+    @staticmethod
+    def _check_locked_values(ingredients, mass):
+        values = recipes.compute([(item['food'], item['grams']) for item in ingredients], mass)
+        recipes.check_plausible(values['values'])
+
     @transaction.atomic
     def create(self, validated_data):
-        ingredients = validated_data.pop('ingredients')
+        ingredients = self._locked_ingredients(validated_data.pop('ingredients'))
+        self._check_locked_values(ingredients, validated_data.get('recipe_mass_g'))
         recipe = Food.objects.create(source=Food.Source.RECIPE, state=Food.State.PREPARED, kcal=0, **validated_data)
         self._write_ingredients(recipe, ingredients)
         recipes.recompute(recipe)
@@ -534,10 +558,35 @@ class RecipeSerializer(serializers.ModelSerializer):
         # to re-key it onto a shared or another user's Food record.
         validated_data.pop('id', None)
         ingredients = validated_data.pop('ingredients', None)
+        # For a metadata-only edit, keep historical archived ingredients usable.
+        # Explicitly submitted/new ingredients must always be active.
+        previous = None
+        if ingredients is None:
+            previous = list(RecipeIngredient.objects.filter(recipe=recipe).select_related('food').order_by('position'))
+            ingredients_to_check = [
+                {'food': item.food, 'grams': item.grams, 'portion_name': item.portion_name}
+                for item in previous
+            ]
+        else:
+            ingredients_to_check = ingredients
+        fresh = self._locked_ingredients(ingredients_to_check, allow_archived=ingredients is None)
+        # Lock the recipe only AFTER ingredient foods (same order as Food edits).
+        recipe = Food.objects.select_for_update().get(pk=recipe.pk)
+        if recipe.archived_at is not None or recipe.owner_id != self.context['request'].user.pk:
+            raise serializers.ValidationError({'id': _('This recipe is no longer available.')})
+        if previous is not None:
+            # Another recipe edit may have replaced its ingredients while we
+            # waited for the locks. Do not silently re-save that stale snapshot.
+            actual = list(RecipeIngredient.objects.filter(recipe=recipe).order_by('position'))
+            if [(i.food_id, i.grams, i.portion_name) for i in actual] != [
+                (i.food_id, i.grams, i.portion_name) for i in previous
+            ]:
+                raise serializers.ValidationError({'ingredients': _('This recipe changed. Reload and try again.')})
+        self._check_locked_values(fresh, validated_data.get('recipe_mass_g', recipe.recipe_mass_g))
         recipe = super().update(recipe, validated_data)
         if ingredients is not None:
             recipe.ingredients.all().delete()
-            self._write_ingredients(recipe, ingredients)
+            self._write_ingredients(recipe, fresh)
         recipes.recompute(recipe)
         return recipe
 
