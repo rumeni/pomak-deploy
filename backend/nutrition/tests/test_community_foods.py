@@ -8,7 +8,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 from nutrition import open_food_facts, serializers as food_serializers
 from nutrition.views import FoodViewSet
-from nutrition.models import Food, FoodReport
+from nutrition.models import Food, FoodReport, RecipeIngredient
 
 URL = '/api/nutrition/foods/'
 
@@ -51,6 +51,37 @@ class CommunityFoodTests(APITestCase):
         Food.objects.filter(pk=food.pk).update(verified_at=timezone.now())
         self.assertEqual(self.client.patch(f'{URL}{food.id}/', {'kcal': '63'}, format='json').status_code, 403)
         self.assertTrue(self.client.get(f'{URL}{food.id}/').json()['verified'])
+
+    def test_another_users_recipe_freezes_the_authors_shared_food(self):
+        shared = self.create(shared=True).json()
+        food = Food.objects.get(pk=shared['id'])
+        # A recipe owned by another account already relies on this food's value.
+        recipe = Food.objects.create(owner=self.other, source=Food.Source.RECIPE,
+                                     name='Tuđi recept', kcal='61', state=Food.State.PREPARED)
+        RecipeIngredient.objects.create(recipe=recipe, food=food, position=0, grams='100')
+        self.assertFalse(self.client.get(f'{URL}{food.pk}/').json()['can_edit'])
+        response = self.client.patch(f'{URL}{food.pk}/', {'kcal': '0', 'name': 'Pokvareno'}, format='json')
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(self.client.delete(f'{URL}{food.pk}/').status_code, 409)
+        food.refresh_from_db()
+        self.assertEqual((str(food.kcal), food.name, food.archived_at),
+                         ('61.0', 'Jogurt 2,8% (Moravka)', None))
+        self.assertEqual(str(Food.objects.get(pk=recipe.pk).kcal), '61.0')
+        # A report remains possible after the edit is locked.
+        self.assertEqual(self.client.post(f'{URL}{food.pk}/report/', {'reason': 'Pogrešna deklaracija'}, format='json').status_code, 204)
+
+    def test_shared_food_daily_limit_does_not_restrict_private_or_idempotent_retries(self):
+        for i in range(food_serializers.MAX_SHARED_FOODS_PER_24_HOURS):
+            response = self.create(shared=True, name=f'Proizvod {i}')
+            self.assertEqual(response.status_code, 201, response.data)
+        limited = self.create(shared=True, name='Proizvod preko limita')
+        self.assertEqual(limited.status_code, 400)
+        self.assertIn('shared', limited.json())
+        self.assertEqual(self.create(name='Moja privatna namirnica').status_code, 201)
+        # Once a rolling 24-hour creation expires, one new shared entry is allowed.
+        earliest = Food.objects.filter(source=Food.Source.COMMUNITY).order_by('created_at').first()
+        Food.objects.filter(pk=earliest.pk).update(created_at=timezone.now() - timezone.timedelta(hours=25))
+        self.assertEqual(self.create(shared=True, name='Sutra').status_code, 201)
 
     def test_shared_values_must_be_consistent_but_private_ones_are_the_users_business(self):
         res = self.create(shared=True, kcal='250')  # macros give about 57 kcal
