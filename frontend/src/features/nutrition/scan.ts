@@ -5,6 +5,9 @@
  */
 import { parseLabelText, type LabelValues } from './labelText'
 
+// Injected by Vite from the exact build-vendored worker, core and language bytes.
+declare const __POMAK_OCR_VERSION__: string
+
 const BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e']
 
 async function toCanvas(file: Blob, maxSide = 1600): Promise<HTMLCanvasElement> {
@@ -80,7 +83,8 @@ function prepareForText(source: HTMLCanvasElement): HTMLCanvasElement {
 
 /**
  * Text recognition of the nutrition table, then the values per 100 g. `onProgress` gets 0-1.
- * OCR engine and language data are bundled with the app and precached for offline use.
+ * OCR engine and language data are build-vendored, but downloaded and cached on first use.
+ * Later scans work offline; a never-used web scanner needs an initial online load.
  * Reads the photo as is and prepared (high contrast) and keeps whichever finds more values.
  */
 export async function readNutritionLabel(file: Blob, onProgress?: (share: number) => void): Promise<LabelValues & { text: string }> {
@@ -88,17 +92,44 @@ export async function readNutritionLabel(file: Blob, onProgress?: (share: number
   const { createWorker, PSM } = await import('tesseract.js')
   let pass = 0
   // Only same-origin, build-vendored OCR files: never execute CDN scripts in this app.
-  const ocrBase = new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.origin).href
-  // Croatian model: Latin script with diacritics and decimal commas, like labels in the region.
-  const worker = await createWorker('hrv', 1, {
+  const ocrBase = new URL(`${import.meta.env.BASE_URL}ocr/${__POMAK_OCR_VERSION__}/`, window.location.origin).href
+  // Only for a controlled web PWA (NOT bundled Android assets): first-time offline OCR
+  // should show the existing manual-entry fallback promptly, not hang on a worker load.
+  if (!navigator.onLine && navigator.serviceWorker?.controller && 'caches' in window) {
+    const cache = await caches.open(`pomak-ocr-${__POMAK_OCR_VERSION__}`)
+    const [worker, model] = await Promise.all([
+      cache.match(`${ocrBase}worker.min.js`),
+      cache.match(`${ocrBase}lang/hrv.traineddata.gz`),
+    ])
+    if (!worker || !model) throw new Error('OCR requires one online scan before offline use')
+  }
+
+  // Croatian model: Latin script with diacritics and decimal commas. The SW owns
+  // language caching instead of Tesseract's unversioned IndexedDB keys.
+  const pending = createWorker('hrv', 1, {
     workerPath: `${ocrBase}worker.min.js`,
     corePath: `${ocrBase}core`,
     langPath: `${ocrBase}lang`,
     workerBlobURL: false,
+    cacheMethod: 'none',
     logger: (m: { status: string; progress: number }) => {
       if (m.status === 'recognizing text') onProgress?.((pass + m.progress) / 2)
     },
   })
+  let expired = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const worker = await Promise.race([
+    pending.then(async (ready) => {
+      if (expired) await ready.terminate()
+      return ready
+    }),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        expired = true
+        reject(new Error('OCR initialization timed out'))
+      }, 30_000)
+    }),
+  ]).finally(() => clearTimeout(timer))
   try {
     // One column of rows keeps each nutrient's name and numbers on one line.
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_COLUMN, preserve_interword_spaces: '1' })
