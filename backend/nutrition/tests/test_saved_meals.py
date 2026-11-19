@@ -70,8 +70,8 @@ class SavedMealTests(APITestCase):
             if 'FOR UPDATE' in query['sql'] and 'nutrition_food' in query['sql']
         ]
         self.assertEqual(len(locks), 2, locks)
-        self.assertIn(str(ingredient.pk), locks[0])
-        self.assertIn(str(recipe.pk), locks[1])
+        self.assertIn(ingredient.pk.hex, locks[0])
+        self.assertIn(recipe.pk.hex, locks[1])
 
     def test_idempotent_and_private(self):
         body = self.body(id=str(uuid.uuid4()))
