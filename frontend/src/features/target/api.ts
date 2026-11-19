@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '../../lib/api'
+import { api, type ScopedRequestConfig } from '../../lib/api'
 
 export type Activity = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
 /** The four nutrition goals (method msj-v2). */
@@ -95,8 +95,8 @@ export function useTargets() {
   })
 }
 
-export async function estimateTarget(choices: EstimateChoices, validFrom: string): Promise<Estimate> {
-  return (await api.post<Estimate>('/nutrition/targets/estimate/', { ...choices, valid_from: validFrom })).data
+export async function estimateTarget(choices: EstimateChoices, validFrom: string, config?: ScopedRequestConfig): Promise<Estimate> {
+  return (await api.post<Estimate>('/nutrition/targets/estimate/', { ...choices, valid_from: validFrom }, config)).data
 }
 
 export function useSaveTarget() {

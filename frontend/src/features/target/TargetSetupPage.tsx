@@ -5,11 +5,11 @@ import { useNavigate } from 'react-router-dom'
 
 import { DateOfBirthField } from '../../components/DateOfBirthField'
 import { Button, Card, ChoiceCards, Field, FormError, LoadingScreen, ScreenHeader, Segmented } from '../../components/ui'
-import { api, errorMessage } from '../../lib/api'
+import { api, errorMessage, scopeIsCurrent, type ScopedRequestConfig } from '../../lib/api'
 import { applyOwnProfileResponse, patchOwnProfile, profileScope } from '../../lib/profileMutation'
 import { useAuth } from '../../lib/auth'
 import { formatDecimal, formatShortDate, parseDecimal, toISODate } from '../../lib/format'
-import type { Profile } from '../../lib/types'
+import type { Me, Profile } from '../../lib/types'
 import { uuid } from '../../lib/uuid'
 import {
   ACTIVITIES,
@@ -29,6 +29,7 @@ import {
 import { GoalGuidance } from './GoalGuidance'
 import { TargetExplanation } from './TargetExplanation'
 import { emptyProposal, settleProposal } from './proposalState'
+import { sourceChanged } from './sourceSnapshot'
 
 type Mode = 'app' | 'manual'
 
@@ -142,22 +143,43 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
       if (!goal || (hasPace(goal) && !pace)) throw new InputError('target.errors.goal')
       if (!special) throw new InputError('target.errors.special')
 
+      // A form can stay open while another tab/device edits the profile or weight.
+      // Re-fetch before either write: never save stale form defaults as a new measurement.
+      if (!me) throw new Error('Authentication changed')
+      const scope = profileScope(me.id)
+      const config: ScopedRequestConfig = { __pomakScope: scope }
+      const [freshUser, freshWeights] = await Promise.all([
+        api.get<Me>('/auth/me/', config),
+        api.get<WeightMeasurement[]>('/progress/measurements/', { ...config, params: { kind: 'weight' } }),
+      ])
+      if (!scopeIsCurrent(scope) || freshUser.data.id !== me.id) throw new Error('Authentication changed')
+      const newestWeight = freshWeights.data[0] ?? null
+      if (sourceChanged(profile, weight, freshUser.data.profile, newestWeight)) {
+        // Refresh the displayed form, discard its old proposal and ask for review.
+        queryClient.setQueryData(['me'], freshUser.data)
+        queryClient.setQueryData(['measurements', 'weight', 'latest'], newestWeight)
+        setSex(freshUser.data.profile.sex)
+        setBirthDate(freshUser.data.profile.birth_date ?? '')
+        setHeight(freshUser.data.profile.height_cm ? formatDecimal(Number(freshUser.data.profile.height_cm)) : '')
+        setWeightText(newestWeight ? formatDecimal(Number(newestWeight.value)) : '')
+        throw new InputError('target.errors.dataChanged')
+      }
+
       // Podaci se čuvaju u profilu i kao merenje težine, pa ih vidi i ostatak aplikacije.
       if (sex !== profile.sex || birthDate !== profile.birth_date || String(heightCm) !== String(Number(profile.height_cm))) {
         if (!me) throw new Error('Authentication changed')
         const submitted = { sex, birth_date: birthDate, height_cm: String(heightCm) }
-        const scope = profileScope(me.id)
         const data = await patchOwnProfile(me.id, submitted, scope)
         if (!data) throw new Error('Authentication changed')
         applyOwnProfileResponse(queryClient, scope, data, submitted)
       }
       if (!weight || weightKg !== Number(weight.value)) {
-        await api.post('/progress/measurements/', { id: weightId.current, kind: 'weight', value: String(weightKg), measured_on: toISODate(new Date()) })
+        await api.post('/progress/measurements/', { id: weightId.current, kind: 'weight', value: String(weightKg), measured_on: toISODate(new Date()) }, config)
         weightId.current = uuid()
         await queryClient.invalidateQueries({ queryKey: ['measurements'] })
       }
       const estimate = await estimateTarget(
-        { activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes' }, validFrom,
+        { activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes' }, validFrom, config,
       )
       if (version === calculationVersion.current) settle(version, estimate)
     } catch (e) {

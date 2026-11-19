@@ -417,6 +417,7 @@ export const en = {
     saveManual: 'Save target',
     errors: {
       bodyData: 'Enter sex, date of birth, height and weight.',
+      dataChanged: 'Your profile or latest weight changed while this form was open. Review the refreshed values and calculate again.',
       activity: 'Choose an activity level.',
       goal: 'Choose what you want with your weight and the pace.',
       special: 'Answer the question about special conditions.',
