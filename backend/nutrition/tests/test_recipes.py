@@ -165,6 +165,21 @@ class RecipeTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['kcal'], '100.0')
 
+    def test_unchanged_historical_archived_ingredients_stay_editable_via_partial_update(self):
+        sauce = Food.objects.create(owner=self.user, source=Food.Source.CUSTOM, name='Old sauce', kcal='100')
+        recipe = self.create(mass_g=None, servings=1, ingredients=[{'food_id': str(sauce.pk), 'grams': '100'}])
+        Food.objects.filter(pk=sauce.pk).update(archived_at=timezone.now())
+        result = self.client.patch(
+            f"{URL}{recipe['id']}/",
+            {'name': 'Renamed', 'servings': 2, 'mass_g': '200'},
+            format='json',
+        )
+        self.assertEqual(result.status_code, 200, result.data)
+        self.assertEqual(result.data['name'], 'Renamed')
+        self.assertEqual(result.data['servings'], 2)
+        self.assertEqual(result.data['kcal'], '50.0')
+        self.assertEqual(result.data['ingredients'][0]['food']['id'], str(sauce.pk))
+
     def test_recipe_values_cannot_be_overwritten_through_foods(self):
         recipe = self.create()
         res = self.client.patch(f"/api/nutrition/foods/{recipe['id']}/", {'kcal': '10'}, format='json')

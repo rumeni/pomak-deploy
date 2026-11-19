@@ -10,7 +10,7 @@ import { useDebounced } from '../../lib/useDebounced'
 import { uuid } from '../../lib/uuid'
 import { useDeleteFood, useFoods, useRecipe, useSaveRecipe, type Food, type Recipe, type RecipeBody } from './api'
 import { MacroLine } from './MacroLine'
-import { previewRecipe } from './recipe'
+import { previewRecipe, recipeIngredientsUnchanged } from './recipe'
 
 interface IngredientRow {
   key: string
@@ -56,6 +56,11 @@ function RecipeForm({ recipe }: { recipe?: Recipe }) {
   const [rows, setRows] = useState<IngredientRow[]>(
     () => recipe?.ingredients.map((i) => ({ key: uuid(), food: i.food, grams: formatDecimal(Number(i.grams)), portion_name: i.portion_name })) ?? [],
   )
+  // Freeze the originally loaded ingredients; background refetches must not make
+  // an unsaved edit look unchanged.
+  const [originalIngredients] = useState(() => recipe?.ingredients.map((i) => ({
+    food_id: i.food.id, grams: i.grams, portion_name: i.portion_name,
+  })) ?? [])
   const [mass, setMass] = useState(recipe?.mass_g ? formatDecimal(Number(recipe.mass_g)) : '')
   const [servings, setServings] = useState(String(recipe?.servings ?? 1))
   const [picking, setPicking] = useState(!recipe)
@@ -84,7 +89,11 @@ function RecipeForm({ recipe }: { recipe?: Recipe }) {
     })
     if (mass.trim() && (parsedMass === null || parsedMass <= 0)) throw new FormInputError('invalidMass')
     if (!/^\d+$/.test(servings.trim()) || parsedServings < 1 || parsedServings > 100) throw new FormInputError('invalidServings')
-    return { id, name: name.trim(), mass_g: parsedMass === null ? null : String(parsedMass), servings: parsedServings, ingredients }
+    const body: RecipeBody = { id, name: name.trim(), mass_g: parsedMass === null ? null : String(parsedMass), servings: parsedServings, ingredients }
+    // PATCH with no ingredients retains historical archived foods when only
+    // the recipe's name, cooked mass, or serving count changed.
+    if (recipe && recipeIngredientsUnchanged(ingredients, originalIngredients)) delete body.ingredients
+    return body
   }
 
   const onSubmit = (e: React.FormEvent) => {

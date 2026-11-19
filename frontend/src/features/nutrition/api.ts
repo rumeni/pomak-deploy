@@ -137,7 +137,7 @@ export interface RecipeBody {
   name: string
   mass_g: string | null
   servings: number
-  ingredients: { food_id: string; grams: string; portion_name: string }[]
+  ingredients?: { food_id: string; grams: string; portion_name: string }[]
 }
 
 export function useRecipe(id: string | undefined) {
@@ -153,7 +153,7 @@ export function useSaveRecipe(isNew: boolean) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (body: RecipeBody) =>
-      (isNew ? await api.post<Recipe>('/nutrition/recipes/', body) : await api.put<Recipe>(`/nutrition/recipes/${body.id}/`, body)).data,
+      (isNew ? await api.post<Recipe>('/nutrition/recipes/', body) : await api.patch<Recipe>(`/nutrition/recipes/${body.id}/`, body)).data,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['foods'] })
       void queryClient.invalidateQueries({ queryKey: ['recipes'] })

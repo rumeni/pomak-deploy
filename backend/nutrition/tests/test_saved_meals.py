@@ -3,12 +3,13 @@ import time
 import uuid
 from unittest import mock
 
-from django.db import connections
+from django.db import connection, connections
 from django.test import TransactionTestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient, APITestCase
 
 from accounts.models import User
-from nutrition.models import Food, SavedMeal, SavedMealItem
+from nutrition.models import Food, RecipeIngredient, SavedMeal, SavedMealItem
 from nutrition.views import FoodViewSet
 
 
@@ -40,6 +41,36 @@ class SavedMealTests(APITestCase):
         # Stavka iz namirnice ne čuva vrednosti (uzimaju se pri dodavanju u dnevnik)
         self.assertIsNone(meal['items'][0]['kcal'])
         self.assertEqual((meal['items'][2]['name'], meal['items'][2]['kcal'], meal['items'][2]['protein_g']), ('Kafa sa mlekom', '40.0', None))
+
+    def test_lock_base_ingredient_before_recipe_even_when_recipe_uuid_sorts_first(self):
+        # Recipe R (UUID=1) depends on food F (UUID=2). The old global PK
+        # ordering took R then F and could deadlock against an edit taking F then R.
+        recipe = Food.objects.create(
+            id=uuid.UUID(int=1), owner=self.user, source=Food.Source.RECIPE,
+            name='Original recipe', kcal='100', state=Food.State.PREPARED,
+        )
+        ingredient = Food.objects.create(
+            id=uuid.UUID(int=2), owner=self.user, source=Food.Source.CUSTOM,
+            name='Ingredient', kcal='100',
+        )
+        RecipeIngredient.objects.create(recipe=recipe, food=ingredient, position=0, grams='100')
+        request_body = {
+            'name': 'Recipe and ingredient',
+            'items': [
+                {'food_id': str(recipe.pk), 'grams': '100'},
+                {'food_id': str(ingredient.pk), 'grams': '100'},
+            ],
+        }
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.post('/api/nutrition/saved-meals/', request_body, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        locks = [
+            query['sql'] for query in queries.captured_queries
+            if 'FOR UPDATE' in query['sql'] and 'nutrition_food' in query['sql']
+        ]
+        self.assertEqual(len(locks), 2, locks)
+        self.assertIn(str(ingredient.pk), locks[0])
+        self.assertIn(str(recipe.pk), locks[1])
 
     def test_idempotent_and_private(self):
         body = self.body(id=str(uuid.uuid4()))

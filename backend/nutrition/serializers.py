@@ -431,19 +431,31 @@ class SavedMealSerializer(serializers.ModelSerializer):
         # recheck availability UNDER that lock before inserting SavedMealItems.
         # A save that wins the lock freezes future author changes; if the author
         # wins first, the save sees updated active values or rejects an archive.
-        ids = sorted({item['food'].pk for item in items if item.get('food')}, key=str)
-        if ids:
-            active = {
+        # Lock plain foods BEFORE recipe foods. Food corrections take an ingredient
+        # lock and then its dependent recipe lock, and recipe edits do the same.
+        # A single UUID order across both types could instead lock the recipe
+        # first and deadlock with a concurrent recipe edit.
+        foods = {item['food'].pk: item['food'] for item in items if item.get('food')}
+        active = {}
+        for is_recipe in (False, True):
+            ids = sorted(
+                (pk for pk, food in foods.items() if (food.source == Food.Source.RECIPE) == is_recipe),
+                key=str,
+            )
+            if not ids:
+                continue
+            locked = {
                 food.pk: food for food in
                 Food.visible_to(self.context['request'].user)
                 .filter(pk__in=ids, archived_at__isnull=True)
                 .order_by('pk').select_for_update()
             }
-            if len(active) != len(ids):
+            if len(locked) != len(ids):
                 raise serializers.ValidationError({'items': _('This food is not available.')})
-            for item in items:
-                if item.get('food'):
-                    item['food'] = active[item['food'].pk]
+            active.update(locked)
+        for item in items:
+            if item.get('food'):
+                item['food'] = active[item['food'].pk]
 
         meal = SavedMeal.objects.create(**validated_data)
         SavedMealItem.objects.bulk_create([SavedMealItem(saved_meal=meal, position=i, **item) for i, item in enumerate(items)])
