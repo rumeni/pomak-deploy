@@ -85,7 +85,10 @@ export function TabBar() {
         {coachSpace && <span className="app-nav-brand-sub">COACH</span>}
       </div>
       <ul className="app-nav-list" style={{ '--dock-count': tabs.length } as CSSProperties}>
-        <li aria-hidden="true" className="app-nav-glider" style={{ transform: `translate3d(${indicator * 100}%, 0, 0)`, transition: isDragging ? 'none' : undefined }} />
+        <li aria-hidden="true" className={isDragging ? 'app-nav-glider is-dragging' : 'app-nav-glider'}
+          style={{ transform: `translate3d(${indicator * 100}%, 0, 0)`, transition: isDragging ? 'none' : undefined }}>
+          <span key={routeKey} className="app-nav-glass-flare" />
+        </li>
         {tabs.map((tab, index) => (
           <li key={tab.to}>
             <NavLink to={tab.to} end={tab.end}
