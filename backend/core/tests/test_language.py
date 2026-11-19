@@ -13,6 +13,21 @@ class LanguageTests(APITestCase):
         res = self.client.post('/api/auth/register/', {'email': 'a@b.rs'})
         self.assertEqual(res.data['password'], ['Ovo polje je obavezno.'])
 
+    def test_new_validation_messages_are_present_in_compiled_serbian_catalog(self):
+        # Verifies django.mo, not just translations_sr.py / the source django.po.
+        from django.utils import translation
+
+        with translation.override('sr-latn'):
+            translated = translation.gettext(
+                'This item was already saved. Refresh to see the saved version.')
+            self.assertIn('već sačuvana', translated)
+            translated = translation.gettext(
+                'This food cannot be changed because a recipe using it would become invalid.')
+            self.assertIn('recept', translated)
+            translated = translation.gettext(
+                'This shared food is used in another user\'s recipe. Report an error instead.')
+            self.assertIn('tuđem receptu', translated)
+
     def test_english(self):
         res = self.client.post('/api/auth/login/', {'email': 'a@b.rs', 'password': 'x'}, HTTP_ACCEPT_LANGUAGE='en')
         self.assertEqual(res.data['detail'], 'Wrong email or password.')
