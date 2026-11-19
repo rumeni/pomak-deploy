@@ -200,7 +200,7 @@ try {
     document.body.append(host)
     window.__pomakOcrSmoke.mountScanner(host)
   })
-  await page.waitForSelector('#ocr-offline-ui-smoke input[type="file"]')
+  await page.waitForSelector('#ocr-offline-ui-smoke input[type="file"]', { state: 'attached' })
   await context.setOffline(true)
   await page.evaluate(() => {
     const inputs = document.querySelectorAll('#ocr-offline-ui-smoke input[type="file"]')
