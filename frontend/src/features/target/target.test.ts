@@ -49,3 +49,27 @@ describe('an accepted proposal that changed', () => {
     expect(changedEstimate(null)).toBeNull()
   })
 })
+
+describe('proposal lifecycle', () => {
+  it('clears the replacement proposal on edit and accepts only a fresh calculation', async () => {
+    const { emptyProposal, settleProposal } = await import('./proposalState')
+    const old = { supported: false, reason: 'missing' } as const
+    const fresh = { supported: false, reason: 'age' } as const
+    let state = settleProposal(emptyProposal(1), 1, old, 'estimate_changed')
+    expect(state.result).toEqual(old)
+    state = emptyProposal(2)
+    expect(state.result).toBeNull()
+    expect(state.error).toBeNull()
+    state = settleProposal(state, 2, fresh, null)
+    expect(state.result).toEqual(fresh)
+    expect(state.error).toBeNull()
+    expect(settleProposal(state, 1, old, 'estimate_changed')).toBe(state)
+  })
+
+  it('does not restore a proposal or an error from a late response after editing', async () => {
+    const { emptyProposal, settleProposal } = await import('./proposalState')
+    const state = emptyProposal(3)
+    expect(settleProposal(state, 2, { supported: false, reason: 'macros' }, 'estimate_changed')).toBe(state)
+    expect(settleProposal(state, 2, null, 'network error')).toBe(state)
+  })
+})

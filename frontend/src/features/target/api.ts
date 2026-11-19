@@ -79,7 +79,7 @@ export interface EstimateChoices {
 }
 
 export type TargetWrite =
-  | ({ mode: 'app'; expected?: Pick<Target, 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g'> } & EstimateChoices)
+  | ({ mode: 'app'; expected: Pick<Target, 'method' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g'> } & EstimateChoices)
   | { mode: 'manual'; kcal: number; protein_g: number | null; carbs_g: number | null; fat_g: number | null }
 
 /** The server's new proposal when the accepted one is no longer what it would save (409). */

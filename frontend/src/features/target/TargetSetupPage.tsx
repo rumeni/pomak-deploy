@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 
@@ -28,6 +28,7 @@ import {
 } from './api'
 import { GoalGuidance } from './GoalGuidance'
 import { TargetExplanation } from './TargetExplanation'
+import { emptyProposal, settleProposal } from './proposalState'
 
 type Mode = 'app' | 'manual'
 
@@ -57,7 +58,7 @@ export function TargetSetupPage() {
           onChange={setMode}
         />
         {mode === 'app' ? (
-          <AppTargetForm profile={me.profile} weight={weight ?? null} onManual={() => setMode('manual')} />
+          <AppTargetForm key={me.id} profile={me.profile} weight={weight ?? null} onManual={() => setMode('manual')} />
         ) : (
           <ManualTargetForm />
         )}
@@ -101,28 +102,38 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
   const [pace, setPace] = useState('')
   const [special, setSpecial] = useState<'no' | 'yes' | ''>('')
   const [validFrom, setValidFrom] = useState(toISODate(new Date()))
-  const [result, setResult] = useState<Estimate | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [proposal, setProposal] = useState(() => emptyProposal(0))
+  const { result, error } = proposal
   const [pending, setPending] = useState(false)
   const weightId = useRef(uuid())
   const calculationVersion = useRef(0)
-  const { save, submit } = useSaveAndReturn()
+  const save = useSaveTarget()
+  const navigate = useNavigate()
+  // Ignore any response belonging to a form that has been left or unmounted.
+  useEffect(() => () => { calculationVersion.current += 1 }, [])
+
+  const resetProposal = () => {
+    const version = ++calculationVersion.current
+    setProposal(emptyProposal(version))
+    return version
+  }
+  const settle = (version: number, result: Estimate | null, error: string | null = null) =>
+    setProposal((current) => settleProposal(current, version, result, error))
 
   // Svaka izmena podataka poništava prikazan predlog: prihvata se samo ono što je izračunato.
   const changed =
     <T,>(set: (v: T) => void) =>
     (v: T) => {
-      calculationVersion.current += 1
+      resetProposal()
       set(v)
-      setResult(null)
     }
 
   const weightKg = parseDecimal(weightText)
   const paceOptions = goal ? PACES[goal] : []
 
   const calculate = async () => {
-    const version = ++calculationVersion.current
-    setError(null)
+    if (pending || save.isPending) return
+    const version = resetProposal()
     setPending(true)
     try {
       const heightCm = parseDecimal(height)
@@ -148,22 +159,29 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
       const estimate = await estimateTarget(
         { activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes' }, validFrom,
       )
-      if (version === calculationVersion.current) setResult(estimate)
+      if (version === calculationVersion.current) settle(version, estimate)
     } catch (e) {
-      setError(e instanceof InputError ? t(e.message) : errorMessage(e))
+      if (version === calculationVersion.current) settle(version, null, e instanceof InputError ? t(e.message) : errorMessage(e))
     } finally {
       setPending(false)
     }
   }
 
-  // The server's newer proposal (the accepted one changed meanwhile, e.g. a new weight): shown instead.
-  const newer = save.isError ? changedEstimate(save.error) : null
-  const shown = newer ?? result
-  const accept = () => {
-    if (!activity || !goal || !shown?.supported) return
-    // Saved only as shown: if the server would save other numbers, it says so and shows them.
-    const expected = { kcal: shown.kcal, protein_g: shown.protein_g, carbs_g: shown.carbs_g, fat_g: shown.fat_g }
-    submit(validFrom, { mode: 'app', activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes', expected })
+  const accept = async () => {
+    if (pending || save.isPending || !activity || !goal || !result?.supported) return
+    const version = calculationVersion.current
+    if (proposal.generation !== version) return
+    // Only the current form's proposal can be accepted. The server still computes the target.
+    const expected = { method: result.method, kcal: result.kcal, protein_g: result.protein_g, carbs_g: result.carbs_g, fat_g: result.fat_g }
+    try {
+      await save.mutateAsync({ validFrom, body: { mode: 'app', activity, goal, pace: hasPace(goal) ? Number(pace) : 0, special_conditions: special === 'yes', expected } })
+      if (version === calculationVersion.current) navigate('/ishrana/cilj', { replace: true })
+    } catch (e) {
+      if (version !== calculationVersion.current) return
+      const newer = changedEstimate(e)
+      // Store the new proposal in the same generation-bound state, never in a separate override.
+      settle(version, newer ?? result, newer ? t('target.estimateChanged') : errorMessage(e))
+    }
   }
 
   return (
@@ -245,17 +263,17 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
 
       <StartDateField value={validFrom} onChange={changed(setValidFrom)} />
 
-      <FormError message={error ?? (newer ? t('target.estimateChanged') : save.isError ? errorMessage(save.error) : null)} />
+      <FormError message={error} />
       {!result && (
-        <Button onClick={() => void calculate()} disabled={pending}>
+        <Button onClick={() => void calculate()} disabled={pending || save.isPending}>
           {pending ? t('target.calculating') : t('target.calculate')}
         </Button>
       )}
 
-      {shown && !shown.supported && (
+      {result && !result.supported && (
         <Card>
           <h2 className="font-semibold">{t('target.unsupportedTitle')}</h2>
-          <p className="mt-1 text-sm">{t(`target.unsupported_${shown.reason}`, { floor: shown.floor })}</p>
+          <p className="mt-1 text-sm">{t(`target.unsupported_${result.reason}`, { floor: result.floor })}</p>
           <div className="mt-4">
             <Button variant="ghost" onClick={onManual}>
               {t('target.enterOwn')}
@@ -264,26 +282,26 @@ function AppTargetForm({ profile, weight, onManual }: { profile: Profile; weight
         </Card>
       )}
 
-      {shown?.supported && (
+      {result?.supported && (
         <Card>
           <p className="text-sm font-medium text-muted">{t('target.proposal')}</p>
           <p className="text-3xl font-bold tabular-nums">
-            {formatDecimal(shown.kcal)} <span className="text-base font-medium text-muted">{t('target.kcalPerDay')}</span>
+            {formatDecimal(result.kcal)} <span className="text-base font-medium text-muted">{t('target.kcalPerDay')}</span>
           </p>
           <div className="mt-3">
             <TargetExplanation
-              kcal={shown.kcal}
-              protein={shown.protein_g}
-              carbs={shown.carbs_g}
-              fat={shown.fat_g}
-              inputs={shown.inputs}
-              explanation={shown.explanation}
+              kcal={result.kcal}
+              protein={result.protein_g}
+              carbs={result.carbs_g}
+              fat={result.fat_g}
+              inputs={result.inputs}
+              explanation={result.explanation}
             />
           </div>
           <p className="mt-3 rounded-xl bg-brand-soft p-3 text-sm text-brand-dark">{t('target.estimateNote')}</p>
-          <p className="mt-2 text-xs text-muted">{t('target.methodNote', { method: shown.method })}</p>
+          <p className="mt-2 text-xs text-muted">{t('target.methodNote', { method: result.method })}</p>
           <div className="mt-4 flex flex-col gap-2">
-            <Button onClick={accept} disabled={save.isPending}>
+            <Button onClick={() => void accept()} disabled={pending || save.isPending}>
               {save.isPending ? t('common.saving') : t('target.accept', { date: formatShortDate(validFrom) })}
             </Button>
             <Button variant="ghost" onClick={onManual}>

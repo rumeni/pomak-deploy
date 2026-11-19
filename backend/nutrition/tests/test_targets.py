@@ -185,7 +185,7 @@ class GoalApiTests(TargetApiBase):
 
     def test_an_accepted_proposal_is_saved_only_as_shown(self):
         shown = self.client.post('/api/nutrition/targets/estimate/', {**self.app_body(goal='fat_loss'), 'valid_from': FUTURE}, format='json').data
-        expected = {f: shown[f] for f in ('kcal', 'protein_g', 'carbs_g', 'fat_g')}
+        expected = {f: shown[f] for f in ('method', 'kcal', 'protein_g', 'carbs_g', 'fat_g')}
         # The weight changed after the proposal was shown (another device): not saved.
         Measurement.objects.create(user=self.user, kind='weight', value=80, measured_on=datetime.date(2026, 9, 25))
         stale = self.client.put(f'/api/nutrition/targets/{FUTURE}/', {**self.app_body(goal='fat_loss'), 'expected': expected}, format='json')
@@ -195,3 +195,26 @@ class GoalApiTests(TargetApiBase):
         ok = self.client.put(f'/api/nutrition/targets/{FUTURE}/', {**self.app_body(goal='fat_loss'), 'expected': fresh}, format='json')
         self.assertEqual(ok.status_code, 200)
 
+
+    def test_new_goals_require_complete_expected_proposal(self):
+        url = f'/api/nutrition/targets/{FUTURE}/'
+        body = self.app_body(goal='fat_loss')
+        shown = self.client.post('/api/nutrition/targets/estimate/', {**body, 'valid_from': FUTURE}, format='json').data
+        expected = {f: shown[f] for f in ('method', 'kcal', 'protein_g', 'carbs_g', 'fat_g')}
+        self.assertEqual(self.client.put(url, body, format='json').status_code, 400)
+        self.assertEqual(self.client.put(url, {**body, 'expected': {'kcal': shown['kcal']}}, format='json').status_code, 400)
+        stale = self.client.put(url, {**body, 'expected': {**expected, 'method': 'msj-v1'}}, format='json')
+        self.assertEqual((stale.status_code, stale.data['code']), (409, 'estimate_changed'))
+        self.assertFalse(NutritionTarget.objects.exists())
+        self.assertEqual(self.client.put(url, {**body, 'expected': expected}, format='json').status_code, 200)
+
+    def test_proposal_that_becomes_unsupported_is_not_saved(self):
+        body = self.app_body(goal='fat_loss')
+        shown = self.client.post('/api/nutrition/targets/estimate/', {**body, 'valid_from': FUTURE}, format='json').data
+        expected = {f: shown[f] for f in ('method', 'kcal', 'protein_g', 'carbs_g', 'fat_g')}
+        self.user.profile.height_cm = None
+        self.user.profile.save()
+        stale = self.client.put(f'/api/nutrition/targets/{FUTURE}/', {**body, 'expected': expected}, format='json')
+        self.assertEqual((stale.status_code, stale.data['code']), (409, 'estimate_changed'))
+        self.assertEqual(stale.data['estimate']['reason'], 'missing')
+        self.assertFalse(NutritionTarget.objects.exists())
