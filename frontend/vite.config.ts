@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 function buildSha(): string {
-  for (const candidate of [process.env.VERCEL_GIT_COMMIT_SHA, process.env.GITHUB_SHA]) {
+  for (const candidate of [process.env.POMAK_RELEASE_SHA, process.env.VERCEL_GIT_COMMIT_SHA, process.env.GITHUB_SHA]) {
     if (candidate && /^[0-9a-f]{40}$/i.test(candidate)) return candidate.toLowerCase()
   }
   try {
