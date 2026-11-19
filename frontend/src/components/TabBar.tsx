@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type TouchEvent } from 'react'
+import { useRef, useState, type CSSProperties, type MouseEvent, type TouchEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 
@@ -13,20 +13,21 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 export function TabBar() {
   const { t } = useTranslation()
   const { me } = useAuth()
-  const { pathname } = useLocation()
+  const { pathname, key: routeKey } = useLocation()
   const navigate = useNavigate()
   const coachSpace = !!me?.profile.is_coach && (pathname === '/trener' || pathname.startsWith('/trener/'))
   const tabs = tabRoutes(pathname, !!me?.profile.is_coach)
   const active = tabIndex(pathname, tabs)
-  const [drag, setDrag] = useState<number | null>(null)
+  const [drag, setDrag] = useState<{ routeKey: string; position: number } | null>(null)
   const touch = useRef<{ x: number; y: number; active: number } | null>(null)
   // iOS can synthesize a click on the old link after touchend. Block only that click.
   const suppressClick = useRef(false)
   const unread = useUnreadTotal(!!me).data?.total ?? 0
   usePushSync(me?.id ?? null)
   const inboxTab = coachSpace ? '/trener/poruke' : me?.profile.is_coach ? null : '/trener'
-  const indicator = drag ?? Math.max(0, active)
-  useEffect(() => { setDrag(null) }, [pathname])
+  // A new history entry has a new key, so old gesture state can never override its active tab.
+  const isDragging = drag?.routeKey === routeKey
+  const indicator = isDragging ? drag.position : Math.max(0, active)
 
   const touchStart = (event: TouchEvent<HTMLElement>) => {
     // A fresh tap must never inherit a previously suppressed synthetic click.
@@ -44,7 +45,7 @@ export function TabBar() {
     const dy = event.touches[0].clientY - touch.current.y
     if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.15) return
     const segment = (event.currentTarget.clientWidth - 10) / tabs.length
-    setDrag(clamp(touch.current.active + dx / segment, 0, tabs.length - 1))
+    setDrag({ routeKey, position: clamp(touch.current.active + dx / segment, 0, tabs.length - 1) })
   }
 
   const touchEnd = (event: TouchEvent<HTMLElement>) => {
@@ -63,7 +64,7 @@ export function TabBar() {
     // Suppress Safari's delayed link click, which used to navigate to the old tab.
     suppressClick.current = true
     event.preventDefault()
-    setDrag(target)
+    setDrag({ routeKey, position: target })
     navigate(tabs[target].to, { state: { tabMotion: target > start.active ? 'next' : 'prev' } })
   }
 
@@ -84,7 +85,7 @@ export function TabBar() {
         {coachSpace && <span className="app-nav-brand-sub">COACH</span>}
       </div>
       <ul className="app-nav-list" style={{ '--dock-count': tabs.length } as CSSProperties}>
-        <li aria-hidden="true" className="app-nav-glider" style={{ transform: `translate3d(${indicator * 100}%, 0, 0)`, transition: drag === null ? undefined : 'none' }} />
+        <li aria-hidden="true" className="app-nav-glider" style={{ transform: `translate3d(${indicator * 100}%, 0, 0)`, transition: isDragging ? 'none' : undefined }} />
         {tabs.map((tab, index) => (
           <li key={tab.to}>
             <NavLink to={tab.to} end={tab.end}
