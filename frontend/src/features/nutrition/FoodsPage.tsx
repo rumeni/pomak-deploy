@@ -67,7 +67,7 @@ function FoodRow({ food }: { food: Food }) {
             <span className="ml-2 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-ink">
               {t('nutrition.unverified')}
             </span>
-          )
+          )}
         </span>
         <span className="text-sm text-muted">
           {Math.round(Number(food.kcal))} {t('nutrition.kcal')} · <MacroLine protein={food.protein_g} carbs={food.carbs_g} fat={food.fat_g} /> ·{' '}
