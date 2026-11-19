@@ -89,7 +89,8 @@ export function LanguageMenu({ variant = 'icon' }: { variant?: 'icon' | 'row' })
         <div
           role="menu"
           aria-label="Jezik / Language"
-          className={`absolute z-40 mt-2 min-w-48 overflow-hidden rounded-2xl bg-card py-1 shadow-lg ring-1 ring-line ${variant === 'row' ? 'right-0 left-0' : 'right-0'}`}
+          // Own text colour: a dark photo header sets white text, which would vanish on the card.
+          className={`absolute z-40 mt-2 min-w-48 overflow-hidden rounded-2xl bg-card py-1 text-ink shadow-lg ring-1 ring-line ${variant === 'row' ? 'right-0 left-0' : 'right-0'}`}
         >
           <p className="px-4 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted">Jezik / Language</p>
           {LANGUAGES.map((l) => (

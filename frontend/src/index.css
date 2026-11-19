@@ -56,6 +56,9 @@ a, button { -webkit-tap-highlight-color: transparent; }
   letter-spacing: -.005em;
 }
 
+/* A header (with its language menu) stays above the cards that follow it. */
+.page-header { position: relative; z-index: 20; }
+
 /* Keep all native safe-area handling: the same UI ships in Capacitor. */
 .pt-safe { padding-top: max(env(safe-area-inset-top), 0px); }
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
@@ -175,19 +178,24 @@ a, button { -webkit-tap-highlight-color: transparent; }
 .brand-wordmark { display: inline-flex; align-items: center; gap: 9px; font-stretch: 68%; font-weight: 850; font-size: 30px; line-height: 1; letter-spacing: .01em; }
 .brand-wordmark::before { content: ''; width: 9px; height: 26px; background: var(--color-accent); transform: skewX(-16deg); }
 
-/* Mobile: dark floating dock. */
+/*
+ * Mobile: a floating glass capsule (iOS style), close to the bottom edge: it sits just above the
+ * system gesture / navigation area instead of a full step above it. What scrolls behind it is
+ * blurred, not shown sharply.
+ */
 .app-nav {
   position: fixed;
   inset-inline: 12px;
-  bottom: max(10px, env(safe-area-inset-bottom));
+  bottom: max(6px, calc(env(safe-area-inset-bottom) - 10px));
   z-index: 25;
-  border-radius: 20px;
-  background: rgba(20, 22, 21, .94);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .22);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .10);
+  background: rgba(22, 24, 23, .84);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .08);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  backdrop-filter: blur(22px) saturate(170%);
 }
-.app-nav-list { display: flex; padding: 6px; margin: 0; list-style: none; }
+.app-nav-list { display: flex; padding: 5px; margin: 0; list-style: none; }
 .app-nav-list li { min-width: 0; flex: 1; }
 .app-nav-link {
   position: relative;
@@ -197,8 +205,8 @@ a, button { -webkit-tap-highlight-color: transparent; }
   align-items: center;
   justify-content: center;
   gap: 4px;
-  border-radius: 14px;
-  color: #8e918b;
+  border-radius: 999px;
+  color: #9a9d97;
   text-decoration: none;
   font-size: 10.5px;
   font-weight: 650;

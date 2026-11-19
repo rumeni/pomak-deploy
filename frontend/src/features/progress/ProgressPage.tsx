@@ -11,7 +11,6 @@ import { measurementPoints } from './format'
 import { GoalsSection } from './GoalsSection'
 import { WeekCard } from './WeekCard'
 import { ExerciseThumb } from '../training/ExerciseImage'
-import { LanguageMenu } from '../../components/LanguageMenu'
 
 /** Napredak: nedeljni pregled, ciljevi, telesna težina i vežbe koje je korisnik radio. */
 export function ProgressPage() {
@@ -29,7 +28,7 @@ export function ProgressPage() {
 
   return (
     <>
-      <PageHeader title={t('progress.title')} photo={progressPhoto} action={<LanguageMenu />} />
+      <PageHeader title={t('progress.title')} photo={progressPhoto} />
       <div className="flex flex-col gap-4 px-4 pb-8">
         {goalConflictNotice && (
           <p role="alert" className="rounded-2xl bg-card p-3 text-sm text-ink ring-1 ring-line">

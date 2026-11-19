@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router-dom'
 
-import { LanguageMenu } from '../../components/LanguageMenu'
 import { PageHeader } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { useOnline } from '../../lib/useOnline'
@@ -44,7 +43,6 @@ export function CoachHeader({ title, subtitle, action }: { title: string; subtit
         <>
           {action}
           <SpaceSwitch />
-          <LanguageMenu />
           <Link
             to="/trener/profil"
             aria-label={t('coachSpace.profileAria')}
