@@ -5,7 +5,7 @@
  * verified against its Git blob SHA, so no CDN or GitHub request occurs at runtime.
  */
 import { createHash } from 'node:crypto'
-import { mkdir, copyFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, copyFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
@@ -17,14 +17,25 @@ const core = join(root, 'node_modules', 'tesseract.js-core')
 const languageCommit = '65727574dfcd264acbb0c3e07860e4e9e9b22185'
 const expectedBlob = '6dd4f8638a58eb0663e8f9a80a355c505dcf01a6'
 
+// A previous build may have left the old 12 core variants in public/ocr.
+// Clean generated files first so Vite and Capacitor never package stale WASM.
+await rm(output, { recursive: true, force: true })
 await mkdir(join(output, 'core'), { recursive: true })
 await mkdir(join(output, 'lang'), { recursive: true })
 await copyFile(worker, join(output, 'worker.min.js'))
-const engines = (await readdir(core)).filter((name) => /^tesseract-core.*\.wasm(?:\.js)?$/.test(name))
-if (!engines.includes('tesseract-core.wasm.js') || !engines.includes('tesseract-core-simd-lstm.wasm.js')) {
-  throw Error('Tesseract core variants not found in the npm install')
+// OEM 1 (LSTM) selects one of these variants at runtime, depending on SIMD support.
+// The *.wasm.js wrappers embed the WASM; copying separate *.wasm binaries doubles it.
+// Legacy (non-LSTM) variants are never selected by createWorker('hrv', 1).
+const engines = [
+  'tesseract-core-lstm.wasm.js',
+  'tesseract-core-simd-lstm.wasm.js',
+  'tesseract-core-relaxedsimd-lstm.wasm.js',
+]
+const installed = new Set(await readdir(core))
+for (const file of engines) {
+  if (!installed.has(file)) throw Error(`Required LSTM core variant missing: ${file}`)
+  await copyFile(join(core, file), join(output, 'core', file))
 }
-for (const file of engines) await copyFile(join(core, file), join(output, 'core', file))
 
 const url = `https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/${languageCommit}/hrv.traineddata`
 const response = await fetch(url, { signal: AbortSignal.timeout(45_000) })
