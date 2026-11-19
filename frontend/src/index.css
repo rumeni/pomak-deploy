@@ -186,7 +186,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
 .app-nav {
   position: fixed;
   inset-inline: 12px;
-  bottom: max(6px, calc(env(safe-area-inset-bottom) - 10px));
+  bottom: max(6px, env(safe-area-inset-bottom));
   z-index: 25;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, .10);
@@ -318,6 +318,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
     border-radius: 20px;
     background: var(--color-ink);
     box-shadow: none;
+    border: 0;
   }
   .app-nav::after {
     content: '';

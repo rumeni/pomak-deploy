@@ -28,7 +28,7 @@ export function SpaceSwitch() {
   )
 }
 
-/** Header of the coach space's main screens: switch, language and the coach's profile. */
+/** Header of the coach space's main screens: switch and the coach's profile (language is under Profil). */
 export function CoachHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   const { t } = useTranslation()
   const { me } = useAuth()
