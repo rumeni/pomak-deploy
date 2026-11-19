@@ -165,7 +165,7 @@ jobs:
   # all reviewable tests pass on the trusted main branch.
   deploy-production:
     name: Migrate Neon before deploying Vercel
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [frontend, backend, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
