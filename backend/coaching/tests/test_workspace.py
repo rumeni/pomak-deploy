@@ -409,7 +409,7 @@ class LaterRecordTests(WorkspaceTestCase):
             self.set_weight(workouts[2], '30')
         # Before the fix, each later workout reloaded its entire preceding history.
         self.assertLess(len(queries), 135, len(queries))
-        self.assertEqual(len(self.records()), 34)  # all later improvements, not the first lift
+        self.assertEqual(len(self.records()), 33)  # edited lift loses its record; later improvements remain
 
     def test_equal_start_times_do_not_count_each_other_as_earlier_records(self):
         self.connect(days_ago=3)
