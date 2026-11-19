@@ -213,7 +213,10 @@ jobs:
         run: npm install --global vercel@65.14.0
 
       - name: Build and publish API (after migration)
-        working-directory: backend
+        # Vercel project Root Directory is already "backend"; running CLI from
+        # backend/ would resolve backend/backend and fail with ENOENT.
+        # Remote builds receive real production secrets, not the "[SENSITIVE]"
+        # placeholders emitted by "vercel pull" for local prebuilt builds.
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: team_wN38hTjntiW7tRc4nDnkEg9b
@@ -221,8 +224,7 @@ jobs:
         run: |
           set -euo pipefail
           vercel pull --yes --environment=production
-          vercel build --prod
-          vercel deploy --prebuilt --prod --yes
+          vercel deploy --prod --yes --logs
           echo 'New API version published only after the database schema update.'
 
       - name: Check new production API before publishing web
@@ -240,7 +242,8 @@ jobs:
           PY
 
       - name: Build and publish web against the migrated API
-        working-directory: frontend
+        # The linked Vercel project already specifies "frontend" as Root Directory.
+        # Send the exact reviewed SHA into the remote build for build.json smoke.
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: team_wN38hTjntiW7tRc4nDnkEg9b
@@ -249,8 +252,7 @@ jobs:
         run: |
           set -euo pipefail
           vercel pull --yes --environment=production
-          vercel build --prod
-          vercel deploy --prebuilt --prod --yes
+          vercel deploy --prod --yes --logs --build-env "POMAK_RELEASE_SHA=$POMAK_RELEASE_SHA"
 
   production-smoke:
     name: Verify deployed production
