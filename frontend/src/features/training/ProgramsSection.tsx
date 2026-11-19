@@ -74,6 +74,10 @@ export function ProgramsSection({ routines }: { routines: Routine[] | undefined 
   const { data, isError } = usePrograms(!hidden)
   const [showAll, setShowAll] = useState(false)
   const [expanded, setExpanded] = useState<boolean | null>(null)
+  // Open or collapsed is decided once per visit, when the routines first load: an import that
+  // creates routines must not fold the list away under its own card (and its error or retry).
+  const [startsCollapsed, setStartsCollapsed] = useState<boolean | null>(null)
+  if (startsCollapsed === null && routines !== undefined) setStartsCollapsed(routines.length > 0)
   // Hidden in this visit: a short note with undo, instead of the section vanishing silently.
   const [justHidden, setJustHidden] = useState(false)
 
@@ -96,7 +100,7 @@ export function ProgramsSection({ routines }: { routines: Routine[] | undefined 
   const recommended = data.filter((p) => p.recommended)
   const shown = showAll || !recommended.length ? data : recommended
   const collapsible = !!routines?.length
-  const open = !collapsible || (expanded ?? false)
+  const open = expanded ?? !startsCollapsed
 
   const hide = () => {
     if (!me) return
@@ -136,22 +140,21 @@ export function ProgramsSection({ routines }: { routines: Routine[] | undefined 
           {t('programs.hideSection')}
         </button>
       </div>
-      {open && (
-        <div id="programs-list" className="flex flex-col gap-3">
-          {shown.map((program) => (
-            <ProgramCard key={program.key} program={program} routines={routines} />
-          ))}
-          {recommended.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowAll((v) => !v)}
-              className="min-h-11 rounded-xl text-sm font-semibold text-brand-dark active:bg-brand-soft"
-            >
-              {showAll ? t('programs.showRecommended') : t('programs.showAll', { count: data.length })}
-            </button>
-          )}
-        </div>
-      )}
+      {/* Kept mounted while collapsed, so a card keeps its import state (error, retry, done). */}
+      <div id="programs-list" className={open ? 'flex flex-col gap-3' : 'hidden'}>
+        {shown.map((program) => (
+          <ProgramCard key={program.key} program={program} routines={routines} />
+        ))}
+        {recommended.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="min-h-11 rounded-xl text-sm font-semibold text-brand-dark active:bg-brand-soft"
+          >
+            {showAll ? t('programs.showRecommended') : t('programs.showAll', { count: data.length })}
+          </button>
+        )}
+      </div>
     </section>
   )
 }
@@ -168,7 +171,9 @@ function ProgramCard({ program, routines }: { program: Program; routines: Routin
   const pending = useRef<{ ownerId: string; record: PendingProgram } | null>(null)
   // Existing routines are re-fetched under the cross-tab lock before import; here they only mark
   // a program that is already in "My routines".
-  const inRoutines = programAlreadyAdded(program, routines)
+  // An unfinished import (some routines created, a later one failed) is not "already added".
+  const partial = !!me && (loadPendingProgram(me.id, program) !== null || isImportingProgram(me.id, program.key))
+  const inRoutines = !partial && !add.isPending && !add.isError && programAlreadyAdded(program, routines)
   const routineNames = program.routines.map((r) => r.name).join(' · ')
 
   const onAdd = async () => {

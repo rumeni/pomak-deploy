@@ -6,42 +6,57 @@ import { useSyncExternalStore } from 'react'
  */
 const KEY = 'pomak.hidePrograms.'
 const EVENT = 'pomak:programs-pref'
-// Without storage (private mode) the choice still holds for this session.
-const memory = new Map<string, boolean>()
+// Only for a choice storage could not save (private mode, quota): it then holds for this
+// session. A readable missing key simply means "shown".
+const unsaved = new Map<string, boolean>()
 
 export function programsHidden(ownerId: string): boolean {
+  const session = unsaved.get(ownerId)
+  if (session !== undefined) return session
   try {
-    const stored = localStorage.getItem(KEY + ownerId)
-    if (stored !== null) return stored === '1'
+    return localStorage.getItem(KEY + ownerId) === '1'
   } catch {
-    // fall through to the session value
+    return false
   }
-  return memory.get(ownerId) ?? false
 }
 
 export function setProgramsHidden(ownerId: string, hidden: boolean): void {
-  memory.set(ownerId, hidden)
   try {
     if (hidden) localStorage.setItem(KEY + ownerId, '1')
     else localStorage.removeItem(KEY + ownerId)
+    unsaved.delete(ownerId)
   } catch {
-    // Remembered for this session only.
+    unsaved.set(ownerId, hidden)
   }
   window.dispatchEvent(new Event(EVENT))
 }
 
-function subscribe(onChange: () => void): () => void {
+/** A change made in another tab is newer than an unsaved choice of this one. */
+function onStorage(event: StorageEvent): boolean {
+  if (event.key === null) {
+    unsaved.clear()
+    return true
+  }
+  if (!event.key.startsWith(KEY)) return false
+  unsaved.delete(event.key.slice(KEY.length))
+  return true
+}
+
+export function subscribeProgramsHidden(onChange: () => void): () => void {
+  const storage = (event: StorageEvent) => {
+    if (onStorage(event)) onChange()
+  }
   window.addEventListener(EVENT, onChange)
-  window.addEventListener('storage', onChange)
+  window.addEventListener('storage', storage)
   return () => {
     window.removeEventListener(EVENT, onChange)
-    window.removeEventListener('storage', onChange)
+    window.removeEventListener('storage', storage)
   }
 }
 
 export function useProgramsHidden(ownerId: string | undefined): boolean {
   return useSyncExternalStore(
-    subscribe,
+    subscribeProgramsHidden,
     () => (ownerId ? programsHidden(ownerId) : false),
     () => false,
   )
