@@ -371,6 +371,44 @@ class TaskAccessTests(WorkspaceTestCase):
         self.assertEqual(self.client.patch(f'/api/coach/tasks/{task_id}/', {'action': 'done'}, format='json').status_code, 404)
 
 
+
+class BulkRecordSyncTests(WorkspaceTestCase):
+    def test_first_dashboard_sync_rejudges_backlog_with_bounded_queries(self):
+        from django.db import connection as db_connection
+        from django.test.utils import CaptureQueriesContext
+        from coaching.tasks import sync_tasks
+
+        connection = self.connect(days_ago=4)
+        # Pre-connection workouts count towards personal records, not coach tasks.
+        for i in range(120):
+            self.workout(hours_ago=170 + i, weight='65')
+        for i in range(MAX_WORKOUTS_PER_SYNC):
+            self.workout(hours_ago=60 - i, weight=str(80 + i))
+
+        with CaptureQueriesContext(db_connection) as queries:
+            sync_tasks([connection])
+        # One history prefetch, not 60 individual history scans (each 3+ queries).
+        self.assertLess(len(queries), 55, len(queries))
+        self.assertEqual(CoachTask.objects.filter(
+            connection=connection, kind='personal_record').count(), MAX_WORKOUTS_PER_SYNC)
+        self.assertEqual(CoachTask.objects.filter(
+            connection=connection, kind='workout_review').count(), MAX_WORKOUTS_PER_SYNC)
+
+    def test_same_timestamp_new_workouts_are_both_records(self):
+        from coaching.tasks import sync_tasks
+
+        connection = self.connect(days_ago=4)
+        self.workout(hours_ago=72, weight='65')
+        a = self.workout(hours_ago=24, weight='80')
+        b = self.workout(hours_ago=23, weight='90')
+        WorkoutSession.objects.filter(pk=b.pk).update(started_at=a.started_at)
+        sync_tasks([connection])
+        keys = sorted(CoachTask.objects.filter(
+            connection=connection, kind='personal_record').values_list('key', flat=True))
+        self.assertEqual(keys, sorted([str(a.pk), str(b.pk)]))
+
+
+
 class LaterRecordTests(WorkspaceTestCase):
     def records(self):
         return sorted(t['data']['workout_id'] for t in self.tasks() if t['kind'] == 'personal_record')
