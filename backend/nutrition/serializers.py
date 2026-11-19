@@ -66,8 +66,17 @@ def barcode_clash_error(clash):
 
 
 def community_used_by_other(food) -> bool:
-    """Once another person uses the shared food in a recipe, its values are immutable."""
-    return RecipeIngredient.objects.filter(food_id=food.pk).exclude(recipe__owner_id=food.created_by_id).exists()
+    """Other users' recipes AND reusable saved meals must see stable shared-food values.
+
+    Diary entries already snapshot nutrients, but SavedMealItem resolves the food's
+    current values every time the user adds that saved meal to the diary.
+    """
+    return (
+        RecipeIngredient.objects.filter(food_id=food.pk)
+        .exclude(recipe__owner_id=food.created_by_id).exists()
+        or SavedMealItem.objects.filter(food_id=food.pk)
+        .exclude(saved_meal__owner_id=food.created_by_id).exists()
+    )
 
 
 def can_edit_food(food, request) -> bool:
@@ -414,6 +423,27 @@ class SavedMealSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         items = validated_data.pop('items')
+
+        # Validation above is deliberately outside this transaction in DRF and may
+        # have read a stale Food row. Lock ALL referenced foods in deterministic
+        # UUID order, just as an author update/archive locks the Food row, then
+        # recheck availability UNDER that lock before inserting SavedMealItems.
+        # A save that wins the lock freezes future author changes; if the author
+        # wins first, the save sees updated active values or rejects an archive.
+        ids = sorted({item['food'].pk for item in items if item.get('food')}, key=str)
+        if ids:
+            active = {
+                food.pk: food for food in
+                Food.visible_to(self.context['request'].user)
+                .filter(pk__in=ids, archived_at__isnull=True)
+                .order_by('pk').select_for_update()
+            }
+            if len(active) != len(ids):
+                raise serializers.ValidationError({'items': _('This food is not available.')})
+            for item in items:
+                if item.get('food'):
+                    item['food'] = active[item['food'].pk]
+
         meal = SavedMeal.objects.create(**validated_data)
         SavedMealItem.objects.bulk_create([SavedMealItem(saved_meal=meal, position=i, **item) for i, item in enumerate(items)])
         return meal

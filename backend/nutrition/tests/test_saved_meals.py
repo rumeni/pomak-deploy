@@ -1,9 +1,15 @@
+import threading
+import time
 import uuid
+from unittest import mock
 
-from rest_framework.test import APITestCase
+from django.db import connections
+from django.test import TransactionTestCase
+from rest_framework.test import APIClient, APITestCase
 
 from accounts.models import User
-from nutrition.models import Food, SavedMeal
+from nutrition.models import Food, SavedMeal, SavedMealItem
+from nutrition.views import FoodViewSet
 
 
 class SavedMealTests(APITestCase):
@@ -101,3 +107,114 @@ class MealSettingsTests(APITestCase):
         self.assertEqual(self.patch([{'key': 'lunch', 'enabled': False}]).status_code, 400)
         self.assertEqual(self.patch([{'key': 'lunch', 'name': 'x' * 41, 'enabled': True}]).status_code, 400)
         self.assertEqual(self.patch(None).status_code, 200)
+
+
+class SharedFoodSavedMealRaceTests(TransactionTestCase):
+    """Actual concurrent API requests must serialize a food edit/archive and new meal reference."""
+
+    def setUp(self):
+        self.author = User.objects.create_user('saved-author@example.test', 'test-password-123')
+        self.other = User.objects.create_user('saved-other@example.test', 'test-password-123')
+        self.food = Food.objects.create(
+            source=Food.Source.COMMUNITY, created_by=self.author, name='Deljeni jogurt',
+            state=Food.State.PREPARED, kcal='61',
+        )
+
+    def api(self, user):
+        client = APIClient()
+        client.force_authenticate(user)
+        return client
+
+    def create_body(self):
+        return {'name': 'Sačuvani doručak', 'items': [{'food_id': str(self.food.pk), 'grams': '100'}]}
+
+    def concurrent(self, first, second, *, first_at_lock):
+        """Pause the first request after locking the food; the other must wait."""
+        locked = threading.Event()
+        release = threading.Event()
+        started_second = threading.Event()
+        result = {}
+        errors = []
+
+        def run(name, fn):
+            connections.close_all()
+            try:
+                result[name] = fn()
+            except Exception as e:
+                errors.append((name, e))
+            finally:
+                connections.close_all()
+
+        def first_fn():
+            return first(locked, release)
+
+        def second_fn():
+            started_second.set()
+            return second()
+
+        a = threading.Thread(target=run, args=('first', first_fn))
+        b = threading.Thread(target=run, args=('second', second_fn))
+        try:
+            a.start()
+            self.assertTrue(locked.wait(8), first_at_lock)
+            b.start()
+            self.assertTrue(started_second.wait(8))
+            time.sleep(0.15)
+            self.assertTrue(b.is_alive(), 'second request did not wait on the locked food')
+        finally:
+            release.set()
+            a.join(12)
+            if b.ident is not None:
+                b.join(12)
+        self.assertFalse(a.is_alive(), 'first request was blocked')
+        self.assertFalse(b.is_alive(), 'second request was blocked')
+        self.assertFalse(errors, errors)
+        return result
+
+    def test_saved_meal_wins_before_author_edit_then_edit_conflicts(self):
+        create_bulk = SavedMealItem.objects.bulk_create
+
+        def first(locked, release):
+            def paused_bulk(*args, **kwargs):
+                locked.set()  # SavedMealSerializer has already locked the Food row
+                if not release.wait(8):
+                    raise AssertionError('Timed out while holding food lock')
+                return create_bulk(*args, **kwargs)
+
+            with mock.patch.object(SavedMealItem.objects, 'bulk_create', side_effect=paused_bulk):
+                return self.api(self.other).post('/api/nutrition/saved-meals/', self.create_body(), format='json')
+
+        result = self.concurrent(
+            first, lambda: self.api(self.author).patch(
+                f'/api/nutrition/foods/{self.food.pk}/', {'kcal': '62'}, format='json'),
+            first_at_lock='saved meal never acquired the food lock',
+        )
+        self.assertEqual(result['first'].status_code, 201, result['first'].data)
+        self.assertEqual(result['second'].status_code, 409, result['second'].data)
+        self.food.refresh_from_db()
+        self.assertEqual(self.food.kcal, 61)
+        self.assertTrue(SavedMealItem.objects.filter(food=self.food, saved_meal__owner=self.other).exists())
+
+    def test_archive_wins_first_then_stale_saved_meal_is_rejected(self):
+        require_own = FoodViewSet._require_own
+
+        def first(locked, release):
+            def paused_authorization(view, item):
+                require_own(view, item)
+                locked.set()  # perform_destroy already selected the food FOR UPDATE
+                if not release.wait(8):
+                    raise AssertionError('Timed out while holding food lock')
+
+            with mock.patch.object(FoodViewSet, '_require_own', paused_authorization):
+                return self.api(self.author).delete(f'/api/nutrition/foods/{self.food.pk}/')
+
+        result = self.concurrent(
+            first,
+            lambda: self.api(self.other).post('/api/nutrition/saved-meals/', self.create_body(), format='json'),
+            first_at_lock='author archive never acquired the food lock',
+        )
+        self.assertEqual(result['first'].status_code, 204)
+        self.assertEqual(result['second'].status_code, 400, result['second'].data)
+        self.assertFalse(SavedMeal.objects.filter(owner=self.other).exists())
+        self.food.refresh_from_db()
+        self.assertIsNotNone(self.food.archived_at)

@@ -2,6 +2,8 @@
 // Run after npm run build; requires a local playwright runtime and Chromium.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { readdir, readFile } from 'node:fs/promises'
+import { build as viteBuild } from 'vite'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromium } from 'playwright'
 
@@ -30,6 +32,29 @@ async function waitForPreview() {
 
 try {
   await waitForPreview()
+  const { version: ocrVersion } = JSON.parse(await readFile('dist/ocr/asset-version.json', 'utf8'))
+  assert.match(ocrVersion, /^[a-f0-9]{16}$/, 'OCR version must be a deterministic asset fingerprint')
+  // Compile an isolated test-only entry from the SAME real scanner source. Do this
+  // AFTER the app PWA build so the harness never adds bytes to the app/precache/APK.
+  await viteBuild({
+    configFile: false,
+    root: process.cwd(),
+    base: '/',
+    define: { __POMAK_OCR_VERSION__: JSON.stringify(ocrVersion) },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: false,
+      minify: true,
+      rollupOptions: {
+        input: 'scripts/ocr-smoke-entry.ts',
+        output: {
+          entryFileNames: '__ocr-browser-smoke.js',
+          chunkFileNames: '__ocr-smoke-[name]-[hash].js',
+          assetFileNames: '__ocr-smoke-[name]-[hash][extname]',
+        },
+      },
+    },
+  })
   browser = await chromium.launch({ headless: true, args: ['--no-sandbox'], ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) })
   const context = await browser.newContext({ serviceWorkers: 'allow' })
   const page = await context.newPage()
@@ -97,6 +122,26 @@ try {
   assert.ok(swUrl?.endsWith('/sw.js'), 'Unexpected service worker: ' + swUrl)
   console.log('Service worker controls the online page:', swUrl)
 
+  const cores = (await readdir('dist/ocr/' + ocrVersion + '/core')).sort()
+  assert.deepEqual(cores, [
+    'tesseract-core-lstm.wasm.js',
+    'tesseract-core-relaxedsimd-lstm.wasm.js',
+    'tesseract-core-simd-lstm.wasm.js',
+  ], 'Build must ship ONLY the three LSTM-embedded WASM cores')
+
+  // Optional OCR must not be in the installation precache or runtime cache yet.
+  const precachedOcr = await page.evaluate(async () => {
+    const urls = []
+    for (const name of await caches.keys()) {
+      const entries = await (await caches.open(name)).keys()
+      for (const entry of entries) {
+        if (new URL(entry.url).pathname.startsWith('/ocr/')) urls.push(entry.url)
+      }
+    }
+    return urls
+  })
+  assert.deepEqual(precachedOcr, [], 'First visit must not precache large OCR assets')
+
   await context.setOffline(true)
   const offlineResponse = await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 })
   assert.equal(offlineResponse?.status(), 200, 'Offline root navigation was not precached')
@@ -104,30 +149,8 @@ try {
   assert.match(body, /POMAK/i, 'Offline page did not render the app')
   console.log('Offline root navigation renders POMAK')
 
-  // OCR must run without executing CDN code. Its worker, WASM and Croatian model
-  // are shipped on our own origin and must be available after service-worker install.
-  const offlineOcr = await page.evaluate(async () => {
-    const paths = [
-      '/ocr/worker.min.js',
-      '/ocr/core/tesseract-core.wasm.js',
-      '/ocr/core/tesseract-core-simd-lstm.wasm',
-      '/ocr/lang/hrv.traineddata.gz',
-    ]
-    return Promise.all(paths.map(async (path) => {
-      try {
-        const response = await fetch(path, { cache: 'no-store' })
-        return { path, status: response.status, bytes: (await response.arrayBuffer()).byteLength }
-      } catch (error) {
-        return { path, error: String(error) }
-      }
-    }))
-  })
-  for (const resource of offlineOcr) {
-    assert.equal(resource.status, 200, 'Offline OCR asset missing: ' + JSON.stringify(resource))
-    assert.ok(resource.bytes > 100, 'Offline OCR asset is empty: ' + resource.path)
-  }
-  console.log('Offline OCR worker, WASM and Croatian data load from the service worker')
-
+  // Scanner assets are intentionally NOT available before the first online scan.
+  // Normal PWA navigation remains offline-ready without paying for optional OCR.
   // SPA fallback must work when navigating to a deep link with no network.
   const routeResponse = await page.goto(url + '/trener', { waitUntil: 'domcontentloaded', timeout: 15000 })
   assert.equal(routeResponse?.status(), 200, 'Offline SPA route did not resolve')
@@ -143,7 +166,86 @@ try {
   console.log('Offline /trener deep link renders POMAK React content')
 
   await context.setOffline(false)
-  console.log('PASS: real Chromium offline PWA service-worker smoke')
+
+  // Execute the ACTUAL scanner source in Chromium. A synthetic, high-contrast
+  // Croatian nutrition label is generated in-browser; no photo upload occurs.
+  await page.addScriptTag({ url: '/__ocr-browser-smoke.js', type: 'module' })
+  await page.waitForFunction(() => !!window.__pomakOcrSmoke, null, { timeout: 20_000 })
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1700
+    canvas.height = 1100
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = 'white'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = 'black'
+    ctx.font = 'bold 76px Arial'
+    const lines = [
+      'NUTRITIVNA VRIJEDNOST 100 g',
+      'ENERGIJA 100 kcal',
+      'PROTEINI 12 g',
+      'UGLJIKOHIDRATI 20 g',
+      'MASTI 5 g',
+      'VLAKNA 3 g',
+    ]
+    lines.forEach((line, index) => ctx.fillText(line, 50, 130 + index * 145))
+    window.__ocrSample = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+  })
+
+  // Before any online scan, a fully offline user must get the existing visible
+  // "scan.labelOffline" form fallback quickly, without a hanging OCR worker.
+  await page.evaluate(() => {
+    const host = document.createElement('div')
+    host.id = 'ocr-offline-ui-smoke'
+    document.body.append(host)
+    window.__pomakOcrSmoke.mountScanner(host)
+  })
+  await page.waitForSelector('#ocr-offline-ui-smoke input[type="file"]', { state: 'attached' })
+  await context.setOffline(true)
+  await page.evaluate(() => {
+    const inputs = document.querySelectorAll('#ocr-offline-ui-smoke input[type="file"]')
+    const data = new DataTransfer()
+    data.items.add(new File([window.__ocrSample], 'test-label.png', { type: 'image/png' }))
+    inputs[1].files = data.files
+    inputs[1].dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await page.waitForFunction(() => window.__pomakOcrSmoke.uiResult !== null, null, { timeout: 12_000 })
+  const offlineFallback = await page.evaluate(() => window.__pomakOcrSmoke.uiResult)
+  assert.equal(offlineFallback.kind, 'label')
+  assert.deepEqual(offlineFallback.values, {}, 'First offline scan must not invent values')
+  assert.match(offlineFallback.note ?? '', /offline|internet|mrež/i, 'Offline scanner must show a clear fallback')
+  assert.equal(await page.locator('#ocr-offline-ui-smoke button:not([disabled])').count(), 2,
+    'Barcode/manual form actions must remain available after OCR failure')
+  console.log('First-ever offline OCR reports a bounded error and keeps other actions available')
+  await context.setOffline(false)
+
+  const recognize = () => page.evaluate(async () => {
+    return await Promise.race([
+      window.__pomakOcrSmoke.recognize(window.__ocrSample).then(result => ({ text: result.text, found: result.found })),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Real Chromium OCR recognition timed out')), 85_000)),
+    ])
+  })
+  const online = await recognize()
+  assert.match(online.text, /PROTEIN|MASTI|KCAL/i, 'Tesseract must read text from the synthetic label')
+  console.log('Actual Croatian Tesseract worker recognized a synthetic label online')
+
+  const ocrCache = await page.evaluate(async cacheName => {
+    const cache = await caches.open(cacheName)
+    return (await cache.keys()).map(request => new URL(request.url).pathname)
+  }, 'pomak-ocr-' + ocrVersion)
+  assert.ok(ocrCache.includes('/ocr/' + ocrVersion + '/worker.min.js'),
+    'Real OCR worker did not populate versioned CacheFirst cache')
+  assert.ok(ocrCache.includes('/ocr/' + ocrVersion + '/lang/hrv.traineddata.gz'),
+    'Real OCR language model did not populate versioned CacheFirst cache')
+  assert.ok(ocrCache.some(path => /\/ocr\/[a-f0-9]{16}\/core\/tesseract-core-.*\.wasm\.js$/.test(path)),
+    'Real OCR core not cached after recognition')
+
+  await context.setOffline(true)
+  const offline = await recognize()
+  assert.match(offline.text, /PROTEIN|MASTI|KCAL/i, 'Tesseract must recognize a label offline AFTER the first online scan')
+  await context.setOffline(false)
+  console.log('PASS: actual Tesseract recognition online/offline, first-offline UI fallback, and lazy versioned OCR cache')
+
 } finally {
   await browser?.close()
   preview.kill('SIGTERM')

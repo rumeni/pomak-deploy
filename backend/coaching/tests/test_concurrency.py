@@ -171,12 +171,12 @@ class TaskSyncRaceTests(TransactionTestCase):
         from coaching import tasks
 
         paused, release, problems, done = threading.Event(), threading.Event(), [], []
-        original = tasks._records
+        original = tasks._records_for_sessions
 
-        def slow_records(session):
+        def slow_records(owner_id, sessions):
             paused.set()
             release.wait(timeout=8)
-            return original(session)
+            return original(owner_id, sessions)
 
         def sync():
             close_old_connections()
@@ -197,7 +197,7 @@ class TaskSyncRaceTests(TransactionTestCase):
             finally:
                 connections.close_all()
 
-        with mock.patch.object(tasks, '_records', slow_records):
+        with mock.patch.object(tasks, '_records_for_sessions', slow_records):
             sync_thread, competitor_thread = threading.Thread(target=sync), threading.Thread(target=compete)
             sync_thread.start()
             self.assertTrue(paused.wait(timeout=8), 'sync never reached the workout')

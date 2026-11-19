@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
@@ -17,7 +18,22 @@ function buildSha(): string {
   return 'unknown'
 }
 
+// Written by npm prebuild. It is derived from the actual worker, 3 cores and model,
+// not from the app's release SHA. In local dev without a vendored model, OCR is unavailable.
+function ocrAssetVersion(): string {
+  try {
+    const { version } = JSON.parse(readFileSync(new URL('./public/ocr/asset-version.json', import.meta.url), 'utf8')) as { version: string }
+    if (/^[a-f0-9]{16}$/.test(version)) return version
+  } catch {
+    // npm run dev before OCR vendoring: the scanner will report an unavailable model.
+  }
+  return 'dev'
+}
+
+const ocrVersion = ocrAssetVersion()
+
 export default defineConfig({
+  define: { __POMAK_OCR_VERSION__: JSON.stringify(ocrVersion) },
   plugins: [
     {
       name: 'pomak-build-metadata',
@@ -34,11 +50,22 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       // Push and notification clicks (public/push-sw.js) inside the generated service worker.
       workbox: {
-        importScripts: ['push-sw.js'],
-        // Large OCR worker, WASM and traineddata are served from our origin and must be
-        // available offline after PWA installation (not only after the first OCR attempt).
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,wasm,gz}'],
+        importScripts: ['push-sw.js', 'ocr-sw.js'],
+        // OCR is large and optional: never download it for users who do not scan.
+        // After the first online scan, CacheFirst keeps the worker, selected LSTM core
+        // and language model locally for later offline use.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
+        globIgnores: ['ocr/**', '**/ocr/**'],
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+        runtimeCaching: [{
+          urlPattern: /\/ocr\/[a-f0-9]{16}\//,
+          handler: 'CacheFirst',
+          options: {
+            cacheName: `pomak-ocr-${ocrVersion}`,
+            cacheableResponse: { statuses: [200] },
+            expiration: { maxEntries: 8, maxAgeSeconds: 365 * 24 * 60 * 60 },
+          },
+        }],
       },
       manifest: {
         name: 'POMAK',
