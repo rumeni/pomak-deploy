@@ -13,7 +13,7 @@
   "git": {
     "deploymentEnabled": {
       "**": false,
-      "main": true
+      "main": false
     }
   },
   "headers": [

@@ -24,17 +24,57 @@ Vercel (2026) auto-detects Django via `manage.py`/`WSGI_APPLICATION`; no `api/in
 1. In Vercel → Storage / Marketplace, open existing Neon integration, choose **Create Database**, **Free ($0)**. Verify billing plan and region before creating.
 2. Connect this database to `pomak-api` (Production environment). This should populate `DATABASE_URL` as a *protected* environment variable; check its name without exposing the value.
 3. Disable preview deployments for the API initially if the preview environment would share the production database.
-4. Migrate the database **once** from a trusted development machine, using the Neon connection URL (not stored in repository):
+4. The **initial** database setup is done once on a trusted machine or in the protected
+   GitHub release workflow. Subsequent production migrations MUST run **before** promoting
+   code that needs them. Never put migrations in a Vercel build (preview and concurrent builds
+   could race, and a successful build can become live before migration completes).
 
    ```bash
    cd backend
    python -m pip install -r requirements.txt
-   # supply DATABASE_URL and SECRET_KEY privately via the shell / local untracked .env
+   # supply DATABASE_URL and SECRET_KEY privately, never in Git
    python manage.py migrate --noinput
-   python manage.py check --deploy
+   python manage.py migrate --check
    ```
 
-   Don't run migrations automatically on every Vercel build against the production database; preview builds and concurrent builds can cause collisions. The migrations seed shared exercise and food libraries.
+   The migrations seed shared exercise and food libraries. A deployment's migrations must be
+   **expand/contract-compatible**: when the migration runs, the old production API remains live.
+   Add nullable columns/new tables first; remove/rename old columns only in a later release
+   after old code is no longer serving traffic.
+
+### Production release gate (PR #77 and later)
+
+Both `backend/vercel.json` and `frontend/vercel.json` disable automatic `main` deployments
+(`git.deploymentEnabled.main=false`). The reviewed GitHub Actions workflow is now the only
+intended production release mechanism. It runs after frontend/backend/Android CI passes:
+
+1. Acquire the **GitHub `production` environment** (restrict it to `main`, protect it with a
+   required reviewer if practical). The job refuses to proceed if credentials are absent.
+2. Connect to the production Neon database with `NEON_MIGRATE_DATABASE_URL` and run
+   `python manage.py migrate --noinput` then `migrate --check`.
+3. Only after successful migration, build and deploy `pomak-api` with the reviewed, pinned
+   Vercel CLI. If deployment or API readiness fails, **do not deploy the new web**.
+4. Deploy `pomak-web` with the new commit SHA embedded in `build.json`.
+5. Production smoke checks the exact web commit and API health/readiness.
+
+**Before merging the release-workflow PR**, configure the following as secrets in the GitHub
+`production` environment (Settings → Environments → production → Environment secrets):
+
+- `NEON_MIGRATE_DATABASE_URL`: Neon **direct (unpooled)** PostgreSQL connection URI with
+  `sslmode=require`, for the **same production database** used by `pomak-api`. Use a
+  least-privileged migration role with DDL permissions. Never use the test/backup branch URL.
+- `VERCEL_TOKEN`: Vercel token scoped to the `rumenis-projects` team that can deploy the two
+  existing projects. Create it under Vercel account tokens; never paste it into Git or chat.
+
+The Vercel organization and project IDs are not secrets and are fixed in `ci.yml`. The
+workflow has `cancel-in-progress: false` so a second release cannot interrupt an active
+migration or deployment. **Test the production release path before relying on it.** If these
+secrets are missing, `main` CI will fail closed, and neither project will auto-deploy.
+
+Recovery: if a migration fails, leave the old API/web live and repair it through a reviewed
+follow-up. If the API build fails after an additive migration, the old API must remain
+compatible with the expanded schema. Never roll back migrations by dropping columns that
+might contain user data.
 
 ## 2. Vercel API project
 

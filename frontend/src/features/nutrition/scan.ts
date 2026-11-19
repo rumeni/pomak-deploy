@@ -80,15 +80,21 @@ function prepareForText(source: HTMLCanvasElement): HTMLCanvasElement {
 
 /**
  * Text recognition of the nutrition table, then the values per 100 g. `onProgress` gets 0-1.
- * The recognition data (a few MB) is downloaded on first use and cached by the browser.
+ * OCR engine and language data are bundled with the app and precached for offline use.
  * Reads the photo as is and prepared (high contrast) and keeps whichever finds more values.
  */
 export async function readNutritionLabel(file: Blob, onProgress?: (share: number) => void): Promise<LabelValues & { text: string }> {
   const canvas = await toCanvas(file, 2400)
   const { createWorker, PSM } = await import('tesseract.js')
   let pass = 0
+  // Only same-origin, build-vendored OCR files: never execute CDN scripts in this app.
+  const ocrBase = new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.origin).href
   // Croatian model: Latin script with diacritics and decimal commas, like labels in the region.
   const worker = await createWorker('hrv', 1, {
+    workerPath: `${ocrBase}worker.min.js`,
+    corePath: `${ocrBase}core`,
+    langPath: `${ocrBase}lang`,
+    workerBlobURL: false,
     logger: (m: { status: string; progress: number }) => {
       if (m.status === 'recognizing text') onProgress?.((pass + m.progress) / 2)
     },

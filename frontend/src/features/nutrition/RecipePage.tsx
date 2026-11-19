@@ -248,7 +248,12 @@ function IngredientSearch({ onPick, onClose }: { onPick: (food: Food) => void; o
         {foods?.map((food) => (
           <li key={food.id} className="border-b border-line last:border-0">
             <button type="button" onClick={() => onPick(food)} className="flex min-h-14 w-full flex-col justify-center px-2 py-1.5 text-left active:bg-brand-soft">
-              <span className="font-medium">{food.name}</span>
+              <span className="font-medium">
+                {food.name}
+                {food.source === 'community' && !food.verified && (
+                  <span className="ml-2 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-ink">{t('nutrition.unverified')}</span>
+                )}
+              </span>
               <span className="text-xs text-muted">
                 {Math.round(Number(food.kcal))} {t('nutrition.kcal')} · <MacroLine protein={food.protein_g} carbs={food.carbs_g} fat={food.fat_g} /> · {t('nutrition.per100')}
               </span>

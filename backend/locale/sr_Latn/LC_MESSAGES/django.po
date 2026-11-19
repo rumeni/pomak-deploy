@@ -885,3 +885,52 @@ msgstr "Danas si poslao/la mnogo slika. Pokušaj ponovo sutra."
 
 msgid "Your coach added a new exercise instruction."
 msgstr "Trener je dodao novo uputstvo za vežbu."
+
+msgid "Refresh token is required."
+msgstr "Token za obnavljanje prijave je obavezan."
+
+msgid "Invalid refresh token."
+msgstr "Nevažeći token za obnavljanje prijave."
+
+msgid "Name or aliases are too long for search."
+msgstr "Naziv ili alternativni nazivi su predugački za pretragu."
+
+msgid "This food cannot be changed because a recipe using it would become invalid."
+msgstr "Ova namirnica ne može da se izmeni jer bi recept koji je koristi postao neispravan."
+
+msgid "Supply all per-100-g snapshot fields or none."
+msgstr "Unesi sve sačuvane vrednosti na 100 g ili nijednu."
+
+msgid "A per-100-g snapshot requires a food."
+msgstr "Za sačuvane vrednosti na 100 g mora biti izabrana namirnica."
+
+msgid "An existing entry nutritional snapshot cannot be changed."
+msgstr "Sačuvane nutritivne vrednosti postojeće stavke ne mogu se menjati."
+
+msgid "Name is too long for search."
+msgstr "Naziv je predugačak za pretragu."
+
+#, python-format
+msgid "At most %(count)d exercises per workout."
+msgstr "Najviše %(count)d vežbi po treningu."
+
+msgid "Invalid workout plan snapshot."
+msgstr "Neispravan sačuvani plan treninga."
+
+msgid "The workout plan snapshot is too large."
+msgstr "Sačuvani plan treninga je prevelik."
+
+msgid "Invalid history cursor."
+msgstr "Neispravan pokazivač istorije."
+
+msgid "Expected a JSON object."
+msgstr "Očekuje se JSON objekat."
+
+msgid "This item was already saved. Refresh to see the saved version."
+msgstr "Ova stavka je već sačuvana. Osveži stranicu da vidiš sačuvanu verziju."
+
+msgid "At most 20 shared foods every 24 hours."
+msgstr "Najviše 20 deljenih namirnica u 24 sata."
+
+msgid "This shared food is used in another user's recipe. Report an error instead."
+msgstr "Ova deljena namirnica se koristi u tuđem receptu. Umesto izmene prijavi grešku."
