@@ -1,8 +1,11 @@
 import re
+from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.utils import timezone
+from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -13,6 +16,7 @@ from . import recipes, targets
 from .models import Food, FoodPortion, Meal, MealEntry, NutritionDay, NutritionTarget, RecipeIngredient, SavedMeal, SavedMealItem
 
 MAX_PORTIONS = 10
+MAX_SHARED_FOODS_PER_24_HOURS = 20
 MAX_SAVED_MEAL_ITEMS = 30
 MAX_RECIPE_INGREDIENTS = 50
 MACRO_FIELDS = ('protein_g', 'carbs_g', 'fat_g')
@@ -61,14 +65,20 @@ def barcode_clash_error(clash):
     ) % {'name': localized_name(clash)}], 'existing_id': [str(clash.id)]})
 
 
+def community_used_by_other(food) -> bool:
+    """Once another person uses the shared food in a recipe, its values are immutable."""
+    return RecipeIngredient.objects.filter(food_id=food.pk).exclude(recipe__owner_id=food.created_by_id).exists()
+
+
 def can_edit_food(food, request) -> bool:
-    """Own foods; a community food only by its author and only until an admin verified it."""
+    """Own foods; community authors can edit only while unverified and unused by others."""
     user = getattr(request, 'user', None)
     if user is None or not user.is_authenticated:
         return False
     if food.owner_id is not None:
         return food.owner_id == user.pk
-    return food.source == Food.Source.COMMUNITY and food.created_by_id == user.pk and food.verified_at is None
+    return (food.source == Food.Source.COMMUNITY and food.created_by_id == user.pk
+            and food.verified_at is None and not community_used_by_other(food))
 
 
 class FoodSerializer(serializers.ModelSerializer):
@@ -176,8 +186,15 @@ class FoodSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         portions = validated_data.pop('portions', [])
         if validated_data.pop('shared', False):
-            # Shared: no owner (everyone sees it), the author is kept only to allow corrections.
-            validated_data['created_by'] = validated_data.pop('owner')
+            # Serialize this user's shared creations (including concurrent requests) by locking
+            # the user row. Idempotent retries are handled before this serializer is called.
+            author = validated_data.pop('owner')
+            get_user_model().objects.select_for_update().get(pk=author.pk)
+            since = timezone.now() - timedelta(hours=24)
+            if Food.objects.filter(source=Food.Source.COMMUNITY, created_by_id=author.pk,
+                                   created_at__gte=since).count() >= MAX_SHARED_FOODS_PER_24_HOURS:
+                raise serializers.ValidationError({'shared': _('At most 20 shared foods every 24 hours.')})
+            validated_data['created_by'] = author
             try:
                 with transaction.atomic():
                     food = Food.objects.create(source=Food.Source.COMMUNITY, **validated_data)
