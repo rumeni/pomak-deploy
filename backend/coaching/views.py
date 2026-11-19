@@ -971,8 +971,13 @@ class UnreadView(APIView):
     def get(self, request):
         counts = unread_counts(request.user)
         # Pushes a failed hand-off left behind are picked up by the next poll.
-        if push_enabled() and PushMessage.objects.exists():
-            poll_kick()
+        if push_enabled():
+            # Without the queue worker, due session reminders go out with the polls of open apps.
+            from scheduling.services import send_due_reminders
+
+            send_due_reminders()
+            if PushMessage.objects.exists():
+                poll_kick()
         return Response({'total': sum(counts.values()), 'by_connection': {str(k): v for k, v in counts.items()}})
 
 

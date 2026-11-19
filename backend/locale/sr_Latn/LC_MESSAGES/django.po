@@ -1021,3 +1021,9 @@ msgstr "Opsezi istog dana ne smeju da se preklapaju."
 
 msgid "At most 31 days at once."
 msgstr "Najviše 31 dan odjednom."
+
+msgid "Reminder: your session starts at {time}."
+msgstr "Podsetnik: tvoj termin počinje u {time}."
+
+msgid "Reminder: you have a session tomorrow at {time}."
+msgstr "Podsetnik: sutra imaš termin u {time}."

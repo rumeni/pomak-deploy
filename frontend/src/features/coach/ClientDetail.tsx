@@ -19,6 +19,7 @@ import { CoachNutritionDays } from './CoachNutritionDays'
 import { formatCoachSet } from './formatCoach'
 import { InstructionsPanel } from './Instructions'
 import { PlanPanel } from './PlanPanel'
+import { PackagesPanel } from '../schedule/PackagesPanel'
 import { ClientStats, ClientTargetPanel, WorkoutLinks } from './ClientTabs'
 import { readinessReasons } from './workspace'
 
@@ -121,7 +122,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab data={data} />}
+      {tab === 'overview' && <><OverviewTab data={data} /><PackagesPanel clientId={clientId} /></>}
       {tab === 'plan' && <><PlanPanel clientId={clientId} /><InstructionsPanel clientId={clientId} /><PlanTab clientId={clientId} data={data} /></>}
       {tab === 'progress' && <ProgressTab clientId={clientId} data={data} />}
       {tab === 'nutrition' && (

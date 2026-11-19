@@ -288,4 +288,6 @@ SR = {
     'At most three time ranges per day.': 'Najviše tri vremenska opsega po danu.',
     'Time ranges of one day must not overlap.': 'Opsezi istog dana ne smeju da se preklapaju.',
     'At most 31 days at once.': 'Najviše 31 dan odjednom.',
+    'Reminder: your session starts at {time}.': 'Podsetnik: tvoj termin počinje u {time}.',
+    'Reminder: you have a session tomorrow at {time}.': 'Podsetnik: sutra imaš termin u {time}.',
 }

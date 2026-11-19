@@ -1,38 +1,55 @@
 import { describe, expect, it } from 'vitest'
 
-import { addDays, dayKey, groupByDay, localMoment, mondayOf, rangesOverlap, weekDays, weekdayOf } from './time'
+import { addDays, dayKey, groupByDay, mondayOf, onDay, rangesOverlap, spanOnDay, timeLabel, validDayTime, weekDays, weekdayOf, zonedMoment } from './time'
 
-describe('calendar dates', () => {
+describe('schedule dates (Europe/Belgrade, whatever the device zone)', () => {
   it('weeks start on Monday, as on the server', () => {
-    expect(mondayOf('2026-11-19')).toBe('2026-11-16') // Thursday
-    expect(mondayOf('2026-11-22')).toBe('2026-11-16') // Sunday
-    expect(mondayOf('2026-11-16')).toBe('2026-11-16')
-    expect(weekDays('2026-11-16')).toEqual(['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22'])
+    expect(mondayOf('2026-11-19')).toBe('2026-11-16')
+    expect(mondayOf('2026-11-22')).toBe('2026-11-16')
+    expect(weekDays('2026-11-16')[6]).toBe('2026-11-22')
     expect(weekdayOf('2026-11-16')).toBe(0)
-    expect(weekdayOf('2026-11-22')).toBe(6)
-  })
-
-  it('crosses months and years', () => {
     expect(addDays('2026-12-30', 3)).toBe('2027-01-02')
-    expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
+    expect(addDays('2027-03-01', -1)).toBe('2027-02-28')
   })
 
-  it('a local date and time round-trip to the same local day', () => {
-    const moment = localMoment('2026-11-24', '09:30')
-    expect(dayKey(moment)).toBe('2026-11-24')
-    expect(new Date(moment).getHours()).toBe(9)
-    expect(new Date(moment).getMinutes()).toBe(30)
+  it('a typed time is a Belgrade time, also from a device in another zone', () => {
+    expect(zonedMoment('2026-11-24', '09:30')).toBe('2026-11-24T08:30:00.000Z') // CET
+    expect(zonedMoment('2027-06-01', '09:30')).toBe('2027-06-01T07:30:00.000Z') // CEST
+    expect(timeLabel('2026-11-24T08:30:00.000Z')).toBe('09:30')
+    expect(dayKey('2026-11-23T23:30:00.000Z')).toBe('2026-11-24') // already the 24th in Belgrade
+    // The same instant shown for a device in New York would be another day there.
+    expect(dayKey('2026-11-23T23:30:00.000Z', 'America/New_York')).toBe('2026-11-23')
   })
 
-  it('groups by local day in time order', () => {
-    const items = [localMoment('2026-11-24', '11:00'), localMoment('2026-11-24', '08:00'), localMoment('2026-11-25', '09:00')]
+  it('clock changes match the server', () => {
+    expect(zonedMoment('2027-03-28', '02:30')).toBe('2027-03-28T01:30:00.000Z') // skipped: 03:30 CEST
+    expect(zonedMoment('2027-03-28', '03:00')).toBe('2027-03-28T01:00:00.000Z')
+    expect(zonedMoment('2027-10-31', '02:30')).toBe('2027-10-31T00:30:00.000Z') // repeated: the first one
+  })
+
+  it('a multi-day closure shows on every day it covers, clipped', () => {
+    const closure = { starts_at: zonedMoment('2026-11-14', '00:00'), ends_at: zonedMoment('2026-11-18', '12:00') }
+    const items = [closure]
+    for (const day of ['2026-11-16', '2026-11-17', '2026-11-18']) {
+      expect(onDay(items, day, (x) => x.starts_at, (x) => x.ends_at)).toEqual(items)
+    }
+    expect(onDay(items, '2026-11-19', (x) => x.starts_at, (x) => x.ends_at)).toEqual([])
+    expect(spanOnDay(closure.starts_at, closure.ends_at, '2026-11-17')).toEqual({ wholeDay: true, from: null, to: null })
+    expect(spanOnDay(closure.starts_at, closure.ends_at, '2026-11-18')).toEqual({ wholeDay: false, from: null, to: '12:00' })
+  })
+
+  it('groups by schedule day in time order', () => {
+    const items = [zonedMoment('2026-11-24', '11:00'), zonedMoment('2026-11-24', '08:00'), zonedMoment('2026-11-25', '09:00')]
     const days = groupByDay(items, (x) => x)
     expect([...days.keys()]).toEqual(['2026-11-24', '2026-11-25'])
     expect(days.get('2026-11-24')).toEqual([items[1], items[0]])
   })
 
-  it('touching ranges do not overlap', () => {
+  it('validates ranges and typed values', () => {
     expect(rangesOverlap({ start: '08:00', end: '12:00' }, { start: '12:00', end: '14:00' })).toBe(false)
     expect(rangesOverlap({ start: '08:00', end: '12:00' }, { start: '11:00', end: '14:00' })).toBe(true)
+    expect(validDayTime('', '09:00')).toBe(false)
+    expect(validDayTime('2026-11-24', '')).toBe(false)
+    expect(validDayTime('2026-11-24', '09:00')).toBe(true)
   })
 })

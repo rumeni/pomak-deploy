@@ -9,7 +9,8 @@ import {
   useSaveSessionType, useScheduleSettings, useSessionTypes,
   type Booking, type HoursWindow, type ScheduleSettings, type SessionMode, type SessionType,
 } from './api'
-import { dayKey, dayLabel, localMoment, rangesOverlap, timeLabel } from './time'
+import { ZoneNote } from './ZoneNote'
+import { dayKey, dayLabel, rangesOverlap, timeLabel, validDayTime, zonedMoment } from './time'
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6]
 
@@ -24,6 +25,7 @@ export function ScheduleSettingsPage() {
     <div className="min-h-full pb-12">
       <ScreenHeader title={t('schedule.settings.title')} onBack={() => navigate('/trener/kalendar')} />
       <div className="mx-auto flex max-w-xl flex-col gap-3 px-4 py-4">
+        <ZoneNote />
         {(settings.isError || hours.isError) && <FormError message={t('errors.loadFailed')} />}
         <SessionTypesCard />
         {hours.data && <HoursCard key={JSON.stringify(hours.data.windows)} initial={hours.data.windows} />}
@@ -215,9 +217,10 @@ function ExceptionsCard() {
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setError(null)
-    const starts_at = localMoment(fromDay, fromTime)
-    const ends_at = localMoment(toDay, toTime)
-    if (ends_at <= starts_at) return setError(t('schedule.settings.endAfterStart'))
+    if (!validDayTime(fromDay, fromTime) || !validDayTime(toDay, toTime)) return setError(t('schedule.calendar.dayTimeRequired'))
+    const starts_at = zonedMoment(fromDay, fromTime)
+    const ends_at = zonedMoment(toDay, toTime)
+    if (Date.parse(ends_at) <= Date.parse(starts_at)) return setError(t('schedule.settings.endAfterStart'))
     add.mutate({ kind, starts_at, ends_at, note: note.trim() }, {
       onSuccess: (data) => { setConflicts(data.conflicts); setNote('') },
     })

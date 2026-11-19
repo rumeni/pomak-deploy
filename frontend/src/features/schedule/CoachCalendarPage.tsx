@@ -7,19 +7,18 @@ import { errorMessage } from '../../lib/api'
 import { uuid } from '../../lib/uuid'
 import { useCoachDashboard } from '../coach/api'
 import { CoachHeader } from '../coach/SpaceSwitch'
-import { useBookingAction, useCalendar, useCreateBooking, useSessionTypes, type Booking, type NewBooking } from './api'
+import { useBookingAction, useCalendar, useCreateBooking, useSessionTypes, type Booking, type NewBooking, type ScheduleException } from './api'
 import { BookingStatusChip } from './BookingStatusChip'
-import { addDays, dayKey, dayLabel, groupByDay, localMoment, mondayOf, timeLabel, weekDays } from './time'
+import { ZoneNote } from './ZoneNote'
+import { addDays, dayKey, dayLabel, mondayOf, onDay, spanOnDay, validDayTime, weekDays, zonedMoment } from './time'
 
-/** The coach's week: sessions, requests to answer, closed and extra time. */
+/** The coach's week: sessions, requests to answer, closed and extra time (schedule zone). */
 export function CoachCalendarPage() {
   const { t } = useTranslation()
   const today = dayKey(new Date())
   const [monday, setMonday] = useState(() => mondayOf(today))
   const days = weekDays(monday)
   const calendar = useCalendar(days[0], days[6])
-  const byDay = groupByDay(calendar.data?.bookings ?? [], (b) => b.starts_at)
-  const exceptionsByDay = groupByDay(calendar.data?.exceptions ?? [], (e) => e.starts_at)
   const [adding, setAdding] = useState(false)
 
   return (
@@ -37,6 +36,7 @@ export function CoachCalendarPage() {
           </Link>
           <Button size="sm" onClick={() => setAdding((v) => !v)}>{t('schedule.calendar.newBooking')}</Button>
         </div>
+        <ZoneNote />
 
         {!!calendar.data?.requests && (
           <p role="status" className="rounded-xl bg-accent/15 px-4 py-3 text-sm font-semibold">
@@ -51,71 +51,96 @@ export function CoachCalendarPage() {
             <Button variant="secondary" className="mt-3" onClick={() => void calendar.refetch()}>{t('common.retry')}</Button>
           </Card>
         )}
-        {calendar.data && days.map((day) => {
-          const items = byDay.get(day) ?? []
-          const exceptions = exceptionsByDay.get(day) ?? []
-          return (
-            <section key={day} aria-label={dayLabel(day, true)} className={`app-card !p-3 ${day === today ? 'ring-2 ring-brand' : ''}`}>
-              <h2 className="mb-2 text-sm font-bold capitalize">{dayLabel(day, true)}</h2>
-              {exceptions.map((e) => (
-                <p key={e.id} className={`mb-2 rounded-lg px-3 py-1.5 text-xs font-semibold ${e.kind === 'closed' ? 'bg-line text-muted' : 'bg-brand-soft text-brand-dark'}`}>
-                  {e.kind === 'closed' ? t('schedule.exceptions.closed') : t('schedule.exceptions.open')}: {timeLabel(e.starts_at)}–{timeLabel(e.ends_at)}{e.note ? ` · ${e.note}` : ''}
-                </p>
-              ))}
-              {items.length === 0 && <p className="text-sm text-muted">{t('schedule.calendar.free')}</p>}
-              <ul className="flex flex-col gap-2">
-                {items.map((b) => <CoachBookingRow key={b.id} booking={b} />)}
-              </ul>
-            </section>
-          )
-        })}
+        {calendar.data && days.map((day) => (
+          <DayCard key={day} day={day} today={day === today}
+            bookings={onDay(calendar.data.bookings, day, (b) => b.starts_at, (b) => b.ends_at)}
+            exceptions={onDay(calendar.data.exceptions, day, (e) => e.starts_at, (e) => e.ends_at)} />
+        ))}
       </div>
     </>
   )
 }
 
-function CoachBookingRow({ booking }: { booking: Booking }) {
+function DayCard({ day, today, bookings, exceptions }: { day: string; today: boolean; bookings: Booking[]; exceptions: ScheduleException[] }) {
+  const { t } = useTranslation()
+  const closedAllDay = exceptions.some((e) => e.kind === 'closed' && spanOnDay(e.starts_at, e.ends_at, day).wholeDay)
+  return (
+    <section aria-label={dayLabel(day, true)} className={`app-card !p-3 ${today ? 'ring-2 ring-brand' : ''}`}>
+      <h2 className="mb-2 text-sm font-bold capitalize">{dayLabel(day, true)}</h2>
+      {exceptions.map((e) => (
+        <p key={e.id} className={`mb-2 rounded-lg px-3 py-1.5 text-xs font-semibold ${e.kind === 'closed' ? 'bg-line text-muted' : 'bg-brand-soft text-brand-dark'}`}>
+          {e.kind === 'closed' ? t('schedule.exceptions.closed') : t('schedule.exceptions.open')}: <Span start={e.starts_at} end={e.ends_at} day={day} />
+          {e.note ? ` · ${e.note}` : ''}
+        </p>
+      ))}
+      {bookings.length === 0 && !closedAllDay && <p className="text-sm text-muted">{t('schedule.calendar.free')}</p>}
+      <ul className="flex flex-col gap-2">
+        {bookings.map((b) => <CoachBookingRow key={b.id} booking={b} day={day} />)}
+      </ul>
+    </section>
+  )
+}
+
+/** 09:00–10:00, or clipped to the day: "do 12:00", "od 22:00", "ceo dan". */
+function Span({ start, end, day }: { start: string; end: string; day: string }) {
+  const { t } = useTranslation()
+  const span = spanOnDay(start, end, day)
+  if (span.wholeDay) return <>{t('schedule.calendar.allDay')}</>
+  if (!span.from) return <>{t('schedule.calendar.until', { time: span.to })}</>
+  if (!span.to) return <>{t('schedule.calendar.from', { time: span.from })}</>
+  return <span className="tabular-nums">{span.from}–{span.to}</span>
+}
+
+function CoachBookingRow({ booking, day }: { booking: Booking; day: string }) {
   const { t } = useTranslation()
   const action = useBookingAction()
-  const run = (kind: 'confirm' | 'decline' | 'cancel') => {
-    let reason = ''
-    if (kind !== 'confirm') {
-      const answer = window.prompt(t(kind === 'decline' ? 'schedule.calendar.declineReason' : 'schedule.calendar.cancelReason'))
-      if (answer === null) return
-      reason = answer.trim().slice(0, 300)
-    }
-    action.mutate({ id: booking.id, action: kind, reason })
+  const ask = (key: string) => {
+    const answer = window.prompt(t(key))
+    return answer === null ? null : answer.trim().slice(0, 300)
   }
-  const inactive = booking.status === 'cancelled' || booking.status === 'declined'
+  const decline = () => {
+    const reason = ask('schedule.calendar.declineReason')
+    if (reason !== null) action.mutate({ id: booking.id, action: 'decline', reason })
+  }
+  const cancel = () => {
+    const reason = ask('schedule.calendar.cancelReason')
+    if (reason === null) return
+    // With a package: does this cancellation still use a session from it (e.g. too late)?
+    const charge = !!booking.package && window.confirm(t('schedule.calendar.chargeQuestion', { name: booking.package.name }))
+    action.mutate({ id: booking.id, action: 'cancel', reason, charge })
+  }
+  const inactive = booking.status === 'cancelled' || booking.status === 'declined' || booking.expired
   return (
     <li className={`rounded-xl border border-line px-3 py-2 ${inactive ? 'opacity-60' : ''}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="font-semibold tabular-nums">{timeLabel(booking.starts_at)}–{timeLabel(booking.ends_at)}</span>
-        <BookingStatusChip status={booking.status} />
+        <span className="font-semibold"><Span start={booking.starts_at} end={booking.ends_at} day={day} /></span>
+        <BookingStatusChip status={booking.status} expired={booking.expired} />
       </div>
       <p className="text-sm">
         <Link to={`/trener/klijenti/${booking.client.id}`} className="font-semibold underline">{booking.client.name}</Link>
         {' · '}{booking.session_type.name}
+        {booking.package && <span className="text-muted"> · {booking.package.name}</span>}
       </p>
       {booking.note && <p className="text-xs text-muted">„{booking.note}“</p>}
       {booking.cancel_reason && <p className="text-xs text-muted">{booking.cancel_reason}</p>}
+      {booking.charged && <p className="text-xs text-muted">{t('schedule.calendar.charged')}</p>}
       <FormError message={action.error ? errorMessage(action.error) : null} />
       <div className="mt-1 flex flex-wrap gap-2">
-        {booking.status === 'requested' && (
+        {booking.status === 'requested' && !booking.expired && (
           <>
-            <Button size="sm" disabled={action.isPending} onClick={() => run('confirm')}>{t('schedule.calendar.confirm')}</Button>
-            <Button size="sm" variant="ghost" disabled={action.isPending} onClick={() => run('decline')}>{t('schedule.calendar.decline')}</Button>
+            <Button size="sm" disabled={action.isPending} onClick={() => action.mutate({ id: booking.id, action: 'confirm' })}>{t('schedule.calendar.confirm')}</Button>
+            <Button size="sm" variant="ghost" disabled={action.isPending} onClick={decline}>{t('schedule.calendar.decline')}</Button>
           </>
         )}
         {booking.status === 'confirmed' && booking.can_cancel && (
-          <Button size="sm" variant="ghost" className="text-danger" disabled={action.isPending} onClick={() => run('cancel')}>{t('schedule.cancel')}</Button>
+          <Button size="sm" variant="ghost" className="text-danger" disabled={action.isPending} onClick={cancel}>{t('schedule.cancel')}</Button>
         )}
       </div>
     </li>
   )
 }
 
-/** The coach books a session for one of his clients, at any time he chooses. */
+/** The coach books a session for one of his clients, at any time he chooses (schedule zone). */
 function CoachBookingForm({ defaultDay, onDone }: { defaultDay: string; onDone: () => void }) {
   const { t } = useTranslation()
   const dashboard = useCoachDashboard()
@@ -137,7 +162,8 @@ function CoachBookingForm({ defaultDay, onDone }: { defaultDay: string; onDone: 
     setError(null)
     if (!connectionId) return setError(t('schedule.calendar.chooseClient'))
     if (!chosenType) return setError(t('schedule.calendar.noTypes'))
-    const body = { session_type_id: chosenType, starts_at: localMoment(day, time), note: note.trim(), connection_id: connectionId }
+    if (!validDayTime(day, time)) return setError(t('schedule.calendar.dayTimeRequired'))
+    const body = { session_type_id: chosenType, starts_at: zonedMoment(day, time), note: note.trim(), connection_id: connectionId }
     const same = pending && pending.session_type_id === body.session_type_id && pending.starts_at === body.starts_at
       && pending.connection_id === body.connection_id && pending.note === body.note
     const request = same ? pending : { id: uuid(), ...body }

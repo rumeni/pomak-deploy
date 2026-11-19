@@ -8,6 +8,7 @@ import { errorMessage } from '../../lib/api'
 import { useOnline } from '../../lib/useOnline'
 import { uuid } from '../../lib/uuid'
 import { useCreateBooking, useSlots, type Booking, type NewBooking } from './api'
+import { ZoneNote } from './ZoneNote'
 import { addDays, dayKey, dayLabel, groupByDay, timeLabel } from './time'
 
 const PAGE_DAYS = 7
@@ -38,7 +39,7 @@ export function BookSessionPage() {
       <div className="min-h-full">
         <ScreenHeader title={t('schedule.book.title')} onBack={back} />
         <Card className="m-4 text-center">
-          <p className="text-lg font-bold">{done.status === 'confirmed' ? t('schedule.book.booked') : t('schedule.book.requested')}</p>
+          <p className="text-lg font-bold">{t(`schedule.book.outcome.${done.status}`)}</p>
           <p className="mt-1 capitalize">{dayLabel(dayKey(done.starts_at), true)}, {timeLabel(done.starts_at)}</p>
           <p className="text-sm text-muted">{done.session_type.name}</p>
           <Button className="mt-4 w-full" onClick={back}>{t('schedule.book.backToCoach')}</Button>
@@ -51,6 +52,7 @@ export function BookSessionPage() {
     <div className="min-h-full pb-12">
       <ScreenHeader title={t('schedule.book.title')} onBack={back} />
       <div className="mx-auto flex max-w-xl flex-col gap-3 px-4 py-4">
+        <ZoneNote />
         {!online && <p role="status" className="text-sm text-muted">{t('schedule.book.offline')}</p>}
         {slots.isLoading && <p className="text-muted">{t('common.loading')}</p>}
         {noCoach && <Card><p className="text-muted">{t('schedule.book.noCoach')}</p></Card>}
@@ -108,7 +110,9 @@ export function BookSessionPage() {
                 )}
             </Card>
             {slot && chosenType && (
-              <ConfirmBooking key={`${chosenType.id}:${slot}`} slot={slot} typeId={chosenType.id} typeName={chosenType.name}
+              // Keyed by the collaboration too: a reconnect starts a fresh form, never a stale one.
+              <ConfirmBooking key={`${data.connection_id}:${chosenType.id}:${slot}`} connectionId={data.connection_id}
+                slot={slot} typeId={chosenType.id} typeName={chosenType.name}
                 autoConfirm={data.auto_confirm} cancelHours={data.cancel_hours}
                 onBooked={setDone} onTaken={() => { setSlot(null); void slots.refetch() }} />
             )}
@@ -119,7 +123,8 @@ export function BookSessionPage() {
   )
 }
 
-function ConfirmBooking({ slot, typeId, typeName, autoConfirm, cancelHours, onBooked, onTaken }: {
+function ConfirmBooking({ connectionId, slot, typeId, typeName, autoConfirm, cancelHours, onBooked, onTaken }: {
+  connectionId: string
   slot: string
   typeId: string
   typeName: string
@@ -134,12 +139,16 @@ function ConfirmBooking({ slot, typeId, typeName, autoConfirm, cancelHours, onBo
   // One ID for this choice: a retry after a lost answer returns the same booking.
   const [request, setRequest] = useState<NewBooking | null>(null)
   const submit = () => {
-    const body = request && request.note === note.trim() ? request : { id: uuid(), session_type_id: typeId, starts_at: slot, note: note.trim() }
+    const body = request && request.note === note.trim()
+      ? request
+      : { id: uuid(), session_type_id: typeId, starts_at: slot, note: note.trim(), connection_id: connectionId }
     setRequest(body)
     create.mutate(body, {
       onSuccess: onBooked,
       onError: (error) => {
-        if (axios.isAxiosError(error) && (error.response?.data as { code?: string } | undefined)?.code === 'slot_taken') onTaken()
+        const code = axios.isAxiosError(error) ? (error.response?.data as { code?: string } | undefined)?.code : undefined
+        // Taken meanwhile, or the collaboration changed: fresh slots (and a fresh form).
+        if (code === 'slot_taken' || code === 'collaboration_changed') onTaken()
       },
     })
   }

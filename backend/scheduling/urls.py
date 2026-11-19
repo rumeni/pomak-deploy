@@ -15,4 +15,7 @@ urlpatterns = [
     path('bookings/<uuid:pk>/confirm/', views.BookingActionView.as_view(action='confirm'), name='schedule-booking-confirm'),
     path('bookings/<uuid:pk>/decline/', views.BookingActionView.as_view(action='decline'), name='schedule-booking-decline'),
     path('bookings/<uuid:pk>/cancel/', views.BookingActionView.as_view(action='cancel'), name='schedule-booking-cancel'),
+    path('clients/<uuid:client_id>/packages/', views.ClientPackagesView.as_view(), name='schedule-client-packages'),
+    path('clients/<uuid:client_id>/packages/<uuid:pk>/', views.PackageView.as_view(), name='schedule-client-package'),
+    path('packages/', views.MyPackagesView.as_view(), name='schedule-my-packages'),
 ]

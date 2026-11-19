@@ -106,6 +106,10 @@ def push_worker(request):
     """Drain the push outbox. Reachable only with a QStash signature for PUSH_WORKER_URL."""
     if not worker_url() or not valid_qstash_signature(request.headers.get('Upstash-Signature', ''), request.body, subject=worker_url()):
         return HttpResponse(status=403)
+    # Session reminders that are due (a wake-up was scheduled for each when it was made).
+    from scheduling.services import send_due_reminders
+
+    send_due_reminders()
     # Run again when the queue next has work (now, or when a retry's backoff ends). If that cannot
     # be scheduled, answer with an error so QStash retries this call instead of the work being
     # silently dropped.
