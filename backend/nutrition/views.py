@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -21,6 +21,7 @@ from .models import Food, FoodReport, MealEntry, NutritionDay, NutritionTarget, 
 from .serializers import (
     BARCODE_RE,
     can_edit_food,
+    community_used_by_other,
     barcode_clash_error,
     shared_barcode_clash,
     FoodSerializer,
@@ -35,6 +36,13 @@ from .serializers import (
 )
 
 SEARCH_LIMIT = 50
+
+
+class CommunityFoodInUse(APIException):
+    status_code = 409
+    default_detail = _('This shared food is used in another user\'s recipe. Report an error instead.')
+    default_code = 'community_food_in_use'
+
 
 
 class FoodViewSet(
@@ -71,7 +79,11 @@ class FoodViewSet(
         return super()._matches_retry(body, saved)
 
     def _require_own(self, item):
-        # A community food can be corrected by its author until an admin verified it.
+        # The row was locked before this check. A shared ingredient already used by someone
+        # else must never silently change their recipe (including its calories).
+        if (item.source == Food.Source.COMMUNITY and item.created_by_id == self.request.user.pk
+                and item.verified_at is None and community_used_by_other(item)):
+            raise CommunityFoodInUse()
         if not can_edit_food(item, self.request):
             raise PermissionDenied(self.shared_readonly_message)
 
