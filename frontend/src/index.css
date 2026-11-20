@@ -32,6 +32,37 @@
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/*
+ * Optional colour palettes. Default CSS is intentionally unchanged so the
+ * current POMAK appearance remains the baseline. These only replace semantic
+ * tokens; layout, typography and exercise/food presentation stay intact.
+ */
+:root[data-pomak-theme='light'] {
+  --color-ink: #1b2228;
+  --color-muted: #57646e;
+  --color-line: #e0e7ec;
+  --color-surface: #f8fafc;
+  --color-card: #ffffff;
+  --color-brand: #202a32;
+  --color-brand-dark: #111a21;
+  --color-brand-soft: #ebf0f4;
+  --color-accent: #ff5a1f;
+  --color-lime: #ff5a1f;
+}
+:root[data-pomak-theme='blue'] {
+  --color-ink: #172c47;
+  --color-muted: #586f89;
+  --color-line: #cbdcee;
+  --color-surface: #eaf3fd;
+  --color-card: #f8fbff;
+  --color-brand: #1d446c;
+  --color-brand-dark: #102e4c;
+  --color-brand-soft: #dceaf8;
+  --color-accent: #2275c8;
+  --color-lime: #2275c8;
+}
+/* The dock keeps its OWN orange accent regardless of the selected palette. */
+
 html, body, #root { min-height: 100%; }
 html { scroll-behavior: smooth; }
 body {
@@ -192,10 +223,12 @@ a, button { -webkit-tap-highlight-color: transparent; }
   z-index: 25;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, .085);
-  background: rgba(18, 19, 21, .94);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .29), inset 0 1px 0 rgba(255, 255, 255, .08);
-  -webkit-backdrop-filter: blur(24px) saturate(110%);
-  backdrop-filter: blur(24px) saturate(110%);
+  /* Same neutral glass in every theme; stronger blur balances transparency. */
+  --nav-accent: #ff5a1f;
+  background: rgba(18, 19, 21, .52);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .23), inset 0 1px 0 rgba(255, 255, 255, .10);
+  -webkit-backdrop-filter: blur(32px) saturate(95%);
+  backdrop-filter: blur(32px) saturate(95%);
   touch-action: pan-y;
 }
 .app-nav-list { position: relative; display: flex; padding: 5px; margin: 0; list-style: none; isolation: isolate; }
@@ -211,7 +244,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   width: calc((100% - 10px) / var(--dock-count));
   border-radius: 999px;
   pointer-events: none;
-  background: rgba(3, 4, 6, .36);
+  background: rgba(3, 4, 6, .23);
   border: 1px solid rgba(255, 255, 255, .065);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .055), 0 2px 8px rgba(0, 0, 0, .12);
   -webkit-backdrop-filter: blur(5px);
@@ -273,13 +306,13 @@ a, button { -webkit-tap-highlight-color: transparent; }
   transition: color 180ms ease, transform 200ms ease;
 }
 .app-nav-link svg { width: 23px; height: 23px; stroke-width: 1.9; filter: drop-shadow(0 1px 2px rgba(0,0,0,.16)); }
-.app-nav-badge { position: absolute; top: 3px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--color-accent); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
-.app-nav-link.is-active { color: var(--color-accent); }
-.app-nav-link.is-active svg { color: var(--color-accent); stroke-width: 2.25; }
+.app-nav-badge { position: absolute; top: 3px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--nav-accent); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+.app-nav-link.is-active { color: var(--nav-accent); }
+.app-nav-link.is-active svg { color: var(--nav-accent); stroke-width: 2.25; }
 .app-nav-link:active { transform: scale(.94); }
 .app-nav-link:not(.is-active):hover { color: #fff; }
 .app-nav-brand { display: none; }
-.app-nav-brand-sub { display: block; margin: 6px 0 0 18px; font-size: 11px; font-weight: 800; letter-spacing: .32em; color: var(--color-accent); }
+.app-nav-brand-sub { display: block; margin: 6px 0 0 18px; font-size: 11px; font-weight: 800; letter-spacing: .32em; color: var(--nav-accent, #ff5a1f); }
 @keyframes tab-enter-next { from { transform: translate3d(20px,0,0); opacity: .55; } to { transform: translate3d(0,0,0); opacity: 1; } }
 @keyframes tab-enter-prev { from { transform: translate3d(-20px,0,0); opacity: .55; } to { transform: translate3d(0,0,0); opacity: 1; } }
 @media (max-width: 979px) {
@@ -411,7 +444,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   .app-nav-list li { flex: none; }
   .app-nav-link { min-height: 48px; flex-direction: row; justify-content: flex-start; gap: 14px; padding: 0 14px; border-radius: 12px; font-size: 14.5px; letter-spacing: 0; }
   .app-nav-link.is-active { background: rgba(255, 255, 255, .09); }
-  .app-nav-link.is-active svg { color: var(--color-accent); }
+  .app-nav-link.is-active svg { color: var(--nav-accent); }
   .app-nav-link.is-active::before { content: ''; position: absolute; left: -12px; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--color-accent); }
   .auth-stage, .auth-stage--compact { flex-direction: row; justify-content: center; gap: 64px; padding: 40px; }
   .auth-stage { background: linear-gradient(90deg, rgba(20, 22, 21, .9) 0%, rgba(20, 22, 21, .7) 45%, rgba(20, 22, 21, .88) 100%), url('./assets/photos/auth.webp') center / cover no-repeat, var(--color-ink); }
