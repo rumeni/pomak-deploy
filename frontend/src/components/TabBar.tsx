@@ -87,7 +87,7 @@ export function TabBar() {
       <ul className="app-nav-list" style={{ '--dock-count': tabs.length } as CSSProperties}>
         <li aria-hidden="true" className={isDragging ? 'app-nav-glider is-dragging' : 'app-nav-glider'}
           style={{ transform: `translate3d(${indicator * 100}%, 0, 0)`, transition: isDragging ? 'none' : undefined }}>
-          <span key={routeKey} className="app-nav-glass-flare" />
+          <span key={routeKey} className="app-nav-liquid-sheen" />
         </li>
         {tabs.map((tab, index) => (
           <li key={tab.to}>

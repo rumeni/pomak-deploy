@@ -219,51 +219,42 @@ a, button { -webkit-tap-highlight-color: transparent; }
   transition: transform 440ms cubic-bezier(.2, 1.07, .27, 1);
   will-change: transform;
 }
-/* Single transient refractive lens, like the liquid effect during a WhatsApp
- * tab switch. It's part of the same active pill, never a second idle marker.
- * A new router location key restarts this animation on every tab change.
+/* The iOS-style refraction lives INSIDE the moving pill, rather than
+ * floating over neighbouring icons. A new router key replays it only when
+ * the selected route changes. During touch dragging it follows the finger.
  */
-.app-nav-glass-flare {
+.app-nav-liquid-sheen {
   position: absolute;
-  inset: -7px -7px;
+  inset: 0;
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
-  animation: dock-glass-arrive 570ms cubic-bezier(.2, .8, .2, 1) both;
-}
-.app-nav-glass-flare::before {
-  content: '';
-  position: absolute;
-  width: 72px;
-  height: 72px;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  border: 2px solid transparent;
-  /* One translucent lens with a subtle spectral edge, not stacked circles. */
+  overflow: hidden;
   background:
-    radial-gradient(ellipse at 36% 26%, rgba(255, 255, 255, .16), transparent 51%),
-    radial-gradient(ellipse at 65% 72%, rgba(170, 208, 240, .08), transparent 58%),
-    rgba(255, 255, 255, .025) padding-box,
-    conic-gradient(from 32deg, rgba(147, 218, 255, .55), rgba(194, 151, 255, .16) 24%, rgba(255, 170, 105, .48) 53%, rgba(195, 242, 255, .25) 76%, rgba(147, 218, 255, .55)) border-box;
-  box-shadow:
-    inset 2px 3px 9px rgba(255, 255, 255, .12),
-    inset -3px -2px 9px rgba(0, 0, 0, .20),
-    0 0 10px rgba(212, 222, 238, .10);
-  -webkit-backdrop-filter: blur(1px);
-  backdrop-filter: blur(1px);
+    linear-gradient(110deg,
+      transparent 8%,
+      rgba(255, 255, 255, .035) 27%,
+      rgba(255, 255, 255, .14) 45%,
+      rgba(194, 226, 240, .085) 54%,
+      rgba(255, 255, 255, .035) 64%,
+      transparent 83%);
+  filter: blur(1px);
+  animation: dock-liquid-sweep 430ms cubic-bezier(.17, .72, .3, 1) both;
 }
-.app-nav-glider.is-dragging .app-nav-glass-flare {
+.app-nav-glider {
+  overflow: hidden;
+  transition: transform 410ms cubic-bezier(.23, .88, .27, 1);
+}
+.app-nav-glider.is-dragging .app-nav-liquid-sheen {
   animation: none;
-  opacity: .64;
-  transform: scale(1.04);
+  opacity: .28;
+  transform: translateX(0);
 }
-@keyframes dock-glass-arrive {
-  0% { opacity: .04; transform: scale(.78, .90); }
-  25% { opacity: .72; transform: scale(1.13, 1.02); }
-  58% { opacity: .53; transform: scale(1.04, 1); }
-  100% { opacity: 0; transform: scale(.96, 1); }
+@keyframes dock-liquid-sweep {
+  0% { opacity: 0; transform: translateX(-75%) skewX(-12deg) scaleX(.85); }
+  28% { opacity: .7; transform: translateX(-25%) skewX(-7deg) scaleX(1.07); }
+  65% { opacity: .42; transform: translateX(24%) skewX(4deg) scaleX(1.04); }
+  100% { opacity: 0; transform: translateX(75%) skewX(9deg) scaleX(.92); }
 }
 .app-nav-link {
   position: relative;
@@ -297,7 +288,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
   .app-nav-glider, .app-nav-link { transition: none !important; }
-  .app-nav-glass-flare { display: none !important; animation: none !important; }
+  .app-nav-liquid-sheen { display: none !important; animation: none !important; }
   .app-tab-enter-next, .app-tab-enter-prev { animation: none !important; }
 }
 /* Coach only: between the coach space and the coach's own training. Icon only on narrow phones. */
@@ -414,6 +405,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
     mask-composite: intersect;
   }
   .app-nav-glider { display: none; }
+  .app-nav-liquid-sheen { display: none; }
   .app-nav-brand { display: block; padding: 0 12px 28px; color: #fff; }
   .app-nav-list { display: flex; flex-direction: column; gap: 4px; padding: 0; }
   .app-nav-list li { flex: none; }

@@ -50,7 +50,7 @@ export function LoginPage() {
   })
 
   return (
-    <AuthLayout title={t('auth.loginTitle')}>
+    <AuthLayout title={t('auth.loginTitle')} compact>
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <Field label={t('auth.email')} type="email" autoComplete="email" inputMode="email" {...register('email')} error={formState.errors.email?.message} />
         <Field label={t('auth.password')} type="password" autoComplete="current-password" {...register('password')} error={formState.errors.password?.message} />
