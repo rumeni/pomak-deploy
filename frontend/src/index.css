@@ -40,14 +40,14 @@
 :root[data-pomak-mode='light'] { color-scheme: light; }
 :root[data-pomak-mode='dark'] {
   color-scheme: dark;
-  --color-ink: #eff3f5;
-  --color-muted: #acb7c0;
-  --color-line: #38434b;
-  --color-surface: #11171c;
-  --color-card: #1d272e;
-  --color-brand: #25343e;
-  --color-brand-dark: #0c141a;
-  --color-brand-soft: #29353e;
+  --color-ink: #f1f1ef;
+  --color-muted: #b3b4b5;
+  --color-line: #373839;
+  --color-surface: #141516;
+  --color-card: #212223;
+  --color-brand: #2b2d2f;
+  --color-brand-dark: #101112;
+  --color-brand-soft: #303133;
   --color-accent: #ff5a1f;
   --color-lime: #ff5a1f;
   --color-danger: #ff8086;
@@ -56,9 +56,9 @@
 }
 /* These utility names represent a dark surface or dark text on the LIGHT theme.
    Keep their contrast when the semantic text token becomes light in Dark mode. */
-:root[data-pomak-mode='dark'] .bg-ink { background-color: #26333d; }
+:root[data-pomak-mode='dark'] .bg-ink { background-color: #292a2c; }
 :root[data-pomak-mode='dark'] .text-brand,
-:root[data-pomak-mode='dark'] .text-brand-dark { color: #e7eff5; }
+:root[data-pomak-mode='dark'] .text-brand-dark { color: #f0f0ee; }
 
 html, body, #root { min-height: 100%; }
 html { scroll-behavior: smooth; }
@@ -219,23 +219,21 @@ a, button { -webkit-tap-highlight-color: transparent; }
   margin-inline: auto;
   z-index: 25;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, .085);
-  /* Same neutral glass in every theme; stronger blur balances transparency. */
+  border: 1px solid rgba(255, 255, 255, .075);
   --nav-accent: #ff5a1f;
-  /* One consistent dock in Light and Dark. Opaque enough for white page cards,
-     translucent enough to reveal movement underneath on the phone. */
-  background: rgba(17, 18, 20, .70);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .24), inset 0 1px 0 rgba(255, 255, 255, .09);
-  -webkit-backdrop-filter: blur(28px) saturate(90%);
-  backdrop-filter: blur(28px) saturate(90%);
+  /* One consistent glass dock across Light / Dark; keep its contents legible
+     without turning the whole navigation into an opaque black bar. */
+  background: rgba(25, 26, 28, .46);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  -webkit-backdrop-filter: blur(30px) saturate(85%);
+  backdrop-filter: blur(30px) saturate(85%);
   isolation: isolate;
   touch-action: pan-y;
 }
 .app-nav-list { position: relative; display: flex; padding: 5px; margin: 0; list-style: none; isolation: isolate; }
 .app-nav-list > li:not(.app-nav-glider) { position: relative; z-index: 1; min-width: 0; flex: 1; }
-/* Single dark active pill, inspired by iOS tab bars.
- * No decorative orbs or overlaid circles: only one sliding selection surface.
- */
+/* Exactly one selection surface inside the dock: no second border, ring or
+ * inset shadow around the active tab. Preserve the existing sliding motion. */
 .app-nav-glider {
   position: absolute;
   z-index: 0;
@@ -244,11 +242,11 @@ a, button { -webkit-tap-highlight-color: transparent; }
   width: calc((100% - 10px) / var(--dock-count));
   border-radius: 999px;
   pointer-events: none;
-  background: rgba(3, 4, 6, .32);
-  border: 1px solid rgba(255, 255, 255, .07);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 2px 8px rgba(0, 0, 0, .13);
-  /* Avoid nesting backdrop-filter inside another backdrop-filter on iOS. */
-  transition: transform 440ms cubic-bezier(.2, 1.07, .27, 1);
+  background: rgba(4, 5, 6, .25);
+  border: 0;
+  box-shadow: none;
+  overflow: hidden;
+  transition: transform 410ms cubic-bezier(.23, .88, .27, 1);
   will-change: transform;
 }
 /* The iOS-style refraction lives INSIDE the moving pill, rather than
@@ -272,10 +270,6 @@ a, button { -webkit-tap-highlight-color: transparent; }
       transparent 83%);
   filter: blur(1px);
   animation: dock-liquid-sweep 430ms cubic-bezier(.17, .72, .3, 1) both;
-}
-.app-nav-glider {
-  overflow: hidden;
-  transition: transform 410ms cubic-bezier(.23, .88, .27, 1);
 }
 .app-nav-glider.is-dragging .app-nav-liquid-sheen {
   animation: none;

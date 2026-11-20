@@ -113,9 +113,17 @@ try {
           return { left: rect.left, right: rect.right, width: rect.width,
             tappable: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('.app-nav-link') === link }
         })
+        const glider = host.querySelector('.app-nav-glider')
+        const gliderStyle = getComputedStyle(glider)
+        const dockStyle = getComputedStyle(host)
         readings.push({
-          mode, navBackground: getComputedStyle(host).backgroundColor,
+          mode, navBackground: dockStyle.backgroundColor,
+          navAlpha: Number(dockStyle.backgroundColor.match(/[\\d.]+(?=\\))/)?.[0] ?? 1),
           activeColor: getComputedStyle(links[4]).color,
+          gliderBorder: gliderStyle.borderTopWidth,
+          gliderShadow: gliderStyle.boxShadow,
+          gliderAlpha: Number(gliderStyle.backgroundColor.match(/[\\d.]+(?=\\))/)?.[0] ?? 1),
+          cardColor: getComputedStyle(document.documentElement).getPropertyValue('--color-card').trim(),
           inside: sizes.every(item => item.left >= navRect.left - .5 && item.right <= navRect.right + .5),
           separate: sizes.every((item, i) => item.width >= 42 && (i === 0 || item.left >= sizes[i-1].right - .5)),
           tappable: sizes.every(item => item.tappable),
@@ -129,8 +137,13 @@ try {
     for (const state of navResult) {
       assert.ok(state.inside && state.separate && state.tappable, 'Mobile dock layout broke at ' + width + 'px, ' + state.mode + ': ' + JSON.stringify(state))
       assert.equal(state.activeColor, 'rgb(255, 90, 31)', 'Selected tab lost Pomak orange')
+      assert.equal(state.gliderBorder, '0px', 'Active tab acquired a second outline')
+      assert.equal(state.gliderShadow, 'none', 'Active tab acquired a second shadow')
+      assert.ok(state.navAlpha < .6, 'Dock became too opaque: ' + state.navAlpha)
+      assert.ok(state.gliderAlpha < .35, 'Active tab became too opaque: ' + state.gliderAlpha)
     }
     assert.equal(navResult[0].navBackground, navResult[1].navBackground, 'Switching theme must not change dock colour')
+    assert.equal(navResult[1].cardColor, '#212223', 'Dark cards should stay neutral charcoal, not blue')
   }
   console.log('Mobile dock tabs fit and stay tappable at 320px/390px/430px in Light and Dark')
 
