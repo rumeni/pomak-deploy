@@ -118,11 +118,11 @@ try {
         const dockStyle = getComputedStyle(host)
         readings.push({
           mode, navBackground: dockStyle.backgroundColor,
-          navAlpha: Number(dockStyle.backgroundColor.match(/[\\d.]+(?=\\))/)?.[0] ?? 1),
+          navAlpha: Number(dockStyle.backgroundColor.split(',').at(-1)?.replace(')', '').trim() ?? 1),
           activeColor: getComputedStyle(links[4]).color,
           gliderBorder: gliderStyle.borderTopWidth,
           gliderShadow: gliderStyle.boxShadow,
-          gliderAlpha: Number(gliderStyle.backgroundColor.match(/[\\d.]+(?=\\))/)?.[0] ?? 1),
+          gliderAlpha: Number(gliderStyle.backgroundColor.split(',').at(-1)?.replace(')', '').trim() ?? 1),
           cardColor: getComputedStyle(document.documentElement).getPropertyValue('--color-card').trim(),
           inside: sizes.every(item => item.left >= navRect.left - .5 && item.right <= navRect.right + .5),
           separate: sizes.every((item, i) => item.width >= 42 && (i === 0 || item.left >= sizes[i-1].right - .5)),
