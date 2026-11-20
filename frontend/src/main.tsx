@@ -8,11 +8,13 @@ import './i18n'
 import './index.css'
 import { AuthProvider } from './lib/auth'
 import { setupNative } from './lib/native'
+import { initializeTheme } from './lib/theme'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
 
+initializeTheme()
 void setupNative()
 
 createRoot(document.getElementById('root')!).render(

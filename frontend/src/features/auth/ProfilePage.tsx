@@ -13,6 +13,7 @@ import { saveFile } from '../../lib/saveFile'
 import { ExactAlarmSetting } from '../workout/ExactAlarmSetting'
 import { clearLocalData, unsentSummary } from '../workout/localData'
 import { TrackingSetting } from './TrackingSetting'
+import { ThemeSetting } from './ThemeSetting'
 
 /** Profil i podešavanja: jezik, obroci, cilj, izvoz podataka, brisanje naloga, odjava. */
 export function ProfilePage() {
@@ -57,6 +58,7 @@ export function ProfilePage() {
 
         <h2 className="mt-2 text-sm font-semibold uppercase tracking-wide text-muted">{t('profile.settings')}</h2>
         <LanguageMenu variant="row" />
+        <ThemeSetting />
         <Card>
           <TrackingSetting />
         </Card>

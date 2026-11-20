@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { StatusBar, Style } from '@capacitor/status-bar'
 
 import { listenForNativePushTaps, startPushRecovery } from './push'
+import { subscribeTheme } from './theme'
 
 /** Podešavanja koja važe samo u Android aplikaciji; u pregledaču registruje service worker. */
 export async function setupNative(): Promise<void> {
@@ -17,11 +18,17 @@ export async function setupNative(): Promise<void> {
     return
   }
 
-  // Neka podešavanja ne postoje na svim verzijama Androida; greška jednog ne sme da blokira ostala.
-  await Promise.allSettled([
-    StatusBar.setStyle({ style: Style.Light }),
-    StatusBar.setBackgroundColor({ color: '#f4f7f7' }),
-  ])
+  // Dark mode also needs readable Android status-bar icons. Capacitor names
+  // styles by icon colour: Dark = light icons, Light = dark icons.
+  const syncStatusBar = () => {
+    const dark = document.documentElement.dataset.pomakMode === 'dark'
+    void Promise.allSettled([
+      StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }),
+      StatusBar.setBackgroundColor({ color: dark ? '#11171c' : '#f2efe9' }),
+    ])
+  }
+  syncStatusBar()
+  subscribeTheme(syncStatusBar)
 
   // A tapped push notification opens its screen (only in builds with Firebase).
   await listenForNativePushTaps().catch(() => undefined)

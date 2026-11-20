@@ -32,6 +32,34 @@
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/*
+ * Mobile-first appearance: the existing POMAK palette is Light.
+ * Dark changes the same semantic tokens without redesigning screens.
+ * System mode writes the resolved mode to data-pomak-mode and updates live.
+ */
+:root[data-pomak-mode='light'] { color-scheme: light; }
+:root[data-pomak-mode='dark'] {
+  color-scheme: dark;
+  --color-ink: #f1f1ef;
+  --color-muted: #b3b4b5;
+  --color-line: #373839;
+  --color-surface: #141516;
+  --color-card: #212223;
+  --color-brand: #2b2d2f;
+  --color-brand-dark: #101112;
+  --color-brand-soft: #303133;
+  --color-accent: #ff5a1f;
+  --color-lime: #ff5a1f;
+  --color-danger: #ff8086;
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, .04);
+  --shadow-strong: 0 24px 60px rgba(0, 0, 0, .42);
+}
+/* These utility names represent a dark surface or dark text on the LIGHT theme.
+   Keep their contrast when the semantic text token becomes light in Dark mode. */
+:root[data-pomak-mode='dark'] .bg-ink { background-color: #292a2c; }
+:root[data-pomak-mode='dark'] .text-brand,
+:root[data-pomak-mode='dark'] .text-brand-dark { color: #f0f0ee; }
+
 html, body, #root { min-height: 100%; }
 html { scroll-behavior: smooth; }
 body {
@@ -187,39 +215,114 @@ a, button { -webkit-tap-highlight-color: transparent; }
   position: fixed;
   inset-inline: 12px;
   bottom: max(6px, env(safe-area-inset-bottom));
+  max-width: 630px;
+  margin-inline: auto;
   z-index: 25;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, .10);
-  background: rgba(22, 24, 23, .84);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .08);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
-  backdrop-filter: blur(22px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, .075);
+  --nav-accent: #ff5a1f;
+  /* One consistent glass dock across Light / Dark; keep its contents legible
+     without turning the whole navigation into an opaque black bar. */
+  background: rgba(25, 26, 28, .46);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  -webkit-backdrop-filter: blur(30px) saturate(85%);
+  backdrop-filter: blur(30px) saturate(85%);
+  isolation: isolate;
+  touch-action: pan-y;
 }
-.app-nav-list { display: flex; padding: 5px; margin: 0; list-style: none; }
-.app-nav-list li { min-width: 0; flex: 1; }
+.app-nav-list { position: relative; display: flex; padding: 5px; margin: 0; list-style: none; isolation: isolate; }
+.app-nav-list > li:not(.app-nav-glider) { position: relative; z-index: 1; min-width: 0; flex: 1; }
+/* Exactly one selection surface inside the dock: no second border, ring or
+ * inset shadow around the active tab. Preserve the existing sliding motion. */
+.app-nav-glider {
+  position: absolute;
+  z-index: 0;
+  inset-block: 5px;
+  left: 5px;
+  width: calc((100% - 10px) / var(--dock-count));
+  border-radius: 999px;
+  pointer-events: none;
+  background: rgba(4, 5, 6, .25);
+  border: 0;
+  box-shadow: none;
+  overflow: hidden;
+  transition: transform 410ms cubic-bezier(.23, .88, .27, 1);
+  will-change: transform;
+}
+/* The iOS-style refraction lives INSIDE the moving pill, rather than
+ * floating over neighbouring icons. A new router key replays it only when
+ * the selected route changes. During touch dragging it follows the finger.
+ */
+.app-nav-liquid-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(110deg,
+      transparent 8%,
+      rgba(255, 255, 255, .035) 27%,
+      rgba(255, 255, 255, .14) 45%,
+      rgba(194, 226, 240, .085) 54%,
+      rgba(255, 255, 255, .035) 64%,
+      transparent 83%);
+  filter: blur(1px);
+  animation: dock-liquid-sweep 430ms cubic-bezier(.17, .72, .3, 1) both;
+}
+.app-nav-glider.is-dragging .app-nav-liquid-sheen {
+  animation: none;
+  opacity: .28;
+  transform: translateX(0);
+}
+@keyframes dock-liquid-sweep {
+  0% { opacity: 0; transform: translateX(-75%) skewX(-12deg) scaleX(.85); }
+  28% { opacity: .7; transform: translateX(-25%) skewX(-7deg) scaleX(1.07); }
+  65% { opacity: .42; transform: translateX(24%) skewX(4deg) scaleX(1.04); }
+  100% { opacity: 0; transform: translateX(75%) skewX(9deg) scaleX(.92); }
+}
 .app-nav-link {
   position: relative;
   display: flex;
-  min-height: 56px;
+  min-width: 0;
+  width: 100%;
+  min-height: 58px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
   border-radius: 999px;
-  color: #9a9d97;
+  color: #b6bbb7;
   text-decoration: none;
   font-size: 10.5px;
   font-weight: 650;
   letter-spacing: .02em;
-  transition: color .15s ease, background-color .15s ease;
+  transition: color 180ms ease, transform 200ms ease;
 }
-.app-nav-link svg { width: 22px; height: 22px; stroke-width: 1.9; }
-.app-nav-badge { position: absolute; top: 5px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--color-accent); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
-.app-nav-link.is-active { color: #fff; background: rgba(255, 255, 255, .07); }
-.app-nav-link.is-active svg { color: var(--color-accent); }
-.app-nav-link:hover { color: #fff; }
+.app-nav-link svg { width: 23px; height: 23px; flex-shrink: 0; stroke-width: 1.9; filter: drop-shadow(0 1px 2px rgba(0,0,0,.16)); }
+.app-nav-link > span:first-of-type { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-nav-badge { position: absolute; top: 3px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--nav-accent); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+.app-nav-link.is-active { color: var(--nav-accent); }
+.app-nav-link.is-active svg { color: var(--nav-accent); stroke-width: 2.25; }
+.app-nav-link:active { transform: scale(.94); }
+.app-nav-link:not(.is-active):hover { color: #fff; }
 .app-nav-brand { display: none; }
-.app-nav-brand-sub { display: block; margin: 6px 0 0 18px; font-size: 11px; font-weight: 800; letter-spacing: .32em; color: var(--color-accent); }
+.app-nav-brand-sub { display: block; margin: 6px 0 0 18px; font-size: 11px; font-weight: 800; letter-spacing: .32em; color: var(--nav-accent, #ff5a1f); }
+@keyframes tab-enter-next { from { transform: translate3d(20px,0,0); opacity: .55; } to { transform: translate3d(0,0,0); opacity: 1; } }
+@keyframes tab-enter-prev { from { transform: translate3d(-20px,0,0); opacity: .55; } to { transform: translate3d(0,0,0); opacity: 1; } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .app-nav { background: rgba(17, 18, 20, .95); }
+}
+@media (max-width: 979px) {
+  .app-tab-enter-next { animation: tab-enter-next 230ms cubic-bezier(.2,.8,.2,1) both; }
+  .app-tab-enter-prev { animation: tab-enter-prev 230ms cubic-bezier(.2,.8,.2,1) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-nav-glider, .app-nav-link { transition: none !important; }
+  .app-nav-liquid-sheen { display: none !important; animation: none !important; }
+  .app-tab-enter-next, .app-tab-enter-prev { animation: none !important; }
+}
 /* Coach only: between the coach space and the coach's own training. Icon only on narrow phones. */
 .space-switch { display: inline-flex; min-height: 44px; min-width: 44px; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--color-line); background: var(--color-card); color: var(--color-ink); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .space-switch svg { width: 18px; height: 18px; flex: none; }
@@ -333,10 +436,14 @@ a, button { -webkit-tap-highlight-color: transparent; }
     mask: var(--topo) 40% 100% / 700px auto no-repeat, linear-gradient(transparent, #000 60%);
     mask-composite: intersect;
   }
+  .app-nav-glider { display: none; }
+  .app-nav-liquid-sheen { display: none; }
   .app-nav-brand { display: block; padding: 0 12px 28px; color: #fff; }
   .app-nav-list { display: flex; flex-direction: column; gap: 4px; padding: 0; }
   .app-nav-list li { flex: none; }
   .app-nav-link { min-height: 48px; flex-direction: row; justify-content: flex-start; gap: 14px; padding: 0 14px; border-radius: 12px; font-size: 14.5px; letter-spacing: 0; }
+  .app-nav-link.is-active { background: rgba(255, 255, 255, .09); }
+  .app-nav-link.is-active svg { color: var(--nav-accent); }
   .app-nav-link.is-active::before { content: ''; position: absolute; left: -12px; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--color-accent); }
   .auth-stage, .auth-stage--compact { flex-direction: row; justify-content: center; gap: 64px; padding: 40px; }
   .auth-stage { background: linear-gradient(90deg, rgba(20, 22, 21, .9) 0%, rgba(20, 22, 21, .7) 45%, rgba(20, 22, 21, .88) 100%), url('./assets/photos/auth.webp') center / cover no-repeat, var(--color-ink); }
