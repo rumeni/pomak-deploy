@@ -1,47 +1,86 @@
 export const THEME_STORAGE_KEY = 'pomak.theme'
-export const THEMES = ['original', 'light', 'blue'] as const
+export const THEMES = ['light', 'dark', 'system'] as const
 export type Theme = typeof THEMES[number]
+export type ResolvedTheme = Exclude<Theme, 'system'>
 
+let selectedTheme: Theme = 'system'
+let removeListeners: (() => void) | null = null
+
+/** Preserve an old "original" choice as Light; retire the experimental Blue palette. */
 export function validTheme(value: string | null | undefined): Theme {
-  return value === 'light' || value === 'blue' ? value : 'original'
+  if (value === 'original') return 'light'
+  if (value === 'light' || value === 'dark') return value
+  return 'system'
 }
 
-function savedTheme(): Theme {
-  try { return validTheme(localStorage.getItem(THEME_STORAGE_KEY)) } catch { return 'original' }
+function readSavedTheme(): Theme {
+  try { return validTheme(localStorage.getItem(THEME_STORAGE_KEY)) } catch { return 'system' }
 }
 
-export function currentTheme(): Theme {
-  if (typeof document !== 'undefined') {
-    const applied = document.documentElement.dataset.pomakTheme
-    if (applied && THEMES.includes(applied as Theme)) return applied as Theme
-  }
-  return savedTheme()
+function systemIsDark(): boolean {
+  try { return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false }
+  catch { return false }
 }
 
-/** Apply the persisted palette before React mounts, avoiding a theme flash. */
-export function initializeTheme(): void {
-  if (typeof document !== 'undefined') {
-    document.documentElement.dataset.pomakTheme = savedTheme()
-  }
+export function resolveTheme(theme: Theme, systemDark: boolean): ResolvedTheme {
+  return theme === 'system' ? (systemDark ? 'dark' : 'light') : theme
 }
 
-export function setTheme(theme: Theme): void {
-  if (typeof document !== 'undefined') document.documentElement.dataset.pomakTheme = theme
-  try { localStorage.setItem(THEME_STORAGE_KEY, theme) } catch { /* use current tab only */ }
+function applyTheme(): void {
+  if (typeof document === 'undefined') return
+  const mode = resolveTheme(selectedTheme, systemIsDark())
+  document.documentElement.dataset.pomakTheme = selectedTheme
+  document.documentElement.dataset.pomakMode = mode
+  document.documentElement.style.colorScheme = mode
+}
+
+function notifyTheme(): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('pomak:theme'))
 }
 
-/** Notifies theme controls for this document AND when another browser tab changes it. */
-export function subscribeTheme(onChange: () => void): () => void {
+/** Read persisted mode before mounting React and follow phone appearance while in System. */
+export function initializeTheme(): void {
+  removeListeners?.()
+  selectedTheme = readSavedTheme()
+  applyTheme()
+  if (typeof window === 'undefined') return
+
   const onStorage = (event: StorageEvent) => {
     if (event.key !== THEME_STORAGE_KEY && event.key !== null) return
-    if (typeof document !== 'undefined') document.documentElement.dataset.pomakTheme = validTheme(event.newValue)
-    onChange()
+    selectedTheme = readSavedTheme()
+    applyTheme()
+    notifyTheme()
   }
   window.addEventListener('storage', onStorage)
-  window.addEventListener('pomak:theme', onChange)
-  return () => {
-    window.removeEventListener('storage', onStorage)
-    window.removeEventListener('pomak:theme', onChange)
+
+  let media: MediaQueryList | null = null
+  try { media = window.matchMedia?.('(prefers-color-scheme: dark)') ?? null }
+  catch { /* Old webviews might not expose matchMedia. */ }
+  const onSystemChange = () => {
+    if (selectedTheme !== 'system') return
+    applyTheme()
+    notifyTheme()
   }
+  media?.addEventListener?.('change', onSystemChange)
+  removeListeners = () => {
+    window.removeEventListener('storage', onStorage)
+    media?.removeEventListener?.('change', onSystemChange)
+  }
+}
+
+export function currentTheme(): Theme {
+  return selectedTheme
+}
+
+export function setTheme(theme: Theme): void {
+  selectedTheme = theme
+  applyTheme()
+  try { localStorage.setItem(THEME_STORAGE_KEY, theme) } catch { /* This session still works. */ }
+  notifyTheme()
+}
+
+/** React's useSyncExternalStore: the selected preference has a stable snapshot. */
+export function subscribeTheme(onChange: () => void): () => void {
+  window.addEventListener('pomak:theme', onChange)
+  return () => window.removeEventListener('pomak:theme', onChange)
 }
