@@ -86,6 +86,54 @@ try {
     assert.ok(result.protrudes, 'Menu test must extend beyond photo header')
     assert.ok(result.clickable, 'Mobile language popup clipped at ' + width + 'px')
   }
+  // Real compiled CSS on narrow phone viewports: all five tab targets
+  // must remain distinct, aligned and tappable in BOTH appearance modes.
+  // The dock itself must not change appearance when the system mode flips.
+  for (const width of [320, 390, 430]) {
+    await page.setViewportSize({ width, height: 700 })
+    const navResult = await page.evaluate(() => {
+      const host = document.createElement('nav')
+      host.className = 'app-nav'
+      host.setAttribute('aria-label', 'POMAK navigation CSS probe')
+      host.innerHTML = '<ul class="app-nav-list" style="--dock-count:5">'
+        + '<li class="app-nav-glider" aria-hidden="true"></li>'
+        + ['Danas', 'Trening', 'Ishrana', 'Napredak', 'Trener'].map((title, i) =>
+          '<li><a class="app-nav-link' + (i === 4 ? ' is-active' : '') + '" href="#tab">'
+          + '<svg viewBox="0 0 24 24"><path d="M1 1L23 23"></path></svg>'
+          + '<span>' + title + '</span></a></li>',
+        ).join('') + '</ul>'
+      document.body.append(host)
+      const readings = []
+      for (const mode of ['light', 'dark']) {
+        document.documentElement.dataset.pomakMode = mode
+        const navRect = host.getBoundingClientRect()
+        const links = [...host.querySelectorAll('.app-nav-link')]
+        const sizes = links.map(link => {
+          const rect = link.getBoundingClientRect()
+          return { left: rect.left, right: rect.right, width: rect.width,
+            tappable: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('.app-nav-link') === link }
+        })
+        readings.push({
+          mode, navBackground: getComputedStyle(host).backgroundColor,
+          activeColor: getComputedStyle(links[4]).color,
+          inside: sizes.every(item => item.left >= navRect.left - .5 && item.right <= navRect.right + .5),
+          separate: sizes.every((item, i) => item.width >= 42 && (i === 0 || item.left >= sizes[i-1].right - .5)),
+          tappable: sizes.every(item => item.tappable),
+          width: navRect.width,
+        })
+      }
+      host.remove()
+      delete document.documentElement.dataset.pomakMode
+      return readings
+    })
+    for (const state of navResult) {
+      assert.ok(state.inside && state.separate && state.tappable, 'Mobile dock layout broke at ' + width + 'px, ' + state.mode + ': ' + JSON.stringify(state))
+      assert.equal(state.activeColor, 'rgb(255, 90, 31)', 'Selected tab lost Pomak orange')
+    }
+    assert.equal(navResult[0].navBackground, navResult[1].navBackground, 'Switching theme must not change dock colour')
+  }
+  console.log('Mobile dock tabs fit and stay tappable at 320px/390px/430px in Light and Dark')
+
   await page.setViewportSize({ width: 1280, height: 720 })
   console.log('Photo header dropdown remains visible at 320px and 390px')
 
