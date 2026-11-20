@@ -28,6 +28,8 @@
   --shadow-card: 0 1px 0 rgba(20, 22, 21, .04);
   --shadow-strong: 0 24px 60px rgba(0, 0, 0, .28);
   --topo: url('./assets/topo.svg');
+  /* Dark photo/hero panels need a stable dark background in every theme. */
+  --color-dark-panel: #141615;
   /* Film grain: tiny SVG noise keeps flat fills from looking synthetic. */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
@@ -51,6 +53,7 @@
   --color-accent: #ff5a1f;
   --color-lime: #ff5a1f;
   --color-danger: #ff8086;
+  --color-dark-panel: #141615;
   --shadow-card: 0 1px 0 rgba(255, 255, 255, .04);
   --shadow-strong: 0 24px 60px rgba(0, 0, 0, .42);
 }
@@ -110,7 +113,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   height: 360px;
   z-index: -1;
   pointer-events: none;
-  background: var(--color-ink);
+  background: var(--color-dark-panel);
   opacity: .075;
   -webkit-mask: var(--topo) 30% 0 / 1100px auto no-repeat, linear-gradient(#000 35%, transparent);
   -webkit-mask-composite: source-in;
@@ -145,7 +148,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   margin: 12px 16px 16px;
   padding: 16px 18px 18px;
   border-radius: 20px;
-  background: var(--color-ink);
+  background: var(--color-dark-panel);
   color: #fff;
 }
 .page-header--photo::before, .page-header--photo::after { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; }
@@ -163,7 +166,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   aspect-ratio: 16 / 5;
   margin: -20px -20px 16px;
   border-radius: 17px 17px 0 0;
-  background: var(--photo) center / cover no-repeat, var(--color-ink);
+  background: var(--photo) center / cover no-repeat, var(--color-dark-panel);
   filter: grayscale(.25);
 }
 .card-photo::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, transparent 45%, rgba(20, 22, 21, .3)); }
@@ -309,14 +312,14 @@ a, button { -webkit-tap-highlight-color: transparent; }
 .app-nav-link:not(.is-active):hover { color: #fff; }
 .app-nav-brand { display: none; }
 .app-nav-brand-sub { display: block; margin: 6px 0 0 18px; font-size: 11px; font-weight: 800; letter-spacing: .32em; color: var(--nav-accent, #ff5a1f); }
-@keyframes tab-enter-next { from { transform: translate3d(20px,0,0); opacity: .55; } to { transform: translate3d(0,0,0); opacity: 1; } }
-@keyframes tab-enter-prev { from { transform: translate3d(-20px,0,0); opacity: .55; } to { transform: translate3d(0,0,0); opacity: 1; } }
+@keyframes tab-enter-next { from { transform: translate3d(20px,0,0); opacity: .55; } to { transform: none; opacity: 1; } }
+@keyframes tab-enter-prev { from { transform: translate3d(-20px,0,0); opacity: .55; } to { transform: none; opacity: 1; } }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .app-nav { background: rgba(17, 18, 20, .95); }
 }
 @media (max-width: 979px) {
-  .app-tab-enter-next { animation: tab-enter-next 230ms cubic-bezier(.2,.8,.2,1) both; }
-  .app-tab-enter-prev { animation: tab-enter-prev 230ms cubic-bezier(.2,.8,.2,1) both; }
+  .app-tab-enter-next { animation: tab-enter-next 230ms cubic-bezier(.2,.8,.2,1) backwards; }
+  .app-tab-enter-prev { animation: tab-enter-prev 230ms cubic-bezier(.2,.8,.2,1) backwards; }
 }
 @media (prefers-reduced-motion: reduce) {
   .app-nav-glider, .app-nav-link { transition: none !important; }
@@ -337,7 +340,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   overflow: hidden;
   padding: 22px 20px 20px;
   border-radius: 20px;
-  background: var(--color-ink);
+  background: var(--color-dark-panel);
   color: #fff;
 }
 .today-hero .topo-layer { color: #fff; opacity: .07; }
@@ -379,7 +382,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   background:
     linear-gradient(180deg, rgba(20, 22, 21, .72) 0%, rgba(20, 22, 21, .9) 60%, rgba(20, 22, 21, .97) 100%),
     url('./assets/photos/auth.webp') 60% center / cover no-repeat,
-    var(--color-ink);
+    var(--color-dark-panel);
   overflow: hidden;
 }
 .auth-stage > .topo-layer { color: #fff; opacity: .06; }
@@ -419,7 +422,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
     overflow: hidden;
     isolation: isolate;
     border-radius: 20px;
-    background: var(--color-ink);
+    background: var(--color-dark-panel);
     box-shadow: none;
     border: 0;
   }
@@ -446,7 +449,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   .app-nav-link.is-active svg { color: var(--nav-accent); }
   .app-nav-link.is-active::before { content: ''; position: absolute; left: -12px; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--color-accent); }
   .auth-stage, .auth-stage--compact { flex-direction: row; justify-content: center; gap: 64px; padding: 40px; }
-  .auth-stage { background: linear-gradient(90deg, rgba(20, 22, 21, .9) 0%, rgba(20, 22, 21, .7) 45%, rgba(20, 22, 21, .88) 100%), url('./assets/photos/auth.webp') center / cover no-repeat, var(--color-ink); }
+  .auth-stage { background: linear-gradient(90deg, rgba(20, 22, 21, .9) 0%, rgba(20, 22, 21, .7) 45%, rgba(20, 22, 21, .88) 100%), url('./assets/photos/auth.webp') center / cover no-repeat, var(--color-dark-panel); }
   .auth-stage--compact .auth-aside { display: block; }
   .auth-aside { padding: 0; }
   .auth-aside .brand-wordmark { font-size: 40px; }
