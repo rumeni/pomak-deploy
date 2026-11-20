@@ -147,6 +147,55 @@ try {
   }
   console.log('Mobile dock tabs fit and stay tappable at 320px/390px/430px in Light and Dark')
 
+  // Codex P2 regressions: ink token becomes a light foreground in Dark mode,
+  // but photo/Today hero panels and the desktop sidebar must remain DARK.
+  await page.setViewportSize({ width: 1024, height: 720 })
+  await page.evaluate(() => { document.documentElement.dataset.pomakMode = 'dark' })
+  const darkPanelColors = await page.evaluate(() => {
+    const selectors = ['today-hero', 'page-header--photo', 'app-nav']
+    const nodes = selectors.map(className => {
+      const el = document.createElement('div')
+      el.className = className
+      document.body.append(el)
+      return el
+    })
+    const colors = nodes.map(node => getComputedStyle(node).backgroundColor)
+    nodes.forEach(node => node.remove())
+    return colors
+  })
+  assert.deepEqual(darkPanelColors, ['rgb(20, 22, 21)', 'rgb(20, 22, 21)', 'rgb(20, 22, 21)'],
+    'White text on photo/hero/desktop nav must retain a dark background')
+
+  // Codex P2: after an animated tab transition, an inline fixed descendant
+  // must be viewport-fixed, not stuck in a permanent transformed ancestor.
+  await page.setViewportSize({ width: 390, height: 720 })
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  const tabAnimationResult = await page.evaluate(async () => {
+    const outcomes = []
+    for (const direction of ['app-tab-enter-next', 'app-tab-enter-prev']) {
+      const wrapper = document.createElement('div')
+      wrapper.className = direction
+      wrapper.style.marginTop = '120px'
+      const fixed = document.createElement('div')
+      fixed.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px'
+      wrapper.append(fixed)
+      document.body.append(wrapper)
+      await new Promise(resolve => setTimeout(resolve, 330))
+      outcomes.push({
+        transform: getComputedStyle(wrapper).transform,
+        fixedTop: fixed.getBoundingClientRect().top,
+      })
+      wrapper.remove()
+    }
+    return outcomes
+  })
+  for (const result of tabAnimationResult) {
+    assert.equal(result.transform, 'none', 'Tab animation leaves a transformed ancestor after completion')
+    assert.ok(Math.abs(result.fixedTop) < 1, 'Fixed bottom sheets must stay viewport relative after tab switch')
+  }
+  await page.evaluate(() => { delete document.documentElement.dataset.pomakMode })
+  console.log('Codex P2: dark hero contrast and post-animation fixed positioning verified')
+
   await page.setViewportSize({ width: 1280, height: 720 })
   console.log('Photo header dropdown remains visible at 320px and 390px')
 
