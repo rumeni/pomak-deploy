@@ -1586,7 +1586,7 @@ export const sr = {
     add_few: 'Dodaj program ({{count}} treninga)',
     add_other: 'Dodaj program ({{count}} treninga)',
     added_one: 'Dodat je {{count}} trening u odeljak „Moji treninzi“.',
-    added_few: 'Dodato je {{count}} treninga u odeljak „Moji treninzi“.',
+    added_few: 'Dodata su {{count}} treninga u odeljak „Moji treninzi“.',
     added_other: 'Dodato je {{count}} treninga u odeljak „Moji treninzi“.',
     addAgainConfirm: 'Već imaš treninge iz ovog programa. Dodati ih ponovo?',
     showAll: 'Prikaži sve programe ({{count}})',
