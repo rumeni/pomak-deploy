@@ -280,6 +280,56 @@ class CoachCollaborationTests(APITestCase):
         self.assertTrue(Exercise.objects.filter(pk=copy.pk, owner=self.client_user, archived_at__isnull=True).exists())
         self.assertTrue(Routine.objects.filter(pk=clone.pk, owner=self.client_user).exists())
 
+    def private_routine(self):
+        source = Routine.objects.create(owner=self.coach, name='Private')
+        private = Exercise.objects.create(
+            owner=self.coach, name='Coach secret', equipment=Exercise.Equipment.OTHER,
+            measurement=Exercise.Measurement.WEIGHT_REPS, muscle=Exercise.Muscle.FULL_BODY,
+        )
+        row = RoutineExercise.objects.create(routine=source, exercise=private, position=0)
+        RoutineSet.objects.create(routine_exercise=row, position=0, reps_min=10)
+        return source, private
+
+    def assign(self, source):
+        self.as_user(self.coach)
+        res = self.client.post(f'/api/coach/clients/{self.client_user.pk}/assign/', {'routine_id': str(source.pk)}, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        return Routine.objects.get(pk=res.data['routine_id'])
+
+    def test_reassigning_keeps_the_clients_edits_to_his_copy(self):
+        self.connect()
+        source, private = self.private_routine()
+        copy = self.assign(source).exercises.get().exercise
+        self.as_user(self.client_user)
+        res = self.client.patch(f'/api/training/exercises/{copy.pk}/', {'name': 'Moja verzija', 'instructions': 'Po mom'}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        # The coach changes his original and assigns again: the client's copy is reused as he left it.
+        private.name = 'Coach renamed'
+        private.save()
+        again = self.assign(source).exercises.get().exercise
+        self.assertEqual(again.pk, copy.pk)
+        again.refresh_from_db()
+        self.assertEqual((again.name, again.instructions, again.owner), ('Moja verzija', 'Po mom', self.client_user))
+        self.assertEqual(Exercise.objects.filter(owner=self.client_user).count(), 1)
+
+    def test_reassigning_brings_back_an_archived_copy_instead_of_a_second_one(self):
+        self.connect()
+        source, _private = self.private_routine()
+        copy = self.assign(source).exercises.get().exercise
+        self.as_user(self.client_user)
+        self.assertEqual(self.client.delete(f'/api/training/exercises/{copy.pk}/').status_code, 204)
+        copy.refresh_from_db()
+        self.assertIsNotNone(copy.archived_at)
+        again = self.assign(source).exercises.get().exercise
+        self.assertEqual(again.pk, copy.pk)
+        again.refresh_from_db()
+        self.assertIsNone(again.archived_at)
+        self.assertEqual(Exercise.objects.filter(owner=self.client_user).count(), 1)
+        self.as_user(self.client_user)
+        listed = self.client.get('/api/training/exercises/').data
+        ids = [x['id'] for x in (listed['results'] if isinstance(listed, dict) else listed)]
+        self.assertIn(str(copy.pk), ids)
+
     def test_messages_are_private_and_archived_read_only_on_disconnect(self):
         self.connect()
         self.as_user(self.coach)
