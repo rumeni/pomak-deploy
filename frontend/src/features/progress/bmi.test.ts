@@ -18,14 +18,30 @@ describe('adultBmi', () => {
 
   it('uses unrounded BMI for classification immediately below each boundary', () => {
     for (const [weight, displayed, category] of [
-      [73.9, 18.5, 'underweight'],
-      [99.9, 25, 'healthy'],
-      [119.9, 30, 'overweight'],
-      [139.9, 35, 'obesity1'],
-      [159.9, 40, 'obesity2'],
+      [73.9, 18.4, 'underweight'],
+      [99.9, 24.9, 'healthy'],
+      [119.9, 29.9, 'overweight'],
+      [139.9, 34.9, 'obesity1'],
+      [159.9, 39.9, 'obesity2'],
     ] as const) {
       expect(adultBmi(weight, 200, birthday, date)).toEqual({ value: displayed, category })
     }
+  })
+
+  it('never displays a value that contradicts its category', () => {
+    // 50–130 kg at 180 cm spans BMI 15.4–40.1, i.e. every category and boundary.
+    for (let tenths = 500; tenths <= 1300; tenths++) {
+      const bmi = adultBmi(tenths / 10, 180, birthday, date)!
+      const shown = bmi.value
+      const expected = shown < 18.5 ? 'underweight' : shown < 25 ? 'healthy' : shown < 30 ? 'overweight'
+        : shown < 35 ? 'obesity1' : shown < 40 ? 'obesity2' : 'obesity3'
+      expect(bmi.category).toBe(expected)
+    }
+  })
+
+  it('ignores floating-point noise at exact values', () => {
+    expect(adultBmi(77.76, 180, birthday, date)).toEqual({ value: 24, category: 'healthy' })
+    expect(adultBmi(81, 180, birthday, date)).toEqual({ value: 25, category: 'overweight' })
   })
 
   it('checks age on the date of the recorded weight', () => {
