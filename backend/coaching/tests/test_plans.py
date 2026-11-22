@@ -190,7 +190,7 @@ class PrivateExerciseTests(PlanTestCase):
         batch = self.assign(self.template_id, [self.ana, self.marko, third], self.today, request_id)
         self.assertEqual(batch.status_code, 200, batch.data)
         self.assertEqual([r['ok'] for r in batch.data['results']], [True, False, True])
-        self.assertEqual(batch.data['results'][1]['error'], 'exercise_measurement_changed')
+        self.assertEqual(batch.data['results'][1]['error'], 'exercise_configuration_changed')
         self.assertEqual(batch.data['results'][1]['name'], 'Marko')
         self.assertEqual(Routine.objects.filter(owner=self.marko).count(), marko_routines)
         self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions)
@@ -216,6 +216,31 @@ class PrivateExerciseTests(PlanTestCase):
         self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions)
         self.assertNotEqual(ClientPlanVersion.objects.get(plan__connection__client=self.marko).pk, original_marko_version)
         self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), marko_receipts + 1)
+
+    def test_changed_load_mode_in_batch_skips_one_client_and_preserves_other_plans(self):
+        third = self.user('load-luka@example.test', name='Luka')
+        CoachConnection.objects.create(coach=self.coach, client=third)
+        self.assertEqual(self.assign(self.template_id, [self.marko], self.today).status_code, 200)
+        copy = Exercise.objects.get(owner=self.marko, source_exercise=self.secret)
+        self.as_user(self.marko)
+        changed = self.client.patch(f'/api/training/exercises/{copy.pk}/', {
+            'load_mode': Exercise.LoadMode.PER_SIDE,
+        }, format='json')
+        self.assertEqual(changed.status_code, 200, changed.data)
+        before_routines = Routine.objects.filter(owner=self.marko).count()
+        before_versions = list(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).values_list('pk', flat=True))
+        before_receipts = PlanRequest.objects.filter(connection__client=self.marko).count()
+        response = self.assign(self.template_id, [self.ana, self.marko, third], self.today)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([r['ok'] for r in response.data['results']], [True, False, True])
+        self.assertEqual(response.data['results'][1]['error'], 'exercise_configuration_changed')
+        self.assertEqual(Routine.objects.filter(owner=self.marko).count(), before_routines)
+        self.assertEqual(list(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).values_list('pk', flat=True)), before_versions)
+        self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), before_receipts)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.ana).count(), 1)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=third).count(), 1)
+        copy.refresh_from_db()
+        self.assertEqual(copy.load_mode, Exercise.LoadMode.PER_SIDE)
 
     def test_tailoring_a_kept_day_accepts_the_clients_copy(self):
         self.assign(self.template_id, [self.ana], self.today)

@@ -808,7 +808,7 @@ export const en = {
       confirm: 'Assign',
       doneTitle: 'Assigned',
       notAssigned: 'not assigned (collaboration not active)',
-      measurementMismatch: 'not assigned (the client changed the exercise measurement type; restore the original type)',
+      configurationMismatch: 'not assigned (the client changed the measurement type or weight entry mode; restore the original settings)',
       doneHint: 'The plan applies from {{date}}.',
       finish: 'Done',
     },

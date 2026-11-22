@@ -827,7 +827,7 @@ export const sr = {
       confirm: 'Dodeli',
       doneTitle: 'Dodeljeno',
       notAssigned: 'nije dodeljeno (saradnja nije aktivna)',
-      measurementMismatch: 'nije dodeljeno (klijent je promenio tip merenja vežbe; potrebno je vratiti originalni tip)',
+      configurationMismatch: 'nije dodeljeno (klijent je promenio tip merenja ili način računanja težine; potrebno je vratiti originalna podešavanja)',
       doneHint: 'Plan važi od {{date}}.',
       finish: 'Gotovo',
     },

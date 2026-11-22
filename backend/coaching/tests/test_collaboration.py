@@ -347,6 +347,35 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual(again.pk, copy.pk)
         self.assertEqual(Exercise.objects.filter(owner=self.client_user).count(), 1)
 
+    def test_changed_load_mode_rejects_reassignment_without_reinterpreting_weights(self):
+        self.connect()
+        source, _private = self.private_routine()
+        source.exercises.get().sets.update(weight_kg='40')
+        copy = self.assign(source).exercises.get().exercise
+        self.as_user(self.client_user)
+        changed = self.client.patch(f'/api/training/exercises/{copy.pk}/', {
+            'load_mode': Exercise.LoadMode.PER_SIDE,
+        }, format='json')
+        self.assertEqual(changed.status_code, 200, changed.data)
+        before_routines = Routine.objects.filter(owner=self.client_user).count()
+        before_assignments = CoachAssignment.objects.count()
+        self.as_user(self.coach)
+        response = self.client.post(f'/api/coach/clients/{self.client_user.pk}/assign/', {
+            'routine_id': str(source.pk),
+        }, format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('weight entry mode', str(response.data).lower())
+        self.assertEqual(Routine.objects.filter(owner=self.client_user).count(), before_routines)
+        self.assertEqual(CoachAssignment.objects.count(), before_assignments)
+        copy.refresh_from_db()
+        self.assertEqual(copy.load_mode, Exercise.LoadMode.PER_SIDE)
+        self.as_user(self.client_user)
+        restored = self.client.patch(f'/api/training/exercises/{copy.pk}/', {
+            'load_mode': Exercise.LoadMode.TOTAL,
+        }, format='json')
+        self.assertEqual(restored.status_code, 200, restored.data)
+        self.assertEqual(self.assign(source).exercises.get().exercise.pk, copy.pk)
+
     def test_reassigning_brings_back_an_archived_copy_instead_of_a_second_one(self):
         self.connect()
         source, _private = self.private_routine()

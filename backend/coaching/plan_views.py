@@ -13,7 +13,7 @@ from training.models import Routine
 
 from .models import ClientPlan, CoachConnection, PlanRequest, ProgramTemplate, ProgramTemplateDay
 from .plans import (
-    ClientExerciseMeasurementMismatch, assignable_routine, attribute, check_valid_from, copy_routine, kept_prescription, payload_hash, plan_routine_ids,
+    ClientExerciseConfigurationMismatch, assignable_routine, attribute, check_valid_from, copy_routine, kept_prescription, payload_hash, plan_routine_ids,
     plan_summary, prescription_of, prior_request, record_request, save_version, tailored_routine, with_contents,
 )
 from .errors import CollaborationChanged, collaboration_not_found
@@ -205,13 +205,13 @@ class AssignTemplateView(APIView):
                         record_request(connection, data['request_id'], PlanRequest.Operation.ASSIGN, digest)
                     results.append({'connection_id': str(connection_id), 'client_id': str(connection.client_id),
                                     'name': display_name(connection.client), 'ok': True})
-            except ClientExerciseMeasurementMismatch:
+            except ClientExerciseConfigurationMismatch:
                 # Each client is transactional: roll back only this assignment, not the
                 # already committed plans of other clients in the same request.
                 results.append({
                     'connection_id': str(connection_id), 'client_id': str(connection.client_id),
                     'name': display_name(connection.client), 'ok': False,
-                    'error': 'exercise_measurement_changed',
+                    'error': 'exercise_configuration_changed',
                 })
         return Response({'results': results})
 

@@ -37,7 +37,7 @@ from .models import ClientPlan, ClientPlanDay, ClientPlanVersion, CoachAssignmen
 MAX_PLAN_DAYS_AHEAD = 366
 
 
-class ClientExerciseMeasurementMismatch(ValidationError):
+class ClientExerciseConfigurationMismatch(ValidationError):
     """One client's edited copy cannot use the coach's original set prescription."""
 
 
@@ -77,11 +77,15 @@ def client_exercise(exercise: Exercise, client, coach) -> Exercise:
     copy = Exercise.objects.filter(owner=client, source_exercise=exercise).first()
     if copy is not None:
         # A client's edits are theirs, but the coach's prescribed set fields still use the
-        # original measurement. Reusing a copy with another measurement would make a workout
-        # that cannot be logged as prescribed; never silently overwrite the client's choice.
+        # original measurement and weight units. Different settings make a workout that
+        # cannot be logged as prescribed; never silently reinterpret loads or edit the copy.
         if copy.measurement != exercise.measurement:
-            raise ClientExerciseMeasurementMismatch({
+            raise ClientExerciseConfigurationMismatch({
                 'routine': _('The client changed the measurement type for "%(name)s". Ask them to restore the original type before reassigning this workout.') % {'name': copy.name},
+            })
+        if copy.load_mode != exercise.load_mode:
+            raise ClientExerciseConfigurationMismatch({
+                'routine': _('The client changed the weight entry mode for "%(name)s". Ask them to restore the original mode before reassigning this workout.') % {'name': copy.name},
             })
         if copy.archived_at is not None:
             copy.archived_at = None
