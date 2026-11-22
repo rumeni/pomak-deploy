@@ -50,13 +50,13 @@ def assignable_routine(coach, routine_id) -> Routine:
         'exercises__sets', 'exercises__exercise',
     ).first()
     if routine is None:
-        raise ValidationError({'routine_id': _('Select one of your active routines.')})
+        raise ValidationError({'routine_id': _('Select one of your active workouts.')})
     rows = list(routine.exercises.all())
     if not rows:
-        raise ValidationError({'routine_id': _('A routine must contain at least one exercise.')})
+        raise ValidationError({'routine_id': _('A workout must contain at least one exercise.')})
     if any(x.exercise.owner_id is not None for x in rows):
         # The client could not see the coach's private exercises.
-        raise ValidationError({'routine_id': _('This routine uses private exercises. Use shared exercises before assigning.')})
+        raise ValidationError({'routine_id': _('This workout uses private exercises. Use shared exercises before assigning.')})
     return routine
 
 
@@ -81,15 +81,15 @@ def copy_routine(source: Routine, owner) -> Routine:
 def tailored_routine(request, payload, owner) -> Routine:
     """A routine adjusted for one client (weights, sets, reps), saved as his own."""
     if not isinstance(payload, dict):
-        raise ValidationError({'routine': _('Invalid routine.')})
+        raise ValidationError({'routine': _('Invalid workout.')})
     body = {key: value for key, value in payload.items() if key not in ('id', 'revision', 'program_key')}
     serializer = RoutineSerializer(data=body, context={'request': request})
     serializer.is_valid(raise_exception=True)
     exercises = serializer.validated_data['exercises']
     if not exercises:
-        raise ValidationError({'routine': _('A routine must contain at least one exercise.')})
+        raise ValidationError({'routine': _('A workout must contain at least one exercise.')})
     if any(item['exercise'].owner_id is not None for item in exercises):
-        raise ValidationError({'routine': _('This routine uses private exercises. Use shared exercises before assigning.')})
+        raise ValidationError({'routine': _('This workout uses private exercises. Use shared exercises before assigning.')})
     return serializer.save(owner=owner)
 
 

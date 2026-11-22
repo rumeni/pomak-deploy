@@ -6,8 +6,10 @@ import progressPhoto from '../../assets/photos/progress.webp'
 import { Card, EmptyState, PageHeader } from '../../components/ui'
 import { LineChart } from '../../components/LineChart'
 import { formatDecimal, formatShortDate, toISODate } from '../../lib/format'
+import { useAuth } from '../../lib/auth'
 import { usePerformedExercises, useMeasurements } from './api'
 import { measurementPoints } from './format'
+import { adultBmi } from './bmi'
 import { GoalsSection } from './GoalsSection'
 import { WeekCard } from './WeekCard'
 import { ExerciseThumb } from '../training/ExerciseImage'
@@ -63,9 +65,14 @@ export function ProgressPage() {
 
 function WeightCard() {
   const { t } = useTranslation()
+  const { me } = useAuth()
   const { data, isLoading, isError } = useMeasurements('weight')
   const latest = data?.[0]
   const points = data ? measurementPoints(data) : []
+  const bmi = latest && me
+    ? adultBmi(Number(latest.value), me.profile.height_cm ? Number(me.profile.height_cm) : NaN,
+      me.profile.birth_date, latest.measured_on)
+    : null
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
@@ -83,6 +90,14 @@ function WeightCard() {
             {formatDecimal(Number(latest.value))} <span className="text-base font-medium text-muted">kg</span>
           </p>
           <p className="text-sm text-muted">{t('progress.measuredOn', { date: formatShortDate(latest.measured_on) })}</p>
+          {bmi && (
+            <div className="mt-3 rounded-xl bg-surface p-3" aria-label={t('progress.bmiLabel')}>
+              <p className="text-sm font-semibold tabular-nums">
+                {t('progress.bmiLabel')}: {formatDecimal(bmi.value)} · {t(`progress.bmiCategory_${bmi.category}`)}
+              </p>
+              <p className="mt-1 text-xs text-muted">{t('progress.bmiNote')}</p>
+            </div>
+          )}
           {points.length > 1 && (
             <div className="mt-3">
               <LineChart points={points} format={(v) => `${formatDecimal(Math.round(v * 10) / 10)} kg`} label={t('progress.bodyWeight')} />

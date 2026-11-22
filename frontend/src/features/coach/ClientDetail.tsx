@@ -21,6 +21,7 @@ import { InstructionsPanel } from './Instructions'
 import { PlanPanel } from './PlanPanel'
 import { PackagesPanel } from '../schedule/PackagesPanel'
 import { ClientStats, ClientTargetPanel, WorkoutLinks } from './ClientTabs'
+import { coachRoutineAvailability } from './routineEligibility'
 import { readinessReasons } from './workspace'
 
 const TABS = ['overview', 'plan', 'progress', 'nutrition', 'notes'] as const
@@ -269,9 +270,8 @@ function PlanTab({ clientId, data }: { clientId: string; data: CoachClientDetail
   const routines = useRoutines()
   const assign = useAssignCoachRoutine(clientId)
   const [routineId, setRoutineId] = useState('')
-  const availableRoutines = (routines.data ?? []).filter((routine) =>
-    routine.exercises.length > 0 && routine.exercises.every((item) => !item.exercise.is_custom),
-  )
+  const availableRoutines = (routines.data ?? []).filter((routine) => coachRoutineAvailability(routine) === 'ready')
+  const unavailableRoutines = (routines.data ?? []).filter((routine) => coachRoutineAvailability(routine) !== 'ready')
   return (
     <Card title={t('coachSpace.plan.singleRoutine')}>
       <p className="mb-3 text-sm text-muted">{t('coach.assignExplanation')}</p>
@@ -280,8 +280,14 @@ function PlanTab({ clientId, data }: { clientId: string; data: CoachClientDetail
       <select id="coach-routine-select" className={selectClass + ' w-full'} value={routineId} onChange={(e) => setRoutineId(e.target.value)}>
         <option value="">{t('coach.selectRoutine')}</option>
         {availableRoutines.map((routine) => <option key={routine.id} value={routine.id}>{routine.name}</option>)}
+        {unavailableRoutines.map((routine) => (
+          <option key={`unavailable-${routine.id}`} value={`unavailable:${routine.id}`} disabled>
+            {routine.name} · {t(`coachSpace.templates.routine_${coachRoutineAvailability(routine)}`)}
+          </option>
+        ))}
       </select>
-      {routines.data && availableRoutines.length === 0 && <p className="mt-2 text-sm text-muted">{t('coachSpace.client.noSharedRoutines')}</p>}
+      {routines.data && availableRoutines.length === 0 && <p role="status" className="mt-2 text-sm text-muted">{t('coachSpace.client.noSharedRoutines')}</p>}
+      {unavailableRoutines.length > 0 && <p className="mt-2 text-xs text-muted">{t('coachSpace.templates.unavailableHint')}</p>}
       <FormError message={assign.error ? errorMessage(assign.error) : null} />
       <Button className="mt-3 w-full" disabled={!routineId || assign.isPending} onClick={() => assign.mutate(routineId, { onSuccess: () => setRoutineId('') })}>
         {t('coach.assign')}

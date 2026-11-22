@@ -618,22 +618,13 @@ msgstr "Vežba mora imati bar jednu seriju."
 msgid "At most %(count)d sets per exercise."
 msgstr "Najviše %(count)d serija po vežbi."
 
-#: .\training\serializers.py:99
-msgid "Enter the routine name."
-msgstr "Unesi naziv rutine."
-
-#: .\training\serializers.py:105
-#, python-format
-msgid "At most %(count)d exercises per routine."
-msgstr "Najviše %(count)d vežbi u rutini."
-
 #: .\training\serializers.py:157
 msgid "A confirmed set needs at least one value."
 msgstr "Potvrđena serija mora imati bar jednu vrednost."
 
 #: .\training\serializers.py:193
-msgid "This routine is not available."
-msgstr "Rutina nije dostupna."
+msgid "This workout is not available."
+msgstr "Trening nije dostupan."
 
 #: .\training\serializers.py:199
 msgid "The workout cannot end before it started."
@@ -768,35 +759,35 @@ msgstr "Plan može da se menja od danas; ono što je već urađeno ostaje kako j
 msgid "Choose a date within a year."
 msgstr "Izaberi datum u narednih godinu dana."
 
-msgid "Invalid routine."
-msgstr "Neispravna rutina."
+msgid "Invalid workout."
+msgstr "Neispravan trening."
 
-msgid "Put a routine on at least one day."
-msgstr "Stavi rutinu bar na jedan dan."
+msgid "Pick a workout for at least one day."
+msgstr "Izaberi trening za bar jedan dan."
 
-msgid "One routine per day."
-msgstr "Jedna rutina po danu."
+msgid "One workout per day."
+msgstr "Jedan trening po danu."
 
-msgid "Choose one routine for the day."
-msgstr "Izaberi jednu rutinu za taj dan."
+msgid "Choose one workout for the day."
+msgstr "Izaberi jedan trening za taj dan."
 
 msgid "Archive an old program before adding another one."
 msgstr "Arhiviraj neki stari program pre nego što dodaš novi."
 
-msgid "That routine is not part of this plan any more."
-msgstr "Ta rutina više nije deo ovog plana."
+msgid "That workout is not part of this plan any more."
+msgstr "Taj trening više nije deo ovog plana."
 
 msgid "Plan"
 msgstr "Plan"
 
-msgid "Select one of your active routines."
-msgstr "Izaberi neku od svojih aktivnih rutina."
+msgid "Select one of your active workouts."
+msgstr "Izaberi neki od svojih aktivnih treninga."
 
-msgid "A routine must contain at least one exercise."
-msgstr "Rutina mora da ima bar jednu vežbu."
+msgid "A workout must contain at least one exercise."
+msgstr "Trening mora da ima bar jednu vežbu."
 
-msgid "This routine uses private exercises. Use shared exercises before assigning."
-msgstr "Ova rutina koristi tvoje privatne vežbe. Pre dodele zameni ih vežbama iz zajedničke biblioteke."
+msgid "This workout uses private exercises. Use shared exercises before assigning."
+msgstr "Ovaj trening koristi tvoje privatne vežbe. Pre dodele zameni ih vežbama iz zajedničke biblioteke."
 
 msgid "That workout is not part of this collaboration."
 msgstr "Taj trening nije deo ove saradnje."
