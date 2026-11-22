@@ -192,8 +192,14 @@ Zadaci nastaju iz podataka koje trener već sme da vidi, za treninge **završene
 ## T2a: programi i planovi
 
 - **Program (šablon)** je raspored trenerovih rutina po danima u nedelji, sa trajanjem u nedeljama
-  ili bez kraja. Koristi samo trenerove rutine sa vežbama iz zajedničke biblioteke, jer klijent
-  ne vidi trenerove privatne vežbe.
+  ili bez kraja. Koristi trenerove rutine sa bar jednom vežbom.
+- **Trenerove privatne vežbe (T5):** pri dodeli (pojedinačni trening, program ili izmena plana)
+  svaka privatna vežba se kopira klijentu kao njegova lična vežba, sa oznakom „od trenera …“.
+  - Jedna kopija po trenerovoj vežbi; ponovna dodela koristi istu kopiju.
+  - Kopija i istorija ostaju klijentu i posle prekida saradnje. Ništa ne ulazi u zajedničku
+    biblioteku, a trenerova vežba se ne menja.
+  - Propisani plan pamti klijentove kopije, pa poređenje „propisano / urađeno“ i uputstva rade
+    sa vežbama sa kojima klijent stvarno trenira.
 - **Dodela u tri koraka:** program, klijenti, datum početka (danas ili kasnije).
   - Svaki klijent dobija plan od tog dana, sa svojim kopijama rutina. Kasnija izmena programa ne
     menja postojeće planove.

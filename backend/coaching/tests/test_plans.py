@@ -83,12 +83,14 @@ class TemplateTests(PlanTestCase):
         self.assertEqual([d['weekday'] for d in template['days']], [0, 3])
         bad = [
             [{'weekday': 0, 'routine_id': str(self.routine('Theirs', owner=self.other_coach).pk)}],
-            [{'weekday': 0, 'routine_id': str(self.routine('Private', exercise=self.secret).pk)}],
             [{'weekday': 0, 'routine_id': str(self.upper.pk)}, {'weekday': 0, 'routine_id': str(self.lower.pk)}],
             [],
         ]
         for days in bad:
             self.assertEqual(self.client.post('/api/coach/templates/', {'name': 'X', 'days': days}, format='json').status_code, 400)
+        # A routine with the coach's private exercises is fine: assigning copies them to each client.
+        private = [{'weekday': 0, 'routine_id': str(self.routine('Private', exercise=self.secret).pk)}]
+        self.assertEqual(self.client.post('/api/coach/templates/', {'name': 'X', 'days': private}, format='json').status_code, 201)
         self.as_user(self.ana)
         self.assertEqual(self.client.get('/api/coach/templates/').status_code, 403)
         self.as_user(self.other_coach)
@@ -137,6 +139,128 @@ class AssignTests(PlanTestCase):
         self.assertEqual(self.assign(template['id'], [self.ana], self.today - timedelta(days=1)).status_code, 400)
 
 
+class PrivateExerciseTests(PlanTestCase):
+    """A coach's private exercise reaches each client as the client's own labelled copy."""
+
+    def setUp(self):
+        super().setUp()
+        self.coach.profile.display_name = 'Coach Nina'
+        self.coach.profile.save()
+        self.private = self.routine('Private A', exercise=self.secret)
+        self.as_user(self.coach)
+        response = self.client.post('/api/coach/templates/', {'name': 'Private', 'days': [
+            {'weekday': 0, 'routine_id': str(self.private.pk)}]}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.template_id = response.data['id']
+
+    def test_each_client_gets_his_own_copy_and_the_plan_points_at_it(self):
+        result = self.assign(self.template_id, [self.ana, self.marko], self.today)
+        self.assertEqual([r['ok'] for r in result.data['results']], [True, True], result.data)
+        copies = {c: Exercise.objects.get(owner=c, source_exercise=self.secret) for c in (self.ana, self.marko)}
+        self.assertNotEqual(copies[self.ana].pk, copies[self.marko].pk)
+        self.assertEqual({c.coach_name for c in copies.values()}, {'Coach Nina'})
+        for client, copy in copies.items():
+            day = self.plan_of(client)['versions'][0]['days'][0]
+            self.assertEqual(day['routine']['exercises'][0]['exercise_id'], str(copy.pk))
+            self.assertEqual(Routine.objects.get(pk=day['routine']['id']).exercises.get().exercise_id, copy.pk)
+        # The coach's own exercise is untouched and nothing entered the shared library.
+        self.secret.refresh_from_db()
+        self.assertEqual(self.secret.owner, self.coach)
+        self.assertFalse(Exercise.objects.filter(owner__isnull=True, name='Secret move').exists())
+
+    def test_measurement_mismatch_in_batch_skips_only_that_client_and_retry_recovers(self):
+        # Pre-existing client copy is mutable, while the coach's prescription is still weight/reps.
+        third = self.user('luka@example.test', name='Luka')
+        CoachConnection.objects.create(coach=self.coach, client=third)
+        first = self.assign(self.template_id, [self.marko], self.today)
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual([r['ok'] for r in first.data['results']], [True])
+        client_copy = Exercise.objects.get(owner=self.marko, source_exercise=self.secret)
+        self.as_user(self.marko)
+        edited = self.client.patch(f'/api/training/exercises/{client_copy.pk}/', {
+            'measurement': Exercise.Measurement.DURATION,
+        }, format='json')
+        self.assertEqual(edited.status_code, 200, edited.data)
+
+        marko_routines = Routine.objects.filter(owner=self.marko).count()
+        marko_versions = ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count()
+        original_marko_version = ClientPlanVersion.objects.get(plan__connection__client=self.marko).pk
+        marko_receipts = PlanRequest.objects.filter(connection__client=self.marko).count()
+        request_id = str(uuid.uuid4())
+        batch = self.assign(self.template_id, [self.ana, self.marko, third], self.today, request_id)
+        self.assertEqual(batch.status_code, 200, batch.data)
+        self.assertEqual([r['ok'] for r in batch.data['results']], [True, False, True])
+        self.assertEqual(batch.data['results'][1]['error'], 'exercise_configuration_changed')
+        self.assertEqual(batch.data['results'][1]['name'], 'Marko')
+        self.assertEqual(Routine.objects.filter(owner=self.marko).count(), marko_routines)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions)
+        self.assertEqual(ClientPlanVersion.objects.get(plan__connection__client=self.marko).pk, original_marko_version)
+        self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), marko_receipts)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.ana).count(), 1)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=third).count(), 1)
+        client_copy.refresh_from_db()
+        self.assertEqual(client_copy.measurement, Exercise.Measurement.DURATION)
+
+        # Retry with the same ID: successful clients are not assigned twice; repaired client now succeeds.
+        self.as_user(self.marko)
+        restored = self.client.patch(f'/api/training/exercises/{client_copy.pk}/', {
+            'measurement': Exercise.Measurement.WEIGHT_REPS,
+        }, format='json')
+        self.assertEqual(restored.status_code, 200, restored.data)
+        retry = self.assign(self.template_id, [self.ana, self.marko, third], self.today, request_id)
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertEqual([r['ok'] for r in retry.data['results']], [True, True, True])
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.ana).count(), 1)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=third).count(), 1)
+        # Assigning on the same start date replaces Marko's old version, not adds a second one.
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions)
+        self.assertNotEqual(ClientPlanVersion.objects.get(plan__connection__client=self.marko).pk, original_marko_version)
+        self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), marko_receipts + 1)
+
+    def test_changed_load_mode_in_batch_skips_one_client_and_preserves_other_plans(self):
+        third = self.user('load-luka@example.test', name='Luka')
+        CoachConnection.objects.create(coach=self.coach, client=third)
+        self.assertEqual(self.assign(self.template_id, [self.marko], self.today).status_code, 200)
+        copy = Exercise.objects.get(owner=self.marko, source_exercise=self.secret)
+        self.as_user(self.marko)
+        changed = self.client.patch(f'/api/training/exercises/{copy.pk}/', {
+            'load_mode': Exercise.LoadMode.PER_SIDE,
+        }, format='json')
+        self.assertEqual(changed.status_code, 200, changed.data)
+        before_routines = Routine.objects.filter(owner=self.marko).count()
+        before_versions = list(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).values_list('pk', flat=True))
+        before_receipts = PlanRequest.objects.filter(connection__client=self.marko).count()
+        response = self.assign(self.template_id, [self.ana, self.marko, third], self.today)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([r['ok'] for r in response.data['results']], [True, False, True])
+        self.assertEqual(response.data['results'][1]['error'], 'exercise_configuration_changed')
+        self.assertEqual(Routine.objects.filter(owner=self.marko).count(), before_routines)
+        self.assertEqual(list(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).values_list('pk', flat=True)), before_versions)
+        self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), before_receipts)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.ana).count(), 1)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=third).count(), 1)
+        copy.refresh_from_db()
+        self.assertEqual(copy.load_mode, Exercise.LoadMode.PER_SIDE)
+
+    def test_tailoring_a_kept_day_accepts_the_clients_copy(self):
+        self.assign(self.template_id, [self.ana], self.today)
+        copy = Exercise.objects.get(owner=self.ana, source_exercise=self.secret)
+        self.as_user(self.coach)
+        response = self.client.post(f'/api/coach/clients/{self.ana.pk}/plan/versions/', {
+            'valid_from': (self.today + timedelta(days=7)).isoformat(), 'request_id': str(uuid.uuid4()),
+            'connection_id': self.connection_id(self.ana),
+            'days': [{'weekday': 0, 'routine': {'name': 'Private A (Ana)', 'notes': '', 'exercises': [{
+                'exercise_id': str(copy.pk), 'rest_seconds': 60, 'notes': '',
+                'sets': [{'set_type': 'working', 'reps_min': 6, 'reps_max': 6, 'weight_kg': '40',
+                          'duration_seconds': None, 'distance_m': None, 'rpe': None}],
+            }]}}],
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        made = Routine.objects.get(owner=self.ana, name='Private A (Ana)')
+        self.assertEqual(made.exercises.get().exercise_id, copy.pk)
+        self.assertEqual(Exercise.objects.filter(owner=self.ana).count(), 1)
+
+
 class PlanChangeTests(PlanTestCase):
     def setUp(self):
         super().setUp()
@@ -172,7 +296,12 @@ class PlanChangeTests(PlanTestCase):
         self.assertEqual(versions[0]['valid_until'], later - timedelta(days=1))
         made = Routine.objects.get(owner=self.ana, name='Upper A (Ana)')
         self.assertEqual(str(RoutineSet.objects.get(routine_exercise__routine=made).weight_kg), '55.00')
-        self.assertEqual(self.change(later, [{'weekday': 2, 'routine': self.tailored(exercise=self.secret)}]).status_code, 400)
+        # Someone else's private exercise is never accepted.
+        theirs = Exercise.objects.create(
+            owner=self.other_coach, name='Not yours', equipment=Exercise.Equipment.BARBELL,
+            measurement=Exercise.Measurement.WEIGHT_REPS, muscle=Exercise.Muscle.CHEST,
+        )
+        self.assertEqual(self.change(later, [{'weekday': 2, 'routine': self.tailored(exercise=theirs)}]).status_code, 400)
 
     def test_editing_his_copy_never_rewrites_what_was_prescribed(self):
         copy = Routine.objects.get(pk=self.monday_routine)

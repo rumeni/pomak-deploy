@@ -69,9 +69,21 @@ class Exercise(TimeStampedModel):
     instructions_en = models.TextField(blank=True)
     # Vežba se nikad ne briše: stari rezultati moraju da ostanu čitljivi.
     archived_at = models.DateTimeField(null=True, blank=True)
+    # Klijentova kopija trenerove privatne vežbe, napravljena pri dodeli treninga. Pripada klijentu
+    # (ostaje mu i posle prekida saradnje) i nikad ne ulazi u zajedničku biblioteku. Ime trenera je
+    # zapamćeno kao oznaka, da ostane i kad trener promeni ime ili obriše nalog.
+    source_exercise = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    coach_name = models.CharField(max_length=80, blank=True, db_default='')
 
     class Meta:
         ordering = ['name']
+        constraints = [
+            # Ponovna dodela iste trenerove vežbe koristi postojeću kopiju umesto nove.
+            models.UniqueConstraint(
+                fields=['owner', 'source_exercise'], condition=models.Q(source_exercise__isnull=False),
+                name='one_client_copy_per_coach_exercise',
+            ),
+        ]
 
     def __str__(self):
         return self.name
