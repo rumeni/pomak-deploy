@@ -30,6 +30,14 @@ describe('prevodi', () => {
     expect(placeholders(en)).toEqual(placeholders(sr))
   })
 
+  it('korisnički tekstovi koriste trening umesto rutine / workout instead of routine', () => {
+    const values = (obj: object): string[] => Object.values(obj).flatMap((value) =>
+      typeof value === 'string' ? [value] : typeof value === 'object' && value !== null ? values(value) : [],
+    )
+    expect(values(sr).filter((value) => /\brutin[a-z]*\b/i.test(value))).toEqual([])
+    expect(values(en).filter((value) => /\broutines?\b/i.test(value))).toEqual([])
+  })
+
   it('srpska množina ima sva tri oblika', () => {
     const flat = JSON.stringify(sr)
     for (const base of ['exercises', 'workingSets']) {
