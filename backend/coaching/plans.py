@@ -37,6 +37,10 @@ from .models import ClientPlan, ClientPlanDay, ClientPlanVersion, CoachAssignmen
 MAX_PLAN_DAYS_AHEAD = 366
 
 
+class ClientExerciseMeasurementMismatch(ValidationError):
+    """One client's edited copy cannot use the coach's original set prescription."""
+
+
 class RequestConflict(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = _('This request ID was already used for different content.')
@@ -76,7 +80,7 @@ def client_exercise(exercise: Exercise, client, coach) -> Exercise:
         # original measurement. Reusing a copy with another measurement would make a workout
         # that cannot be logged as prescribed; never silently overwrite the client's choice.
         if copy.measurement != exercise.measurement:
-            raise ValidationError({
+            raise ClientExerciseMeasurementMismatch({
                 'routine': _('The client changed the measurement type for "%(name)s". Ask them to restore the original type before reassigning this workout.') % {'name': copy.name},
             })
         if copy.archived_at is not None:

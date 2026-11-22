@@ -50,7 +50,7 @@ export function AssignTemplatePage() {
             <ul className="flex flex-col gap-1 text-sm">
               {done.results.map((r) => (
                 <li key={r.connection_id}>{r.ok ? '✓' : '✕'} {r.name ?? clients.find((c) => c.id === r.connection_id)?.client.name ?? '?'}
-                  {!r.ok && <span className="text-danger"> · {t('coachSpace.assign.notAssigned')}</span>}</li>
+                  {!r.ok && <span className="text-danger"> · {t(r.error === 'exercise_measurement_changed' ? 'coachSpace.assign.measurementMismatch' : 'coachSpace.assign.notAssigned')}</span>}</li>
               ))}
             </ul>
             <p className="mt-2 text-sm text-muted">{t('coachSpace.assign.doneHint', { date: planDate(startDate) })}</p>

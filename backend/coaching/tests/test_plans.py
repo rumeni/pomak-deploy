@@ -168,6 +168,51 @@ class PrivateExerciseTests(PlanTestCase):
         self.assertEqual(self.secret.owner, self.coach)
         self.assertFalse(Exercise.objects.filter(owner__isnull=True, name='Secret move').exists())
 
+    def test_measurement_mismatch_in_batch_skips_only_that_client_and_retry_recovers(self):
+        # Pre-existing client copy is mutable, while the coach's prescription is still weight/reps.
+        third = self.user('luka@example.test', name='Luka')
+        CoachConnection.objects.create(coach=self.coach, client=third)
+        first = self.assign(self.template_id, [self.marko], self.today)
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual([r['ok'] for r in first.data['results']], [True])
+        client_copy = Exercise.objects.get(owner=self.marko, source_exercise=self.secret)
+        self.as_user(self.marko)
+        edited = self.client.patch(f'/api/training/exercises/{client_copy.pk}/', {
+            'measurement': Exercise.Measurement.DURATION,
+        }, format='json')
+        self.assertEqual(edited.status_code, 200, edited.data)
+
+        marko_routines = Routine.objects.filter(owner=self.marko).count()
+        marko_versions = ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count()
+        marko_receipts = PlanRequest.objects.filter(connection__client=self.marko).count()
+        request_id = str(uuid.uuid4())
+        batch = self.assign(self.template_id, [self.ana, self.marko, third], self.today, request_id)
+        self.assertEqual(batch.status_code, 200, batch.data)
+        self.assertEqual([r['ok'] for r in batch.data['results']], [True, False, True])
+        self.assertEqual(batch.data['results'][1]['error'], 'exercise_measurement_changed')
+        self.assertEqual(batch.data['results'][1]['name'], 'Marko')
+        self.assertEqual(Routine.objects.filter(owner=self.marko).count(), marko_routines)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions)
+        self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), marko_receipts)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.ana).count(), 1)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=third).count(), 1)
+        client_copy.refresh_from_db()
+        self.assertEqual(client_copy.measurement, Exercise.Measurement.DURATION)
+
+        # Retry with the same ID: successful clients are not assigned twice; repaired client now succeeds.
+        self.as_user(self.marko)
+        restored = self.client.patch(f'/api/training/exercises/{client_copy.pk}/', {
+            'measurement': Exercise.Measurement.WEIGHT_REPS,
+        }, format='json')
+        self.assertEqual(restored.status_code, 200, restored.data)
+        retry = self.assign(self.template_id, [self.ana, self.marko, third], self.today, request_id)
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertEqual([r['ok'] for r in retry.data['results']], [True, True, True])
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.ana).count(), 1)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=third).count(), 1)
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions + 1)
+        self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), marko_receipts + 1)
+
     def test_tailoring_a_kept_day_accepts_the_clients_copy(self):
         self.assign(self.template_id, [self.ana], self.today)
         copy = Exercise.objects.get(owner=self.ana, source_exercise=self.secret)
