@@ -21,7 +21,10 @@ class WeekTestCase(APITestCase):
         self.today = timezone.localdate()
         self.monday = self.today - timedelta(days=self.today.weekday())
         now = timezone.now()
-        WorkoutSession.objects.create(owner=self.ana, name='Upper A', started_at=now - timedelta(minutes=30), finished_at=now, sleep_hours=8, motivation=5)
+        # Never before local midnight: in the first 30 minutes of a Monday, "30 minutes ago" is last week.
+        midnight = timezone.make_aware(datetime.datetime.combine(self.today, datetime.time.min))
+        started = max(now - timedelta(minutes=30), midnight)
+        WorkoutSession.objects.create(owner=self.ana, name='Upper A', started_at=started, finished_at=now, sleep_hours=8, motivation=5)
         Measurement.objects.create(user=self.ana, kind=Measurement.Kind.WEIGHT, value='80.0', measured_on=self.today)
 
     def user(self, email, *, coach=False):
