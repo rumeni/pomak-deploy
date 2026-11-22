@@ -18,11 +18,12 @@ export function adultBmi(weightKg: number, heightCm: number, birthDate: string |
     || (measurement.getUTCMonth() === birth.getUTCMonth() && measurement.getUTCDate() < birth.getUTCDate())) age--
   // CDC adult categories are defined for ages 20 and up.
   if (age < 20) return null
-  const value = Math.round(weightKg / (heightCm / 100) ** 2 * 10) / 10
-  const category: BmiCategory = value < 18.5 ? 'underweight'
-    : value < 25 ? 'healthy'
-      : value < 30 ? 'overweight'
-        : value < 35 ? 'obesity1'
-          : value < 40 ? 'obesity2' : 'obesity3'
-  return { value, category }
+  // Categorize the precise BMI; rounding is for display only.
+  const rawBmi = weightKg / (heightCm / 100) ** 2
+  const category: BmiCategory = rawBmi < 18.5 ? 'underweight'
+    : rawBmi < 25 ? 'healthy'
+      : rawBmi < 30 ? 'overweight'
+        : rawBmi < 35 ? 'obesity1'
+          : rawBmi < 40 ? 'obesity2' : 'obesity3'
+  return { value: Math.round(rawBmi * 10) / 10, category }
 }

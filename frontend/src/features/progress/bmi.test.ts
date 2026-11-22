@@ -16,6 +16,18 @@ describe('adultBmi', () => {
     expect(adultBmi(77.5, 180, birthday, date)?.value).toBe(23.9)
   })
 
+  it('uses unrounded BMI for classification immediately below each boundary', () => {
+    for (const [weight, displayed, category] of [
+      [73.9, 18.5, 'underweight'],
+      [99.9, 25, 'healthy'],
+      [119.9, 30, 'overweight'],
+      [139.9, 35, 'obesity1'],
+      [159.9, 40, 'obesity2'],
+    ] as const) {
+      expect(adultBmi(weight, 200, birthday, date)).toEqual({ value: displayed, category })
+    }
+  })
+
   it('checks age on the date of the recorded weight', () => {
     expect(adultBmi(80, 180, '2006-11-23', date)).toBeNull()
     expect(adultBmi(80, 180, '2006-11-22', date)).not.toBeNull()
