@@ -10,6 +10,7 @@ import { useAuth } from '../../lib/auth'
 import { usePerformedExercises, useMeasurements } from './api'
 import { measurementPoints } from './format'
 import { adultBmi } from './bmi'
+import { BmiPanel } from './BmiPanel'
 import { GoalsSection } from './GoalsSection'
 import { WeekCard } from './WeekCard'
 import { ExerciseThumb } from '../training/ExerciseImage'
@@ -90,14 +91,7 @@ function WeightCard() {
             {formatDecimal(Number(latest.value))} <span className="text-base font-medium text-muted">kg</span>
           </p>
           <p className="text-sm text-muted">{t('progress.measuredOn', { date: formatShortDate(latest.measured_on) })}</p>
-          {bmi && (
-            <div className="mt-3 rounded-xl bg-surface p-3" aria-label={t('progress.bmiLabel')}>
-              <p className="text-sm font-semibold tabular-nums">
-                {t('progress.bmiLabel')}: {formatDecimal(bmi.value)} · {t(`progress.bmiCategory_${bmi.category}`)}
-              </p>
-              <p className="mt-1 text-xs text-muted">{t('progress.bmiNote')}</p>
-            </div>
-          )}
+          {bmi && me && <BmiPanel bmi={bmi} ownerId={me.id} showCategory={me.profile.show_bmi_category === true} />}
           {points.length > 1 && (
             <div className="mt-3">
               <LineChart points={points} format={(v) => `${formatDecimal(Math.round(v * 10) / 10)} kg`} label={t('progress.bodyWeight')} />

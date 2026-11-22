@@ -504,6 +504,8 @@ export const sr = {
     bmiCategory_obesity2: 'Gojaznost II stepena',
     bmiCategory_obesity3: 'Gojaznost III stepena',
     bmiNote: 'Orijentacioni pokazatelj za odrasle od 20 godina. Ne meri procenat masti i nije dijagnoza.',
+    bmiShowCategory: 'Prikaži kategoriju',
+    bmiHideCategory: 'Sakrij kategoriju',
     exercises: 'Vežbe',
     noExercisesTitle: 'Još nema odrađenih treninga',
     noExercisesText: 'Posle prvog treninga ovde ćeš videti rezultate i rekorde po vežbi.',

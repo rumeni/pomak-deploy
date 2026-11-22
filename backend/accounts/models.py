@@ -74,6 +74,9 @@ class Profile(models.Model):
     sex = models.CharField(max_length=10, choices=Sex.choices, blank=True)
     birth_date = models.DateField(null=True, blank=True)
     height_cm = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+    # BMI se uvek prikazuje kao broj; kategorija (npr. „Prekomerna telesna masa“) samo kad je korisnik uključi.
+    # db_default: stari API kod pravi profile bez ove kolone dok traje objava posle migracije.
+    show_bmi_category = models.BooleanField(default=False, db_default=False)
 
     # Obroci u dnevniku: [{"key": "breakfast", "name": "", "enabled": true}, ...] redom prikaza.
     # Prazno ime = podrazumevani naziv na jeziku aplikacije. null = podrazumevana 4 obroka.

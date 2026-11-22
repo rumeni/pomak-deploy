@@ -498,6 +498,8 @@ export const en = {
     bmiCategory_obesity2: 'Class II obesity',
     bmiCategory_obesity3: 'Class III obesity',
     bmiNote: 'Screening measure for adults age 20+. It does not measure body fat or diagnose a condition.',
+    bmiShowCategory: 'Show category',
+    bmiHideCategory: 'Hide category',
     exercises: 'Exercises',
     noExercisesTitle: 'No workouts yet',
     noExercisesText: 'After your first workout you will see results and records for each exercise here.',

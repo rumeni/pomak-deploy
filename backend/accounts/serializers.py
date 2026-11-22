@@ -20,6 +20,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         fields = [
             'display_name', 'language', 'is_coach', 'tracks_training', 'tracks_nutrition', 'onboarding_completed_at',
             'training_experience', 'weekly_workouts_target', 'sex', 'birth_date', 'height_cm', 'meals',
+            'show_bmi_category',
         ]
         read_only_fields = ['is_coach', 'onboarding_completed_at']
         extra_kwargs = {
