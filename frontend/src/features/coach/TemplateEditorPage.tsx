@@ -80,15 +80,22 @@ function Editor({ template }: { template: ProgramTemplate | null }) {
                 >
                   <option value="">{t('coachSpace.templates.rest')}</option>
                   {usable.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  {unavailable.map((r) => (
+                  {/* The day's own routine is listed once below, as the kept selection. */}
+                  {unavailable.filter((r) => r.id !== days[weekday]).map((r) => (
                     <option key={`unavailable-${r.id}`} value={`unavailable:${r.id}`} disabled>
                       {r.name} · {t(`coachSpace.templates.routine_${coachRoutineAvailability(r)}`)}
                     </option>
                   ))}
                   {/* A routine no longer usable still shows, so saving does not silently drop it. */}
-                  {days[weekday] && !usable.some((r) => r.id === days[weekday]) && (
-                    <option value={days[weekday]}>{template?.days.find((d) => d.weekday === weekday)?.routine.name ?? '…'}</option>
-                  )}
+                  {days[weekday] && !usable.some((r) => r.id === days[weekday]) && (() => {
+                    const current = unavailable.find((r) => r.id === days[weekday])
+                    const name = current?.name ?? template?.days.find((d) => d.weekday === weekday)?.routine.name ?? '…'
+                    return (
+                      <option value={days[weekday]}>
+                        {current ? `${name} · ${t(`coachSpace.templates.routine_${coachRoutineAvailability(current)}`)}` : name}
+                      </option>
+                    )
+                  })()}
                 </select>
               </label>
             ))}
