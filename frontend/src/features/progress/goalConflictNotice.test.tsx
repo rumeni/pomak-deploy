@@ -12,6 +12,7 @@ vi.mock('./api', () => ({
   useMeasurements: () => ({ data: [], isLoading: false, isError: false }),
 }))
 vi.mock('./GoalsSection', () => ({ GoalsSection: () => <div>goals-list</div> }))
+vi.mock('./BmiPanel', () => ({ BmiPanel: () => null }))
 vi.mock('./WeekCard', () => ({ WeekCard: () => <div>week-view</div> }))
 vi.mock('../../components/LanguageMenu', () => ({ LanguageMenu: () => null }))
 vi.mock('../training/ExerciseImage', () => ({ ExerciseThumb: () => null }))

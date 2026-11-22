@@ -20,6 +20,9 @@ export const en = {
     generic: 'Something went wrong. Please try again.',
     loadFailed: 'Could not load data. Check your internet connection.',
     invalidNumber: '{{field}}: "{{value}}" is not a valid number.',
+    screenTitle: 'Something went wrong',
+    screenText: 'This screen could not be shown. A workout in progress and changes waiting to be sent stay saved on this device.',
+    screenHome: 'Go to home',
   },
   language: {
     label: 'Language',
@@ -495,6 +498,8 @@ export const en = {
     bmiCategory_obesity2: 'Class II obesity',
     bmiCategory_obesity3: 'Class III obesity',
     bmiNote: 'Screening measure for adults age 20+. It does not measure body fat or diagnose a condition.',
+    bmiShowCategory: 'Show category',
+    bmiHideCategory: 'Hide category',
     exercises: 'Exercises',
     noExercisesTitle: 'No workouts yet',
     noExercisesText: 'After your first workout you will see results and records for each exercise here.',

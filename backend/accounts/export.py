@@ -20,7 +20,7 @@ from training.models import Exercise, Routine, SessionExercise, WorkoutSession
 
 PROFILE_FIELDS = [
     'display_name', 'language', 'is_coach', 'tracks_training', 'tracks_nutrition', 'training_experience',
-    'weekly_workouts_target', 'sex', 'birth_date', 'height_cm', 'meals',
+    'weekly_workouts_target', 'sex', 'birth_date', 'height_cm', 'meals', 'show_bmi_category',
 ]
 SET_FIELDS = ['set_type', 'weight_kg', 'reps', 'duration_seconds', 'distance_m', 'rpe', 'completed_at']
 READINESS_EXPORT = ['sleep_hours', 'hydration', 'stress', 'motivation', 'soreness_upper', 'soreness_lower']

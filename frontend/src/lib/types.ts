@@ -11,6 +11,8 @@ export interface Profile {
   birth_date: string | null
   height_cm: string | null
   meals: { key: string; name: string; enabled: boolean }[] | null
+  /** Opt-in: the BMI number is always shown, its category only when this is on. Older servers omit it. */
+  show_bmi_category?: boolean
 }
 
 export interface Me {
