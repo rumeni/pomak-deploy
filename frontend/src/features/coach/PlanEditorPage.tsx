@@ -8,6 +8,7 @@ import { toISODate } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import { DraftError } from '../training/draft'
 import { useRoutines, type Routine } from '../training/api'
+import { coachRoutineAvailability } from './routineEligibility'
 import { isCollaborationChanged } from './access'
 import { useClientGuard } from './guard'
 import { planDate, tailorDraft, tailoredRoutine, type TailorDraft } from './plans'
@@ -54,7 +55,8 @@ function Editor({ clientId, connectionId, plan }: { clientId: string; connection
   const [baseId, setBaseId] = useState(() => bases.find((v) => v.state === 'current')?.id ?? bases[0]?.id ?? '')
   const latest = bases.find((v) => v.id === baseId) ?? null
   const planRoutines = [...new Map(bases.flatMap((v) => v.days).flatMap((d) => (d.routine?.id ? [[d.routine.id, d.routine] as const] : []))).values()]
-  const usable = (routines.data ?? []).filter((r) => r.exercises.length > 0 && r.exercises.every((x) => !x.exercise.is_custom))
+  const usable = (routines.data ?? []).filter((r) => coachRoutineAvailability(r) === 'ready')
+  const unavailable = (routines.data ?? []).filter((r) => coachRoutineAvailability(r) !== 'ready')
   const daysOf = (base: typeof latest) => Object.fromEntries(WEEKDAYS.map((w) => {
     const day = base?.days.find((d) => d.weekday === w)
     return [w, day?.routine?.id ? { kind: 'keep', routine: day.routine } : { kind: 'rest' }]
@@ -167,6 +169,11 @@ function Editor({ clientId, connectionId, plan }: { clientId: string; connection
                         )}
                         <optgroup label={t('coachSpace.plan.fromMine')}>
                           {usable.map((r) => <option key={r.id} value={`copy:${r.id}`}>{r.name}</option>)}
+                          {unavailable.map((r) => (
+                            <option key={`unavailable-${r.id}`} value={`unavailable:${r.id}`} disabled>
+                              {r.name} · {t(`coachSpace.templates.routine_${coachRoutineAvailability(r)}`)}
+                            </option>
+                          ))}
                         </optgroup>
                       </select>
                     )}
@@ -180,6 +187,10 @@ function Editor({ clientId, connectionId, plan }: { clientId: string; connection
               )
             })}
           </div>
+          {routines.data && usable.length === 0 && (
+            <p role="status" className="mt-2 text-sm text-muted">{t('coachSpace.templates.noEligibleRoutines')}</p>
+          )}
+          {unavailable.length > 0 && <p className="mt-2 text-xs text-muted">{t('coachSpace.templates.unavailableHint')}</p>}
         </Card>
         <p className="text-xs text-muted">{t('coachSpace.plan.futureOnly')}</p>
         <FormError message={error ?? (isCollaborationChanged(save.error) ? t('coachSpace.collaborationChanged') : save.error ? errorMessage(save.error) : null)} />

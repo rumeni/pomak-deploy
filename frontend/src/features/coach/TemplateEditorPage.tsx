@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Field, FormError, LoadingScreen, ScreenHeader, selectClass } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { useRoutines } from '../training/api'
+import { coachRoutineAvailability } from './routineEligibility'
 import { useArchiveTemplate, useSaveTemplate, useTemplates, WEEKDAYS, type ProgramTemplate, type Weekday } from './plansApi'
 
 /** A program: the coach's routines on weekdays, for a number of weeks or open-ended. */
@@ -33,7 +34,8 @@ function Editor({ template }: { template: ProgramTemplate | null }) {
   )
   const [error, setError] = useState<string | null>(null)
   // Only routines that can reach a client: with exercises, all from the shared library.
-  const usable = (routines.data ?? []).filter((r) => r.exercises.length > 0 && r.exercises.every((x) => !x.exercise.is_custom))
+  const usable = (routines.data ?? []).filter((r) => coachRoutineAvailability(r) === 'ready')
+  const unavailable = (routines.data ?? []).filter((r) => coachRoutineAvailability(r) !== 'ready')
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -78,6 +80,11 @@ function Editor({ template }: { template: ProgramTemplate | null }) {
                 >
                   <option value="">{t('coachSpace.templates.rest')}</option>
                   {usable.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  {unavailable.map((r) => (
+                    <option key={`unavailable-${r.id}`} value={`unavailable:${r.id}`} disabled>
+                      {r.name} · {t(`coachSpace.templates.routine_${coachRoutineAvailability(r)}`)}
+                    </option>
+                  ))}
                   {/* A routine no longer usable still shows, so saving does not silently drop it. */}
                   {days[weekday] && !usable.some((r) => r.id === days[weekday]) && (
                     <option value={days[weekday]}>{template?.days.find((d) => d.weekday === weekday)?.routine.name ?? '…'}</option>
@@ -86,7 +93,12 @@ function Editor({ template }: { template: ProgramTemplate | null }) {
               </label>
             ))}
           </div>
-          {routines.data && usable.length === 0 && <p className="mt-2 text-sm text-muted">{t('coachSpace.client.noSharedRoutines')}</p>}
+          {routines.data && usable.length === 0 && (
+            <p role="status" className="mt-2 text-sm text-muted">{t('coachSpace.templates.noEligibleRoutines')}</p>
+          )}
+          {unavailable.length > 0 && (
+            <p className="mt-2 text-xs text-muted">{t('coachSpace.templates.unavailableHint')}</p>
+          )}
         </Card>
         <Card>
           <div className="flex flex-col gap-1.5">

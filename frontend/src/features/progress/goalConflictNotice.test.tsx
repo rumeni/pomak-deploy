@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
+// ProgressPage reads the profile to compute BMI; keep this notice test independent of auth boot.
+vi.mock('../../lib/auth', () => ({ useAuth: () => ({ me: null }) }))
 vi.mock('./api', () => ({
   usePerformedExercises: () => ({ data: [], isLoading: false, isError: false }),
   useMeasurements: () => ({ data: [], isLoading: false, isError: false }),
