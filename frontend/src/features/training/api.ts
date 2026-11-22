@@ -36,6 +36,8 @@ export interface Exercise {
   muscle: Muscle
   instructions: string
   is_custom: boolean
+  /** The client's copy of a coach's private exercise: that coach's name. Empty or missing otherwise. */
+  coach_name?: string
 }
 
 export interface RoutineSet {

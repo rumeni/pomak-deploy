@@ -126,7 +126,7 @@ export function ExercisePicker({
                   <span className="block font-medium">{exercise.name}</span>
                   <span className="block text-sm text-muted">
                     {t(`muscle.${exercise.muscle}`)} · {t(`equipment.${exercise.equipment}`)}
-                    {exercise.is_custom && ` · ${t('picker.myExercise')}`}
+                    {exercise.coach_name ? ` · ${t('picker.fromCoach', { name: exercise.coach_name })}` : exercise.is_custom && ` · ${t('picker.myExercise')}`}
                   </span>
                 </span>
               </label>
