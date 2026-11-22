@@ -72,6 +72,13 @@ def client_exercise(exercise: Exercise, client, coach) -> Exercise:
         raise ValidationError({'routine': _('Invalid workout.')})
     copy = Exercise.objects.filter(owner=client, source_exercise=exercise).first()
     if copy is not None:
+        # A client's edits are theirs, but the coach's prescribed set fields still use the
+        # original measurement. Reusing a copy with another measurement would make a workout
+        # that cannot be logged as prescribed; never silently overwrite the client's choice.
+        if copy.measurement != exercise.measurement:
+            raise ValidationError({
+                'routine': _('The client changed the measurement type for "%(name)s". Ask them to restore the original type before reassigning this workout.') % {'name': copy.name},
+            })
         if copy.archived_at is not None:
             copy.archived_at = None
             copy.save(update_fields=['archived_at', 'search_name', 'updated_at'])

@@ -312,6 +312,41 @@ class CoachCollaborationTests(APITestCase):
         self.assertEqual((again.name, again.instructions, again.owner), ('Moja verzija', 'Po mom', self.client_user))
         self.assertEqual(Exercise.objects.filter(owner=self.client_user).count(), 1)
 
+    def test_reassigning_with_a_changed_measurement_is_rejected_without_overwriting_the_client(self):
+        self.connect()
+        source, _private = self.private_routine()
+        copy = self.assign(source).exercises.get().exercise
+        self.as_user(self.client_user)
+        edited = self.client.patch(f'/api/training/exercises/{copy.pk}/', {
+            'measurement': Exercise.Measurement.DURATION,
+        }, format='json')
+        self.assertEqual(edited.status_code, 200, edited.data)
+        previous_routines = Routine.objects.filter(owner=self.client_user).count()
+        previous_assignments = CoachAssignment.objects.count()
+
+        # A second assignment may not pair a timed exercise with the coach's reps prescription.
+        self.as_user(self.coach)
+        rejected = self.client.post(f'/api/coach/clients/{self.client_user.pk}/assign/', {
+            'routine_id': str(source.pk),
+        }, format='json')
+        self.assertEqual(rejected.status_code, 400, rejected.data)
+        self.assertIn('measurement', str(rejected.data).lower())
+        self.assertEqual(Routine.objects.filter(owner=self.client_user).count(), previous_routines)
+        self.assertEqual(CoachAssignment.objects.count(), previous_assignments)
+        copy.refresh_from_db()
+        self.assertEqual(copy.measurement, Exercise.Measurement.DURATION)
+        self.assertEqual(Exercise.objects.filter(owner=self.client_user).count(), 1)
+
+        # The client can restore their preferred measurement and the same copy is reused.
+        self.as_user(self.client_user)
+        restored = self.client.patch(f'/api/training/exercises/{copy.pk}/', {
+            'measurement': Exercise.Measurement.WEIGHT_REPS,
+        }, format='json')
+        self.assertEqual(restored.status_code, 200, restored.data)
+        again = self.assign(source).exercises.get().exercise
+        self.assertEqual(again.pk, copy.pk)
+        self.assertEqual(Exercise.objects.filter(owner=self.client_user).count(), 1)
+
     def test_reassigning_brings_back_an_archived_copy_instead_of_a_second_one(self):
         self.connect()
         source, _private = self.private_routine()
