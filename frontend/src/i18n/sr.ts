@@ -23,6 +23,9 @@ export const sr = {
     generic: 'Došlo je do greške. Pokušaj ponovo.',
     loadFailed: 'Podaci nisu učitani. Proveri internet.',
     invalidNumber: '{{field}}: „{{value}}“ nije ispravan broj.',
+    screenTitle: 'Nešto nije u redu',
+    screenText: 'Ovaj ekran nije mogao da se prikaže. Trening u toku i izmene koje čekaju slanje ostaju sačuvani na uređaju.',
+    screenHome: 'Na početnu',
   },
   language: {
     label: 'Jezik',

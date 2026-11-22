@@ -1,6 +1,7 @@
 import { useEffect, useRef, type TouchEvent } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { TabBar } from '../components/TabBar'
 import { swipeDestination, tabRoutes } from '../components/tabNavigation'
 import { isCoachSpacePath, rememberSpace } from '../features/coach/workspace'
@@ -54,7 +55,7 @@ export function AppLayout() {
     <div className="app-shell pt-safe">
       <div aria-hidden className="fixed inset-x-0 top-0 z-30 h-[env(safe-area-inset-top)] bg-surface min-[980px]:hidden" />
       <main className="app-content" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onTouchCancel={() => { start.current = null }}>
-        <div key={pathname} className={animation}><Outlet /></div>
+        <div key={pathname} className={animation}><ErrorBoundary resetKey={pathname}><Outlet /></ErrorBoundary></div>
       </main>
       <TabBar />
     </div>
