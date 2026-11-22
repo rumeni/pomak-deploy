@@ -99,7 +99,10 @@ jobs:
           python manage.py check --deploy
           python manage.py shell -c "from django.conf import settings; assert settings.SECURE_SSL_REDIRECT is True; assert settings.SECURE_HSTS_SECONDS >= 31536000; assert settings.REST_FRAMEWORK['NUM_PROXIES'] == 1; assert not settings.SECURE_HSTS_INCLUDE_SUBDOMAINS; assert not settings.SECURE_HSTS_PRELOAD; print('Vercel HTTPS/HSTS/trusted-proxy policy verified')"
       - run: python manage.py makemigrations --check --dry-run
-      - run: python manage.py test
+      # Keep the complete PostgreSQL test suite; parallelize isolated Django test classes.
+      # Limit concurrency to the runner's two vCPUs and print the slowest cases for profiling.
+      - name: Run backend tests (2 workers; profile slowest tests)
+        run: python manage.py test --parallel 2 --durations=20
 
   android:
     runs-on: ubuntu-24.04
