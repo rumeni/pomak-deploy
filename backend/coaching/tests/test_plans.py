@@ -184,6 +184,7 @@ class PrivateExerciseTests(PlanTestCase):
 
         marko_routines = Routine.objects.filter(owner=self.marko).count()
         marko_versions = ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count()
+        original_marko_version = ClientPlanVersion.objects.get(plan__connection__client=self.marko).pk
         marko_receipts = PlanRequest.objects.filter(connection__client=self.marko).count()
         request_id = str(uuid.uuid4())
         batch = self.assign(self.template_id, [self.ana, self.marko, third], self.today, request_id)
@@ -193,6 +194,7 @@ class PrivateExerciseTests(PlanTestCase):
         self.assertEqual(batch.data['results'][1]['name'], 'Marko')
         self.assertEqual(Routine.objects.filter(owner=self.marko).count(), marko_routines)
         self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions)
+        self.assertEqual(ClientPlanVersion.objects.get(plan__connection__client=self.marko).pk, original_marko_version)
         self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), marko_receipts)
         self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.ana).count(), 1)
         self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=third).count(), 1)
@@ -210,7 +212,9 @@ class PrivateExerciseTests(PlanTestCase):
         self.assertEqual([r['ok'] for r in retry.data['results']], [True, True, True])
         self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.ana).count(), 1)
         self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=third).count(), 1)
-        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions + 1)
+        # Assigning on the same start date replaces Marko's old version, not adds a second one.
+        self.assertEqual(ClientPlanVersion.objects.filter(plan__connection__client=self.marko).count(), marko_versions)
+        self.assertNotEqual(ClientPlanVersion.objects.get(plan__connection__client=self.marko).pk, original_marko_version)
         self.assertEqual(PlanRequest.objects.filter(connection__client=self.marko).count(), marko_receipts + 1)
 
     def test_tailoring_a_kept_day_accepts_the_clients_copy(self):
