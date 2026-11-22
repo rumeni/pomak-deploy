@@ -29,6 +29,20 @@ class LanguageTests(APITestCase):
             self.assertIn('tuđem receptu', translated)
             self.assertIn('sačuvanom obroku', translated)
 
+    def test_workout_terminology_in_compiled_serbian_catalog(self):
+        # English source strings say "workout" (not "routine"), like the app UI.
+        from django.utils import translation
+
+        with translation.override('sr-latn'):
+            for message, expected in (
+                ('Enter the workout name.', 'Unesi naziv treninga.'),
+                ('One workout per day.', 'Jedan trening po danu.'),
+                ('Pick a workout for at least one day.', 'Izaberi trening za bar jedan dan.'),
+                ('This workout uses private exercises. Use shared exercises before assigning.',
+                 'Ovaj trening koristi tvoje privatne vežbe. Pre dodele zameni ih vežbama iz zajedničke biblioteke.'),
+            ):
+                self.assertEqual(translation.gettext(message), expected)
+
     def test_english(self):
         res = self.client.post('/api/auth/login/', {'email': 'a@b.rs', 'password': 'x'}, HTTP_ACCEPT_LANGUAGE='en')
         self.assertEqual(res.data['detail'], 'Wrong email or password.')

@@ -37,9 +37,9 @@ class TemplateSerializer(serializers.Serializer):
 
     def validate_days(self, value):
         if not value:
-            raise serializers.ValidationError(_('Put a routine on at least one day.'))
+            raise serializers.ValidationError(_('Pick a workout for at least one day.'))
         if len({d['weekday'] for d in value}) != len(value):
-            raise serializers.ValidationError(_('One routine per day.'))
+            raise serializers.ValidationError(_('One workout per day.'))
         return value
 
 
@@ -54,7 +54,7 @@ class PlanDaySerializer(serializers.Serializer):
     def validate(self, attrs):
         given = [k for k in ('keep_routine_id', 'routine_id', 'routine') if k in attrs]
         if len(given) != 1:
-            raise serializers.ValidationError(_('Choose one routine for the day.'))
+            raise serializers.ValidationError(_('Choose one workout for the day.'))
         return attrs
 
 
@@ -72,7 +72,7 @@ class PlanVersionSerializer(serializers.Serializer):
 
     def validate_days(self, value):
         if len({d['weekday'] for d in value}) != len(value):
-            raise serializers.ValidationError(_('One routine per day.'))
+            raise serializers.ValidationError(_('One workout per day.'))
         return value
     # The date is checked only for new work: an exact retry of a done request still succeeds
     # after that day has passed.
@@ -254,7 +254,7 @@ class ClientPlanVersionsView(APIView):
             if 'keep_routine_id' in day:
                 routine = Routine.objects.filter(pk=day['keep_routine_id'], owner=connection.client, archived_at__isnull=True).first()
                 if day['keep_routine_id'] not in kept or routine is None:
-                    raise ValidationError({'days': _('That routine is not part of this plan any more.')})
+                    raise ValidationError({'days': _('That workout is not part of this plan any more.')})
                 # Keep what was prescribed, not whatever the client has since changed in his copy.
                 prescription = kept_prescription(plan, routine.pk) or prescription_of(routine)
             elif 'routine_id' in day:

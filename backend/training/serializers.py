@@ -131,13 +131,13 @@ class RoutineSerializer(serializers.ModelSerializer):
     def validate_name(self, value):
         value = value.strip()
         if not value:
-            raise serializers.ValidationError(_('Enter the routine name.'))
+            raise serializers.ValidationError(_('Enter the workout name.'))
         return value
 
     def validate_exercises(self, value):
         if len(value) > MAX_EXERCISES_PER_ROUTINE:
             raise serializers.ValidationError(
-                _('At most %(count)d exercises per routine.') % {'count': MAX_EXERCISES_PER_ROUTINE}
+                _('At most %(count)d exercises per workout.') % {'count': MAX_EXERCISES_PER_ROUTINE}
             )
         return value
 
@@ -258,7 +258,7 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
 
     def validate_routine_id(self, routine):
         if routine is not None and routine.owner_id != self.context['request'].user.pk:
-            raise serializers.ValidationError(_('This routine is not available.'))
+            raise serializers.ValidationError(_('This workout is not available.'))
         return routine
 
     def validate_exercises(self, value):
