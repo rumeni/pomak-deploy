@@ -245,19 +245,40 @@ class CoachCollaborationTests(APITestCase):
         # The routine stays the client's; the attribution belongs to the archive, not the new state.
         self.assertEqual(self.client.get('/api/coach/dashboard/').data['assignments'], [])
 
-    def test_private_coach_exercise_cannot_be_assigned(self):
+    def test_private_coach_exercise_is_copied_to_the_client_as_his_own(self):
         self.connect()
+        self.coach.profile.display_name = 'Trener Ana'
+        self.coach.profile.save()
         source = Routine.objects.create(owner=self.coach, name='Private')
         private = Exercise.objects.create(
             owner=self.coach, name='Coach secret', equipment=Exercise.Equipment.OTHER,
-            measurement=Exercise.Measurement.WEIGHT_REPS, muscle=Exercise.Muscle.FULL_BODY,
+            measurement=Exercise.Measurement.WEIGHT_REPS, muscle=Exercise.Muscle.FULL_BODY, instructions='Slowly',
         )
         row = RoutineExercise.objects.create(routine=source, exercise=private, position=0)
         RoutineSet.objects.create(routine_exercise=row, position=0, reps_min=10)
         self.as_user(self.coach)
         res = self.client.post(f'/api/coach/clients/{self.client_user.pk}/assign/', {'routine_id': str(source.pk)}, format='json')
-        self.assertEqual(res.status_code, 400, res.data)
-        self.assertEqual(Routine.objects.filter(owner=self.client_user).count(), 0)
+        self.assertEqual(res.status_code, 201, res.data)
+        clone = Routine.objects.get(pk=res.data['routine_id'])
+        copy = clone.exercises.get().exercise
+        # The client's own exercise, labelled with the coach; never the coach's and never shared.
+        self.assertEqual(copy.owner, self.client_user)
+        self.assertNotEqual(copy.pk, private.pk)
+        self.assertEqual((copy.name, copy.instructions, copy.coach_name, copy.source_exercise_id),
+                         ('Coach secret', 'Slowly', 'Trener Ana', private.pk))
+        self.assertFalse(Exercise.objects.filter(owner__isnull=True, name='Coach secret').exists())
+        # A second assignment reuses the copy instead of making another one.
+        again = self.client.post(f'/api/coach/clients/{self.client_user.pk}/assign/', {'routine_id': str(source.pk)}, format='json')
+        self.assertEqual(again.status_code, 201, again.data)
+        self.assertEqual(Exercise.objects.filter(owner=self.client_user).count(), 1)
+        self.as_user(self.client_user)
+        listed = self.client.get('/api/training/exercises/').data
+        mine = [x for x in (listed['results'] if isinstance(listed, dict) else listed) if x['id'] == str(copy.pk)]
+        self.assertEqual([(x['is_custom'], x['coach_name']) for x in mine], [(True, 'Trener Ana')])
+        # Ending the collaboration leaves the exercise and the routine with the client.
+        self.assertEqual(self.client.delete('/api/coach/connection/').status_code, 204)
+        self.assertTrue(Exercise.objects.filter(pk=copy.pk, owner=self.client_user, archived_at__isnull=True).exists())
+        self.assertTrue(Routine.objects.filter(pk=clone.pk, owner=self.client_user).exists())
 
     def test_messages_are_private_and_archived_read_only_on_disconnect(self):
         self.connect()

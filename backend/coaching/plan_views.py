@@ -14,7 +14,7 @@ from training.models import Routine
 from .models import ClientPlan, CoachConnection, PlanRequest, ProgramTemplate, ProgramTemplateDay
 from .plans import (
     assignable_routine, attribute, check_valid_from, copy_routine, kept_prescription, payload_hash, plan_routine_ids,
-    plan_summary, prescription_of, prior_request, record_request, save_version, tailored_routine,
+    plan_summary, prescription_of, prior_request, record_request, save_version, tailored_routine, with_contents,
 )
 from .errors import CollaborationChanged, collaboration_not_found
 from .tasks import lock_active
@@ -190,14 +190,16 @@ class AssignTemplateView(APIView):
                 if not prior_request(connection, data['request_id'], PlanRequest.Operation.ASSIGN, digest):
                     if sources is None:
                         sources = {d.routine_id: assignable_routine(request.user, d.routine_id) for d in days}
-                    copies = {}
+                    copies, prescribed = {}, {}
                     for source_id, source in sources.items():
                         copies[source_id] = copy_routine(source, connection.client)
                         attribute(connection, copies[source_id])
+                        # Prescribed from the client's copy: same content, his exercise IDs.
+                        prescribed[source_id] = prescription_of(with_contents(copies[source_id]))
                     save_version(
                         connection, valid_from=data['start_date'], weeks=template.weeks, name=template.name,
                         reason=data['reason'], template=template,
-                        days=[(d.weekday, copies[d.routine_id], prescription_of(sources[d.routine_id])) for d in days],
+                        days=[(d.weekday, copies[d.routine_id], prescribed[d.routine_id]) for d in days],
                     )
                     record_request(connection, data['request_id'], PlanRequest.Operation.ASSIGN, digest)
                 results.append({'connection_id': str(connection_id), 'client_id': str(connection.client_id),
@@ -261,11 +263,11 @@ class ClientPlanVersionsView(APIView):
                 source = assignable_routine(request.user, day['routine_id'])
                 routine = copy_routine(source, connection.client)
                 attribute(connection, routine)
-                prescription = prescription_of(source)
+                prescription = prescription_of(with_contents(routine))
             else:
                 routine = tailored_routine(request, day['routine'], connection.client)
                 attribute(connection, routine)
-                prescription = prescription_of(Routine.objects.prefetch_related('exercises__exercise', 'exercises__sets').get(pk=routine.pk))
+                prescription = prescription_of(with_contents(routine))
             days.append((day['weekday'], routine, prescription))
         current_name = plan.versions.order_by('-valid_from').values_list('name', flat=True).first() if plan else None
         save_version(

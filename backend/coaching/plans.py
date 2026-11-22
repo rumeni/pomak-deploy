@@ -27,7 +27,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import status
 from rest_framework.exceptions import APIException, ValidationError
 
-from training.models import Routine, RoutineExercise, RoutineSet
+from training.models import Exercise, Routine, RoutineExercise, RoutineSet
 from training.serializers import RoutineSerializer
 
 from notifications.push import notify
@@ -54,18 +54,45 @@ def assignable_routine(coach, routine_id) -> Routine:
     rows = list(routine.exercises.all())
     if not rows:
         raise ValidationError({'routine_id': _('A workout must contain at least one exercise.')})
-    if any(x.exercise.owner_id is not None for x in rows):
-        # The client could not see the coach's private exercises.
-        raise ValidationError({'routine_id': _('This workout uses private exercises. Use shared exercises before assigning.')})
+    # The coach's private exercises are fine: assigning copies them to the client (client_exercise).
     return routine
 
 
+def coach_label(user) -> str:
+    return (user.profile.display_name.strip() or user.email.split('@')[0])[:80]
+
+
+def client_exercise(exercise: Exercise, client, coach) -> Exercise:
+    """The exercise the client trains with: shared ones as they are, and for a coach's private one
+    the client's own copy, labelled with the coach's name. One copy per coach exercise is reused on
+    every later assignment; it stays the client's after the collaboration ends."""
+    if exercise.owner_id is None or exercise.owner_id == client.pk:
+        return exercise
+    if exercise.owner_id != coach.pk:
+        raise ValidationError({'routine': _('Invalid workout.')})
+    copy = Exercise.objects.filter(owner=client, source_exercise=exercise).first()
+    if copy is not None:
+        if copy.archived_at is not None:
+            copy.archived_at = None
+            copy.save(update_fields=['archived_at', 'search_name', 'updated_at'])
+        return copy
+    return Exercise.objects.create(
+        owner=client, source_exercise=exercise, coach_name=coach_label(coach),
+        name=exercise.name, aliases=exercise.aliases, equipment=exercise.equipment,
+        measurement=exercise.measurement, load_mode=exercise.load_mode, muscle=exercise.muscle,
+        instructions=exercise.instructions,
+    )
+
+
 def copy_routine(source: Routine, owner) -> Routine:
-    """The client's own, independent copy of a coach's routine."""
+    """The client's own, independent copy of a coach's routine (private exercises copied too)."""
     clone = Routine.objects.create(owner=owner, name=source.name, notes=source.notes)
+    copies = {}
     for item in source.exercises.all():
+        if item.exercise_id not in copies:
+            copies[item.exercise_id] = client_exercise(item.exercise, owner, source.owner)
         exercise = RoutineExercise.objects.create(
-            routine=clone, exercise=item.exercise, position=item.position,
+            routine=clone, exercise=copies[item.exercise_id], position=item.position,
             rest_seconds=item.rest_seconds, notes=item.notes,
         )
         RoutineSet.objects.bulk_create([
@@ -83,13 +110,18 @@ def tailored_routine(request, payload, owner) -> Routine:
     if not isinstance(payload, dict):
         raise ValidationError({'routine': _('Invalid workout.')})
     body = {key: value for key, value in payload.items() if key not in ('id', 'revision', 'program_key')}
-    serializer = RoutineSerializer(data=body, context={'request': request})
+    # The client's own exercises are allowed too: a kept plan day already uses his copies.
+    serializer = RoutineSerializer(data=body, context={'request': request, 'exercise_owner_id': owner.pk})
     serializer.is_valid(raise_exception=True)
     exercises = serializer.validated_data['exercises']
     if not exercises:
         raise ValidationError({'routine': _('A workout must contain at least one exercise.')})
-    if any(item['exercise'].owner_id is not None for item in exercises):
-        raise ValidationError({'routine': _('This workout uses private exercises. Use shared exercises before assigning.')})
+    copies = {}
+    for item in exercises:
+        source = item['exercise']
+        if source.pk not in copies:
+            copies[source.pk] = client_exercise(source, owner, request.user)
+        item['exercise'] = copies[source.pk]
     return serializer.save(owner=owner)
 
 
@@ -173,6 +205,11 @@ def kept_prescription(plan, routine_id):
 def attribute(connection, routine):
     """The client sees which routines his coach gave him."""
     CoachAssignment.objects.create(connection=connection, routine=routine)
+
+
+def with_contents(routine) -> Routine:
+    """The routine reloaded with its exercises and sets, e.g. a copy just written."""
+    return Routine.objects.prefetch_related('exercises__exercise', 'exercises__sets').get(pk=routine.pk)
 
 
 def prescription_of(routine) -> dict:

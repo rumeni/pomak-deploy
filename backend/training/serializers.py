@@ -39,9 +39,10 @@ class ExerciseSerializer(serializers.ModelSerializer):
         model = Exercise
         fields = [
             'id', 'slug', 'name', 'aliases', 'equipment', 'measurement', 'load_mode', 'muscle',
-            'instructions', 'is_custom',
+            'instructions', 'is_custom', 'coach_name',
         ]
-        read_only_fields = ['slug']
+        # coach_name: set only when a coach's private exercise is copied to this client.
+        read_only_fields = ['slug', 'coach_name']
 
     def get_is_custom(self, obj) -> bool:
         return obj.owner_id is not None
@@ -104,7 +105,9 @@ class RoutineExerciseSerializer(serializers.ModelSerializer):
 
     def validate_exercise_id(self, exercise):
         user = self.context['request'].user
-        if exercise.owner_id not in (None, user.pk):
+        # A coach tailoring a client's plan may also use the client's own exercises (e.g. copies of
+        # the coach's private ones); the owner of the routine being built is passed in the context.
+        if exercise.owner_id not in (None, user.pk, self.context.get('exercise_owner_id')):
             raise serializers.ValidationError(_('This exercise is not available.'))
         return exercise
 

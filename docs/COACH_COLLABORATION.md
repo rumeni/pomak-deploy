@@ -6,7 +6,7 @@ Trenerski prostor (Pregled, Klijenti, Programi, Poruke), odluke i faze T1–T4: 
 
 1. Registruj trenera (tip naloga **Trener sam**) i odgovori na početna pitanja. U delu **Klijenti** napravi pozivnicu (važi 7 dana, može da se poništi): kod, link ili QR kod.
 2. Klijent otvara link ili na svojoj kartici **Trener** unosi kod, pa vidi ko je trener pre nego što prihvati. Odgovori „Kako si danas?“ (spremnost) dele se samo uz posebnu dozvolu. Prihvatom deli istoriju treninga i nedeljne ciljeve; telesna merenja/ciljevi obima i zbir kalorija/makroa za poslednjih 7 dana dele se **samo uz posebno odobrenje**.
-3. Trener na listi svojih klijenata može da pogleda skorašnje treninge i dozvoljene podatke, pošalje poruku i **dodeli kopiju svoje rutine** koristeći vežbe iz zajedničke biblioteke.
+3. Trener na listi svojih klijenata može da pogleda skorašnje treninge i dozvoljene podatke, pošalje poruku i **dodeli kopiju svoje rutine**. Trenerove privatne vežbe klijent dobija kao svoje lične, sa oznakom trenera.
 4. Klijent dobija rutinu u svom nalogu, na kartici Trening, i može da je izmeni/odradi. Posle prekida saradnje rutina ostaje njegova; trener više nema pristup njegovim podacima, a razgovor ostaje obema stranama samo za čitanje.
 5. Klijent može u bilo kom trenutku promeniti izbor deljenja ili prekinuti saradnju. Trener takođe može ukloniti klijenta.
 
