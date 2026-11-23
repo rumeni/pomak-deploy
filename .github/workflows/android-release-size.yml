@@ -1,0 +1,74 @@
+name: Android release size audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/android/app/build.gradle'
+      - '.github/workflows/android-release-size.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-size:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run build
+      - name: Generate Android native plugin wiring
+        run: npx cap sync android
+      - name: Compile unoptimized release control, then optimized release and debug
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleRelease -PpomakReleaseSizeControl=true --no-daemon
+          cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/pomak-release-unoptimized.apk"
+          ./gradlew assembleDebug assembleRelease --no-daemon
+      - name: Compare APK sizes
+        run: |
+          set -euo pipefail
+          debug=android/app/build/outputs/apk/debug/app-debug.apk
+          release=android/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$debug"
+          test -s "$release"
+          baseline="$RUNNER_TEMP/pomak-release-unoptimized.apk"
+          test -s "$baseline"
+          debug_bytes=$(stat -c '%s' "$debug")
+          baseline_bytes=$(stat -c '%s' "$baseline")
+          release_bytes=$(stat -c '%s' "$release")
+          python - "$debug_bytes" "$baseline_bytes" "$release_bytes" <<'PY'
+          import sys
+          from pathlib import Path
+
+          debug, baseline, release = map(int, sys.argv[1:])
+          saved = baseline - release
+          summary = (
+              '### Android package size audit (unsigned release)\n'
+              f'- Debug reference: {debug:,} bytes ({debug / 1e6:.2f} MB)\n'
+              f'- Unoptimized release: {baseline:,} bytes ({baseline / 1e6:.2f} MB)\n'
+              f'- Optimized R8 release: {release:,} bytes ({release / 1e6:.2f} MB)\n'
+              f'- Actual R8 savings: {saved:,} bytes ({saved / 1e6:.2f} MB, {saved / baseline:.1%})\n'
+              '\nSame code, identical release variant, minify/shrink toggled only for baseline. '
+              'An unsigned release APK passing compilation does not establish on-device compatibility.\n'
+          )
+          print(summary)
+          Path('android-size-audit.txt').write_text(summary)
+          PY
+          cat android-size-audit.txt >> "$GITHUB_STEP_SUMMARY"

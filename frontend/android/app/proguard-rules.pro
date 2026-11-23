@@ -19,3 +19,16 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Capacitor Android 8.5.2 predates the upstream R8 full-mode annotation fixes
+# added in 8.6.0. The plugin bridge reads these annotations at runtime:
+# https://github.com/ionic-team/capacitor/blob/8.6.0/android/capacitor/proguard-rules.pro
+# Keep the annotation types and reflective permission/activity callbacks, rather
+# than disabling optimization for all app code or entire plugin packages.
+-keep @interface com.getcapacitor.annotation.** { *; }
+-keep @interface com.getcapacitor.PluginMethod { *; }
+-keep @interface com.getcapacitor.NativePlugin { *; }
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    @com.getcapacitor.annotation.ActivityCallback <methods>;
+    @com.getcapacitor.annotation.PermissionCallback <methods>;
+}
