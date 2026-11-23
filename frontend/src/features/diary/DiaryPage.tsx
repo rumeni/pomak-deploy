@@ -13,6 +13,7 @@ import { useCreateSavedMeal } from './api'
 import { mealLabel, mealSettings, visibleMeals } from './meals'
 import { MAX_SAVED_MEAL_ITEMS, MAX_SAVED_MEAL_NAME_LENGTH, savedMealConflict, savedMealDraftIssue, withRetryMealId } from './savedMealValidation'
 import { copyEntry, savedItemFromEntry, totals, type DayTotals, type DisplayDay, type MacroTotal } from './model'
+import { RemainingLine, TargetSuggestions } from './TargetSuggestions'
 import { discardRejectedDayOps, loadDayEntries, saveDrafts, setDayStatus, useDiaryDay } from './store'
 import type { DayStatus, DayTarget, DiaryEntry, MealKey } from './types'
 
@@ -62,6 +63,9 @@ export function DiaryPage() {
               </div>
             )}
             <TotalsCard totals={totals(day.entries)} target={day.target ?? null} past={date < toISODate(new Date())} />
+            {date === today && day.target && (
+              <TargetSuggestions date={date} totals={totals(day.entries)} target={day.target} settings={settings} />
+            )}
             {visibleMeals(settings, day.entries).map((m) => (
               <MealCard key={m.key} date={date} meal={m.key} label={mealLabel(m.key, settings, t)} day={day} onNotice={setNotice} />
             ))}
@@ -103,7 +107,6 @@ function TotalsCard({ totals: tot, target, past }: { totals: DayTotals; target: 
     [t('nutrition.fat'), tot.fat, target?.fat_g ?? null],
   ]
   const anyUnknown = macros.some(([, m]) => m.unknown > 0)
-  const diff = target ? target.kcal - tot.kcal : 0
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
@@ -119,11 +122,7 @@ function TotalsCard({ totals: tot, target, past }: { totals: DayTotals; target: 
         {target && <span className="text-xl font-semibold text-muted"> / {formatDecimal(target.kcal)}</span>}{' '}
         <span className="text-base font-medium text-muted">{t('nutrition.kcal')}</span>
       </p>
-      {target && (
-        <p className="text-sm text-muted tabular-nums">
-          {diff >= 0 ? t('diary.remaining', { kcal: formatDecimal(diff) }) : t('diary.overTarget', { kcal: formatDecimal(-diff) })}
-        </p>
-      )}
+      {target && <RemainingLine totals={tot} target={target} />}
       <dl className="mt-2 grid grid-cols-3 gap-2">
         {macros.map(([label, m, goal]) => (
           <div key={label}>

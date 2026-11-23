@@ -209,6 +209,17 @@ class CoachNutritionTargetTests(ReviewTestCase):
         listed = self.client.get('/api/nutrition/targets/').data
         mine = (listed['results'] if isinstance(listed, dict) and 'results' in listed else listed)[0]
         self.assertEqual((mine['kcal'], mine['mode']), (2200, 'coach'))
+        # "Do cilja koji je postavio trener …": the diary day names the coach; his name, else the e-mail's first part.
+        self.assertEqual(mine['set_by_name'], 'review-coach')
+        self.coach.profile.display_name = 'Nina'
+        self.coach.profile.save()
+        day = self.client.get(f"/api/nutrition/days/{timezone.localdate().isoformat()}/").data
+        self.assertEqual((day['target']['mode'], day['target']['set_by_name']), ('coach', 'Nina'))
+        # A target the client set himself names nobody.
+        own = self.client.put(f"/api/nutrition/targets/{(timezone.localdate() + timedelta(days=1)).isoformat()}/",
+                              {'mode': 'manual', 'kcal': 2000}, format='json')
+        self.assertIn(own.status_code, (200, 201), own.data)
+        self.assertIsNone(own.data['set_by_name'])
 
     def test_rules_for_dates_and_macros_and_one_target_per_date(self):
         CoachConnection.objects.filter(pk=self.connection.pk).update(coach_sets_nutrition=True)
