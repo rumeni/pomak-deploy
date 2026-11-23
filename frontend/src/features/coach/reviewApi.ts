@@ -33,7 +33,7 @@ export interface ClientWorkout {
   notes: string
   edited_at: string | null
   plan: PlanSnapshot | null
-  exercises: { exercise_id: string; name: string; measurement: string; notes: string; sets: ReviewSet[] }[]
+  exercises: { exercise_id: string; name: string; measurement: string; notes: string; superset?: number | null; sets: ReviewSet[] }[]
   readiness: { score: number | null; answers: Record<string, number> } | null
   reviewed_at: string | null
   comments: CoachMessage[]

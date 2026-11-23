@@ -102,6 +102,7 @@ def collect(user) -> dict:
                 'exercises': [
                     {
                         'exercise': e.exercise.name, 'rest_seconds': e.rest_seconds, 'notes': e.notes,
+                        'superset': e.superset,
                         'sets': _sets(e.sets.all(), ['set_type', 'reps_min', 'reps_max', 'weight_kg', 'duration_seconds', 'distance_m', 'rpe']),
                     }
                     for e in r.exercises.all()
@@ -115,7 +116,8 @@ def collect(user) -> dict:
                 'readiness': {f: getattr(s, f) for f in READINESS_EXPORT},
                 'edited_at': s.edited_at,
                 'exercises': [
-                    {'exercise': e.exercise.name, 'notes': e.notes, 'sets': _sets(e.sets.all(), SET_FIELDS)} for e in s.exercises.all()
+                    {'exercise': e.exercise.name, 'notes': e.notes, 'superset': e.superset, 'sets': _sets(e.sets.all(), SET_FIELDS)}
+                    for e in s.exercises.all()
                 ],
             }
             for s in sessions

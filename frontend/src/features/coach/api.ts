@@ -126,7 +126,7 @@ export type CoachDashboard =
 export interface CoachClientDetails {
   connection: Connection
   workouts_30d: number
-  recent_workouts: { id: string; name: string; started_at: string; finished_at: string; feeling: number | null; notes: string; readiness?: { score: number | null; answers: Record<string, number> } | null; exercises: { name: string; sets: { set_type: 'warmup' | 'working'; reps: number | null; weight_kg: string | null; duration_seconds: number | null; distance_m: number | null }[] }[] }[]
+  recent_workouts: { id: string; name: string; started_at: string; finished_at: string; feeling: number | null; notes: string; readiness?: { score: number | null; answers: Record<string, number> } | null; exercises: { name: string; superset?: number | null; sets: { set_type: 'warmup' | 'working'; reps: number | null; weight_kg: string | null; duration_seconds: number | null; distance_m: number | null }[] }[] }[]
   goals: { kind: string; target_value: string; target_date: string | null }[]
   measurements: { kind: string; value: string; unit: string; measured_on: string }[] | null
   nutrition_days: {

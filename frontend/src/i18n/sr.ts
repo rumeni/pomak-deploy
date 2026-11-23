@@ -1381,6 +1381,17 @@ export const sr = {
     phKg: 'kg',
     phReps: 'pon.',
     phKm: 'km',
+    superset: {
+      title: 'Superset {{letter}}',
+      triset: 'Tri-set {{letter}}',
+      order: 'Redom {{order}}, pa pauza.',
+      link: 'Spoji u superset',
+      linkAria: 'Spoji {{first}} i {{second}} u superset',
+      unlink: 'Razdvoji',
+      unlinkAria: 'Razdvoji {{first}} i {{second}}',
+      noRest: 'Bez pauze, odmah {{next}}',
+      restAfter: 'Pauza posle kruga',
+    },
     errors: {
       nameRequired: 'Unesi naziv treninga.',
       noExercises: 'Dodaj bar jednu vežbu.',

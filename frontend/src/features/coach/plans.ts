@@ -51,6 +51,7 @@ export interface TailorDraft {
     measurement: string
     rest_seconds: number | null
     notes: string
+    superset?: number | null
     sets: TailorSet[]
   }[]
 }
@@ -63,6 +64,7 @@ export function tailorDraft(routine: PlanRoutine, nameSuffix: string): TailorDra
     name: routine.name.endsWith(nameSuffix) ? routine.name : `${routine.name} ${nameSuffix}`.slice(0, 100),
     exercises: routine.exercises.map((e) => ({
       exercise_id: e.exercise_id, name: e.name, measurement: e.measurement, rest_seconds: e.rest_seconds, notes: e.notes,
+      superset: e.superset ?? null,
       sets: e.sets.map((s) => ({
         set_type: s.set_type,
         reps: repsText(s),
@@ -84,7 +86,7 @@ export function tailoredRoutine(draft: TailorDraft): TailoredRoutine {
     exercises: draft.exercises.map((e) => {
       if (!e.sets.length) throw new DraftError('noSets', { exercise: e.name })
       return {
-        exercise_id: e.exercise_id, rest_seconds: e.rest_seconds, notes: e.notes,
+        exercise_id: e.exercise_id, rest_seconds: e.rest_seconds, notes: e.notes, superset: e.superset ?? null,
         sets: e.sets.map((s) => {
           const [reps_min, reps_max] = parseRepRange(s.reps)
           const weight = s.weight.trim() ? parseDecimal(s.weight) : null

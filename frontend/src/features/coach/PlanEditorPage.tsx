@@ -27,7 +27,7 @@ function asPlanRoutine(r: Routine): PlanRoutine {
     id: r.id, name: r.name,
     exercises: r.exercises.map((e) => ({
       exercise_id: e.exercise.id, name: e.exercise.name, name_en: '', measurement: e.exercise.measurement,
-      rest_seconds: e.rest_seconds, notes: e.notes,
+      rest_seconds: e.rest_seconds, notes: e.notes, superset: e.superset ?? null,
       sets: e.sets.map((s) => ({ ...s, rpe: s.rpe ?? null })),
     })),
   }

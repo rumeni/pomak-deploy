@@ -21,7 +21,8 @@ export interface WorkoutSession {
   /** Revision for corrections; set when the athlete corrected the workout after finishing it. */
   updated_at?: string
   edited_at?: string | null
-  exercises: { exercise: Exercise; notes: string; sets: LoggedSet[] }[]
+  /** `superset`: missing from servers and workouts older than supersets. */
+  exercises: { exercise: Exercise; notes: string; superset?: number | null; sets: LoggedSet[] }[]
 }
 
 /** Poslednji rezultat po vežbi. Bez interneta vraća prazno: trening može da počne i tada. */

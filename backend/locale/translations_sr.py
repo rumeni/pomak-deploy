@@ -62,6 +62,8 @@ SR = {
     'Working': 'Radna',
     'Enter the exercise name.': 'Unesi naziv vežbe.',
     'The upper rep limit is lower than the lower one.': 'Gornja granica ponavljanja je manja od donje.',
+    'Exercises of a superset must be next to each other.': 'Vežbe jednog superseta moraju biti jedna do druge.',
+    'A superset has at most %(count)d exercises.': 'Superset može imati najviše %(count)d vežbe.',
     'This exercise is not available.': 'Vežba nije dostupna.',
     'An exercise needs at least one set.': 'Vežba mora imati bar jednu seriju.',
     'At most %(count)d sets per exercise.': 'Najviše %(count)d serija po vežbi.',

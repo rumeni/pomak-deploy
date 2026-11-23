@@ -19,6 +19,9 @@ MAX_SETS_PER_EXERCISE = 20
 MAX_SESSION_EXERCISES = 40
 MAX_SESSION_SETS_PER_EXERCISE = 20
 MAX_WORKOUT_SNAPSHOT_BYTES = 256 * 1024
+# A superset is two exercises, a tri-set three.
+MAX_SUPERSET_SIZE = 3
+SUPERSET_KWARGS = {'required': False, 'allow_null': True, 'min_value': 1, 'max_value': 1000}
 
 
 def validate_rpe(value):
@@ -29,6 +32,47 @@ def validate_rpe(value):
 
 
 RPE_KWARGS = {'min_value': Decimal('1'), 'max_value': Decimal('10'), 'validators': [validate_rpe]}
+
+
+def check_supersets(items):
+    """Exercises of one superset must be next to each other, at most MAX_SUPERSET_SIZE of them."""
+    seen, previous, size = set(), None, 0
+    for item in items:
+        number = item.get('superset')
+        if number is not None and number == previous:
+            size += 1
+        elif number is not None:
+            if number in seen:
+                raise serializers.ValidationError(_('Exercises of a superset must be next to each other.'))
+            seen.add(number)
+            size = 1
+        if size > MAX_SUPERSET_SIZE:
+            raise serializers.ValidationError(
+                _('A superset has at most %(count)d exercises.') % {'count': MAX_SUPERSET_SIZE}
+            )
+        previous = number
+
+
+def number_supersets(items):
+    """Renumbers supersets 1, 2 ... in order; a number left on a single exercise is cleared.
+
+    Expects items that passed check_supersets (members next to each other).
+    """
+    runs = []
+    for index, item in enumerate(items):
+        number = item.get('superset')
+        if number is not None and runs and runs[-1][0] == number and runs[-1][2] == index - 1:
+            runs[-1][2] = index
+        else:
+            runs.append([number, index, index])
+    count = 0
+    for number, start, end in runs:
+        together = number is not None and end > start
+        if together:
+            count += 1
+        for index in range(start, end + 1):
+            items[index]['superset'] = count if together else None
+    return items
 
 
 class ExerciseSerializer(serializers.ModelSerializer):
@@ -100,8 +144,8 @@ class RoutineExerciseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RoutineExercise
-        fields = ['exercise', 'exercise_id', 'rest_seconds', 'notes', 'sets']
-        extra_kwargs = {'rest_seconds': {'min_value': 0, 'max_value': 900}}
+        fields = ['exercise', 'exercise_id', 'rest_seconds', 'notes', 'superset', 'sets']
+        extra_kwargs = {'rest_seconds': {'min_value': 0, 'max_value': 900}, 'superset': SUPERSET_KWARGS}
 
     def validate_exercise_id(self, exercise):
         user = self.context['request'].user
@@ -142,7 +186,8 @@ class RoutineSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 _('At most %(count)d exercises per workout.') % {'count': MAX_EXERCISES_PER_ROUTINE}
             )
-        return value
+        check_supersets(value)
+        return number_supersets(value)
 
     @transaction.atomic
     def create(self, validated_data):
@@ -215,7 +260,9 @@ class SessionExerciseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SessionExercise
-        fields = ['exercise', 'exercise_id', 'notes', 'sets']
+        fields = ['exercise', 'exercise_id', 'notes', 'superset', 'sets']
+        # Older app versions do not send it.
+        extra_kwargs = {'superset': SUPERSET_KWARGS}
 
     def validate_sets(self, value):
         if len(value) > MAX_SESSION_SETS_PER_EXERCISE:
@@ -269,6 +316,7 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 _('At most %(count)d exercises per workout.') % {'count': MAX_SESSION_EXERCISES}
             )
+        check_supersets(value)
         return value
 
     def validate_plan_snapshot(self, value):
@@ -301,10 +349,10 @@ class WorkoutSessionSerializer(serializers.ModelSerializer):
         session = WorkoutSession.objects.create(**validated_data)
         logs = []
         position = 0
-        for item in exercises:
+        # Vežba bez potvrđenih serija nije deo odrađenog treninga; superset bez nje može da ostane
+        # sa jednom vežbom, pa se brojevi računaju tek za ono što se čuva.
+        for item in number_supersets([item for item in exercises if item['sets']]):
             sets = item.pop('sets')
-            if not sets:
-                continue  # vežba bez potvrđenih serija nije deo odrađenog treninga
             session_exercise = SessionExercise.objects.create(session=session, position=position, **item)
             position += 1
             logs += [SetLog(session_exercise=session_exercise, position=i, logged_by=user, **s) for i, s in enumerate(sets)]

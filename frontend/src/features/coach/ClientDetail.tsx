@@ -24,6 +24,8 @@ import { ClientStats, ClientTargetPanel, WorkoutLinks } from './ClientTabs'
 import { MealPlanPanel } from './MealPlanPanel'
 import { coachRoutineAvailability } from './routineEligibility'
 import { readinessReasons } from './workspace'
+import { SupersetBadge } from '../training/SupersetFrame'
+import { supersetLabels } from '../training/supersets'
 
 const TABS = ['overview', 'plan', 'progress', 'nutrition', 'notes'] as const
 type Tab = (typeof TABS)[number]
@@ -228,6 +230,7 @@ function OverviewTab({ data }: { data: CoachClientDetails }) {
 
 function WorkoutSummary({ workout }: { workout: CoachClientDetails['recent_workouts'][number] }) {
   const { t } = useTranslation()
+  const supersets = supersetLabels(workout.exercises)
   return (
     <div>
       <p className="font-semibold">{workout.name}</p>
@@ -238,7 +241,7 @@ function WorkoutSummary({ workout }: { workout: CoachClientDetails['recent_worko
       </p>
       {workout.exercises.map((item, index) => (
         <div key={`${item.name}-${index}`} className="mt-1 text-sm">
-          <span>{item.name}: </span>
+          <span><SupersetBadge label={supersets[index]} />{item.name}: </span>
           <span className="text-muted">{item.sets.map((set) => formatCoachSet(set, `${t('routine.warmupShort')}:`, t('coach.reps'))).join(', ')}</span>
         </div>
       ))}

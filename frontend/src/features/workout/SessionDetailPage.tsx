@@ -18,6 +18,7 @@ import { ReadinessSummary } from './ReadinessSummary'
 import { discardOutboxItem, restoreRejectedWorkout } from './outbox'
 import { requestSync } from './sync'
 import { ExerciseHeading } from '../training/ExerciseHeading'
+import { supersetLabels } from '../training/supersets'
 
 /** Detalj treninga iz istorije: sa servera ili, dok nije poslat, sa telefona. */
 export function SessionDetailPage() {
@@ -123,7 +124,7 @@ export function SessionDetailPage() {
 
         {session.readiness && <ReadinessSummary readiness={session.readiness} />}
 
-        {session.exercises.map(({ exercise, notes, sets }, position) => {
+        {session.exercises.map(({ exercise, notes, sets }, position, all) => {
           // Radne serije 1, 2, 3…; zagrevanje ne ulazi u brojanje.
           const labels = sets.reduce<string[]>((acc, set) => {
             const done = acc.filter((l) => l !== warmup).length
@@ -132,7 +133,7 @@ export function SessionDetailPage() {
           return (
             <section key={sessionExerciseKey(exercise.id, position)} className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-line/60">
               <div className="flex">
-                <ExerciseHeading exercise={exercise} />
+                <ExerciseHeading exercise={exercise} superset={supersetLabels(all)[position]} />
               </div>
               {notes && <p className="mt-2 whitespace-pre-line rounded-lg bg-surface px-3 py-2 text-sm">{notes}</p>}
               <ol className="mt-2 flex flex-col gap-1">

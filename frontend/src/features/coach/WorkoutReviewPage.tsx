@@ -13,6 +13,8 @@ import { useClientGuard } from './guard'
 import { useClientWorkout, useMarkReviewed, type ClientWorkout, type ReviewSet } from './reviewApi'
 import { describePlannedSets } from './review'
 import { readinessReasons } from './workspace'
+import { SupersetBadge } from '../training/SupersetFrame'
+import { supersetLabels } from '../training/supersets'
 
 /** One workout of a client: what was planned and what was done, then review and comment. */
 export function WorkoutReviewPage() {
@@ -100,17 +102,18 @@ function PlannedVsDone({ workout, clientId, instructions }: { workout: ClientWor
   const { t } = useTranslation()
   const planned = workout.plan?.exercises ?? []
   const doneIds = new Set(workout.exercises.map((e) => e.exercise_id))
+  const supersets = supersetLabels(workout.exercises)
   const skipped = planned.filter((p) => p.exercise?.id && !doneIds.has(p.exercise.id))
   const current = (exerciseId: string) => instructions?.find((x) => x.exercise_id === exerciseId)?.text ?? ''
   return (
     <Card title={t('coachSpace.review.plannedVsDone')}>
       {!workout.plan && <p className="mb-2 text-sm text-muted">{t('coachSpace.review.noPlan')}</p>}
       <ul className="flex flex-col divide-y divide-line">
-        {workout.exercises.map((exercise) => {
+        {workout.exercises.map((exercise, index) => {
           const plan = planned.find((p) => p.exercise?.id === exercise.exercise_id)
           return (
             <li key={exercise.exercise_id} className="py-2">
-              <p className="font-semibold">{exercise.name}</p>
+              <p className="font-semibold"><SupersetBadge label={supersets[index]} />{exercise.name}</p>
               {workout.plan && (
                 <p className="text-sm text-muted">{t('coachSpace.review.planned')}: {plan ? describePlannedSets(plan.sets ?? [], t) : t('coachSpace.review.extra')}</p>
               )}

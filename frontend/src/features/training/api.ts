@@ -55,6 +55,8 @@ export interface RoutineExercise {
   exercise: Exercise
   rest_seconds: number | null
   notes: string
+  /** Exercises next to each other with the same number are a superset (see supersets.ts). Missing before T6. */
+  superset?: number | null
   sets: RoutineSet[]
 }
 

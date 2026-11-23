@@ -1343,6 +1343,17 @@ export const en = {
     phKg: 'kg',
     phReps: 'reps',
     phKm: 'km',
+    superset: {
+      title: 'Superset {{letter}}',
+      triset: 'Tri-set {{letter}}',
+      order: '{{order}} in a row, then rest.',
+      link: 'Join as a superset',
+      linkAria: 'Join {{first}} and {{second}} as a superset',
+      unlink: 'Split',
+      unlinkAria: 'Split {{first}} and {{second}}',
+      noRest: 'No rest, straight to {{next}}',
+      restAfter: 'Rest after the round',
+    },
     errors: {
       nameRequired: 'Enter the workout name.',
       noExercises: 'Add at least one exercise.',

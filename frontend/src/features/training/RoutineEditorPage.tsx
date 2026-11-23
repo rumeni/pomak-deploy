@@ -23,6 +23,8 @@ import { ExercisePicker } from './ExercisePicker'
 import { REST_OPTIONS, formatDuration } from './labels'
 import { ExerciseHeading } from './ExerciseHeading'
 import { formatRpe, parseRpe, rpeChoices } from '../workout/rpe'
+import { SupersetFrame } from './SupersetFrame'
+import { blocks, canLink, linkedWithNext, moveItem, removeItem, supersetLabels, toggleLink } from './supersets'
 
 type T = ReturnType<typeof useTranslation>['t']
 
@@ -57,14 +59,8 @@ function Editor({ initial }: { initial: RoutineDraft }) {
   const updateExercise = (key: string, change: (e: DraftExercise) => DraftExercise) =>
     setDraft((d) => ({ ...d, exercises: d.exercises.map((e) => (e.key === key ? change(e) : e)) }))
 
-  const move = (index: number, delta: number) =>
-    setDraft((d) => {
-      const list = [...d.exercises]
-      const target = index + delta
-      if (target < 0 || target >= list.length) return d
-      ;[list[index], list[target]] = [list[target], list[index]]
-      return { ...d, exercises: list }
-    })
+  const move = (index: number, delta: -1 | 1) => setDraft((d) => ({ ...d, exercises: moveItem(d.exercises, index, delta) }))
+  const labels = supersetLabels(draft.exercises)
 
   const addExercises = (exercises: Exercise[]) => {
     if (draft.exercises.length + exercises.length > MAX_ROUTINE_EXERCISES) {
@@ -122,17 +118,40 @@ function Editor({ initial }: { initial: RoutineDraft }) {
           <EmptyState title={t('routine.noExercises')} text={t('routine.noExercisesText')} />
         )}
 
-        {draft.exercises.map((item, index) => (
-          <ExerciseCard
-            key={item.key}
-            item={item}
-            isFirst={index === 0}
-            isLast={index === draft.exercises.length - 1}
-            onChange={(change) => updateExercise(item.key, change)}
-            onMove={(delta) => move(index, delta)}
-            onRemove={() => setDraft((d) => ({ ...d, exercises: d.exercises.filter((e) => e.key !== item.key) }))}
-          />
-        ))}
+        {blocks(draft.exercises).map((block) => {
+          const cards = block.items.map((item, offset) => {
+            const index = block.start + offset
+            const next = block.items[offset + 1]
+            return (
+              <div key={item.key} className="flex flex-col gap-2">
+                <ExerciseCard
+                  item={item}
+                  superset={labels[index]}
+                  // Inside a superset only the last exercise rests (after the whole round).
+                  nextInSuperset={next ? labels[index + 1] : null}
+                  isFirst={index === 0}
+                  isLast={index === draft.exercises.length - 1}
+                  onChange={(change) => updateExercise(item.key, change)}
+                  onMove={(delta) => move(index, delta)}
+                  onRemove={() => setDraft((d) => ({ ...d, exercises: removeItem(d.exercises, d.exercises.findIndex((e) => e.key === item.key)) }))}
+                />
+                {next && (
+                  <LinkButton linked first={item.exercise.name} second={next.exercise.name} onClick={() => setDraft((d) => ({ ...d, exercises: toggleLink(d.exercises, index) }))} />
+                )}
+              </div>
+            )
+          })
+          const end = block.start + block.items.length - 1
+          const after = draft.exercises[end + 1]
+          return (
+            <div key={block.items[0].key} className="flex flex-col gap-2">
+              {block.items.length > 1 ? <SupersetFrame labels={labels.slice(block.start, end + 1) as string[]}>{cards}</SupersetFrame> : cards}
+              {after && canLink(draft.exercises, end) && !linkedWithNext(draft.exercises, end) && (
+                <LinkButton linked={false} first={draft.exercises[end].exercise.name} second={after.exercise.name} onClick={() => setDraft((d) => ({ ...d, exercises: toggleLink(d.exercises, end) }))} />
+              )}
+            </div>
+          )
+        })}
 
         <Button variant="secondary" onClick={() => setPickerOpen(true)}>
           {t('routine.addExercises')}
@@ -157,8 +176,29 @@ function Editor({ initial }: { initial: RoutineDraft }) {
   )
 }
 
+/** Between two cards: join them as a superset, or split a superset there. */
+function LinkButton({ linked, first, second, onClick }: { linked: boolean; first: string; second: string; onClick: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={t(linked ? 'routine.superset.unlinkAria' : 'routine.superset.linkAria', { first, second })}
+      className="mx-auto flex min-h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-muted ring-1 ring-line active:bg-brand-soft"
+    >
+      <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {/* Two halves of a chain: apart to split, joined by a bar to link. */}
+        <path d={linked ? 'M9 17H7a5 5 0 010-10h2M15 7h2a5 5 0 010 10h-2' : 'M9 17H7a5 5 0 010-10h2M15 7h2a5 5 0 010 10h-2M8 12h8'} />
+      </svg>
+      {t(linked ? 'routine.superset.unlink' : 'routine.superset.link')}
+    </button>
+  )
+}
+
 function ExerciseCard({
   item,
+  superset,
+  nextInSuperset,
   isFirst,
   isLast,
   onChange,
@@ -166,10 +206,14 @@ function ExerciseCard({
   onRemove,
 }: {
   item: DraftExercise
+  /** "A1" when the exercise is in a superset. */
+  superset: string | null
+  /** The next exercise of the same superset ("A2"); null for the last one or a single exercise. */
+  nextInSuperset: string | null
   isFirst: boolean
   isLast: boolean
   onChange: (change: (e: DraftExercise) => DraftExercise) => void
-  onMove: (delta: number) => void
+  onMove: (delta: -1 | 1) => void
   onRemove: () => void
 }) {
   const { t } = useTranslation()
@@ -206,7 +250,7 @@ function ExerciseCard({
   return (
     <section className="rounded-2xl bg-card p-3 shadow-sm ring-1 ring-line/60">
       <div className="flex items-start gap-2">
-        <ExerciseHeading exercise={exercise}>
+        <ExerciseHeading exercise={exercise} superset={superset}>
           {exercise.load_mode === 'per_side' && <p className="text-xs text-muted">{t('routine.perDumbbell')}</p>}
         </ExerciseHeading>
         <IconButton label={t('routine.moveUp')} disabled={isFirst} onClick={() => onMove(-1)} path="M6 15l6-6 6 6" />
@@ -214,8 +258,11 @@ function ExerciseCard({
         <IconButton label={t('routine.removeExercise')} onClick={onRemove} path="M6 6l12 12M18 6L6 18" />
       </div>
 
+      {nextInSuperset ? (
+        <p className="mt-2 px-1 text-sm text-muted">{t('routine.superset.noRest', { next: nextInSuperset })}</p>
+      ) : (
       <label className="mt-2 flex items-center gap-2 px-1 text-sm text-muted">
-        {t('routine.rest')}
+        {superset ? t('routine.superset.restAfter') : t('routine.rest')}
         <select
           value={item.rest_seconds ?? 0}
           onChange={(e) => onChange((x) => ({ ...x, rest_seconds: Number(e.target.value) }))}
@@ -228,6 +275,7 @@ function ExerciseCard({
           ))}
         </select>
       </label>
+      )}
 
       <div
         className="mt-3 grid gap-x-2 gap-y-2"

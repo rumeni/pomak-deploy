@@ -44,6 +44,8 @@ export interface PlanRoutine {
     measurement: string
     rest_seconds: number | null
     notes: string
+    /** Missing in plan days frozen before supersets. */
+    superset?: number | null
     sets: PlanSet[]
   }[]
 }
@@ -83,7 +85,7 @@ export type PlanDayInput =
 export interface TailoredRoutine {
   name: string
   notes: string
-  exercises: { exercise_id: string; rest_seconds: number | null; notes: string; sets: PlanSet[] }[]
+  exercises: { exercise_id: string; rest_seconds: number | null; notes: string; superset?: number | null; sets: PlanSet[] }[]
 }
 
 export interface PlanVersionInput {

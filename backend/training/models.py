@@ -120,6 +120,9 @@ class RoutineExercise(TimeStampedModel):
     position = models.PositiveSmallIntegerField()
     rest_seconds = models.PositiveSmallIntegerField(null=True, blank=True)
     notes = models.CharField(max_length=300, blank=True)
+    # Superset / tri-set: exercises next to each other with the same number are done back to back
+    # (A1 -> A2 -> rest). Numbered 1, 2 ... in routine order; empty for an exercise on its own.
+    superset = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ['position']
@@ -191,6 +194,8 @@ class SessionExercise(TimeStampedModel):
     exercise = models.ForeignKey(Exercise, on_delete=models.RESTRICT, related_name='+')
     position = models.PositiveSmallIntegerField()
     notes = models.CharField(max_length=300, blank=True)
+    # The superset this exercise was done in (same meaning as RoutineExercise.superset).
+    superset = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ['position']

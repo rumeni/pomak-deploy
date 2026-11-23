@@ -168,6 +168,17 @@ class PrivateExerciseTests(PlanTestCase):
         self.assertEqual(self.secret.owner, self.coach)
         self.assertFalse(Exercise.objects.filter(owner__isnull=True, name='Secret move').exists())
 
+    def test_a_superset_reaches_the_client_and_the_frozen_plan(self):
+        RoutineExercise.objects.filter(routine=self.private).update(superset=1)
+        second = RoutineExercise.objects.create(routine=self.private, exercise=self.bench, position=1, superset=1)
+        RoutineSet.objects.create(routine_exercise=second, position=0, reps_min=10, reps_max=10)
+        result = self.assign(self.template_id, [self.ana], self.today)
+        self.assertEqual([r['ok'] for r in result.data['results']], [True], result.data)
+        day = self.plan_of(self.ana)['versions'][0]['days'][0]
+        self.assertEqual([e['superset'] for e in day['routine']['exercises']], [1, 1])
+        copy = Routine.objects.get(pk=day['routine']['id'])
+        self.assertEqual([e.superset for e in copy.exercises.order_by('position')], [1, 1])
+
     def test_measurement_mismatch_in_batch_skips_only_that_client_and_retry_recovers(self):
         # Pre-existing client copy is mutable, while the coach's prescription is still weight/reps.
         third = self.user('luka@example.test', name='Luka')

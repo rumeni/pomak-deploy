@@ -2,6 +2,7 @@ import { formatDecimal, parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import type { Exercise, Routine, SetType } from '../training/api'
 import { formatDuration } from '../training/labels'
+import { blockOf, moveItem, removeItem } from '../training/supersets'
 import { estimated1rm, formatRpe, hasReadiness, parseRpe, weightForTarget, type Readiness } from './rpe'
 
 /** Rezultat jedne serije sa servera (prošli put). */
@@ -51,6 +52,8 @@ export interface ActiveExercise {
   exercise: Exercise
   restSeconds: number
   notes: string
+  /** Superset number (training/supersets.ts); missing in workouts started before supersets. */
+  superset?: number | null
   sets: ActiveSet[]
 }
 
@@ -90,6 +93,7 @@ export function startFromRoutine(routine: Routine, previous: Record<string, Prev
       exercise: e.exercise,
       restSeconds: e.rest_seconds ?? 0,
       notes: e.notes,
+      superset: e.superset ?? null,
       sets: e.sets.map((s) => ({
         ...emptyActiveSet(s.set_type),
         target: {
@@ -132,6 +136,7 @@ export function newActiveExercise(exercise: Exercise): ActiveExercise {
     exercise,
     restSeconds: isCardio ? 0 : 90,
     notes: '',
+    superset: null,
     sets: isCardio ? [emptyActiveSet()] : [emptyActiveSet(), emptyActiveSet(), emptyActiveSet()],
   }
 }
@@ -329,13 +334,52 @@ export function confirmSet(workout: ActiveWorkout, exerciseKey: string, setKey: 
   }
   setResult(filled, item.exercise) // baca grešku ako vrednosti nisu ispravne
   const confirmed = { ...filled, done: true, completedAt: now.toISOString() }
+  const exercises = workout.exercises.map((e) =>
+    e.key === exerciseKey ? { ...e, sets: e.sets.map((s) => (s.key === setKey ? confirmed : s)) } : e,
+  )
+  const restSeconds = restAfterSet(exercises, exerciseKey, index)
   return {
     ...workout,
-    exercises: workout.exercises.map((e) =>
-      e.key === exerciseKey ? { ...e, sets: e.sets.map((s) => (s.key === setKey ? confirmed : s)) } : e,
-    ),
-    rest: item.restSeconds > 0 ? { endsAt: new Date(now.getTime() + item.restSeconds * 1000).toISOString(), totalSeconds: item.restSeconds } : workout.rest,
+    exercises,
+    rest: restSeconds > 0 ? { endsAt: new Date(now.getTime() + restSeconds * 1000).toISOString(), totalSeconds: restSeconds } : workout.rest,
   }
+}
+
+/** The exercises of the superset an exercise is in (just itself when it is on its own). */
+export function supersetOf(exercises: ActiveExercise[], exerciseKey: string): ActiveExercise[] {
+  const index = exercises.findIndex((e) => e.key === exerciseKey)
+  if (index < 0) return []
+  const [start, end] = blockOf(exercises, index)
+  return exercises.slice(start, end + 1)
+}
+
+/**
+ * Rest after confirming the n-th set of an exercise. In a superset the round goes A1 -> A2 (-> A3)
+ * without a break, and the rest of the last exercise starts once every exercise of the superset
+ * has its n-th set done (or has no n-th set).
+ */
+export function restAfterSet(exercises: ActiveExercise[], exerciseKey: string, setIndex: number): number {
+  const group = supersetOf(exercises, exerciseKey)
+  if (group.length <= 1) return group[0]?.restSeconds ?? 0
+  const roundDone = group.every((e) => !e.sets[setIndex] || e.sets[setIndex].done)
+  return roundDone ? group[group.length - 1].restSeconds : 0
+}
+
+/**
+ * Where to go after confirming the n-th set in a superset: the next exercise of the round whose
+ * n-th set is still open (A1 -> A2 -> A3 -> A1 ...), or null once the round is done or for a
+ * single exercise.
+ */
+export function nextInSuperset(workout: ActiveWorkout, exerciseKey: string, setIndex: number): ActiveExercise | null {
+  const group = supersetOf(workout.exercises, exerciseKey)
+  if (group.length <= 1) return null
+  const at = group.findIndex((e) => e.key === exerciseKey)
+  for (let step = 1; step < group.length; step++) {
+    const candidate = group[(at + step) % group.length]
+    const set = candidate.sets[setIndex]
+    if (set && !set.done) return candidate
+  }
+  return null
 }
 
 /** Vraća potvrđenu seriju u nepotvrđenu; upisane vrednosti ostaju za ispravku. */
@@ -350,18 +394,18 @@ export const MAX_EXERCISE_NOTES = 300
 
 const isCardio = (e: Exercise) => e.measurement === 'duration' || e.measurement === 'distance_duration'
 
-/** Moves an exercise one place up (-1) or down (+1); out-of-range moves do nothing. */
+/** Moves an exercise one place up (-1) or down (+1); out-of-range moves do nothing. Supersets stay whole (see moveItem). */
 export function moveExercise(workout: ActiveWorkout, exerciseKey: string, delta: -1 | 1): ActiveWorkout {
   const from = workout.exercises.findIndex((e) => e.key === exerciseKey)
-  const to = from + delta
-  if (from < 0 || to < 0 || to >= workout.exercises.length) return workout
-  const exercises = [...workout.exercises]
-  ;[exercises[from], exercises[to]] = [exercises[to], exercises[from]]
-  return { ...workout, exercises }
+  if (from < 0) return workout
+  const exercises = moveItem(workout.exercises, from, delta)
+  return exercises === workout.exercises ? workout : { ...workout, exercises }
 }
 
+/** Removes an exercise; a superset left with one exercise becomes a single exercise again. */
 export function removeExercise(workout: ActiveWorkout, exerciseKey: string): ActiveWorkout {
-  return { ...workout, exercises: workout.exercises.filter((e) => e.key !== exerciseKey) }
+  const index = workout.exercises.findIndex((e) => e.key === exerciseKey)
+  return index < 0 ? workout : { ...workout, exercises: removeItem(workout.exercises, index) }
 }
 
 export function setExerciseNotes(workout: ActiveWorkout, exerciseKey: string, notes: string): ActiveWorkout {
@@ -555,7 +599,7 @@ export interface SessionPayload {
   notes: string
   /** Omitted when the check-in was skipped (and by older app versions). */
   readiness?: Readiness
-  exercises: { exercise_id: string; notes: string; sets: (LoggedSet & { completed_at: string | null })[] }[]
+  exercises: { exercise_id: string; notes: string; superset?: number | null; sets: (LoggedSet & { completed_at: string | null })[] }[]
 }
 
 /**
@@ -610,6 +654,7 @@ export function uploadSafePlanSnapshot(snapshot: Routine | null): Routine | null
       },
       rest_seconds: item.rest_seconds,
       notes: unicodePrefix(item.notes, 300),
+      ...(item.superset != null ? { superset: item.superset } : {}),
       sets: item.sets.slice(0, 20).map((set) => ({
         set_type: set.set_type,
         reps_min: set.reps_min,
@@ -649,6 +694,7 @@ export function toSessionPayload(workout: ActiveWorkout, finishedAt: Date, feeli
     exercises: workout.exercises.map((item) => ({
       exercise_id: item.exercise.id,
       notes: item.notes,
+      superset: item.superset ?? null,
       sets: item.sets.filter((s) => s.done).map((s) => ({ ...setResult(s, item.exercise), completed_at: s.completedAt })),
     })),
   })
