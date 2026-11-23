@@ -89,6 +89,10 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: python -m pip install -r requirements.txt
+      # Django's parallel runner needs tblib to serialize traceback details when tests fail.
+      # Test-only dependency: do not add it to the production backend requirements.
+      - name: Install parallel-test traceback support
+        run: python -m pip install tblib==3.2.2
       - name: Validate Vercel HTTPS, HSTS and trusted proxy policy
         env:
           VERCEL: '1'
@@ -99,7 +103,11 @@ jobs:
           python manage.py check --deploy
           python manage.py shell -c "from django.conf import settings; assert settings.SECURE_SSL_REDIRECT is True; assert settings.SECURE_HSTS_SECONDS >= 31536000; assert settings.REST_FRAMEWORK['NUM_PROXIES'] == 1; assert not settings.SECURE_HSTS_INCLUDE_SUBDOMAINS; assert not settings.SECURE_HSTS_PRELOAD; print('Vercel HTTPS/HSTS/trusted-proxy policy verified')"
       - run: python manage.py makemigrations --check --dry-run
-      - run: python manage.py test
+      # Run every Django/PostgreSQL test, using the best measured worker count on
+      # ubuntu-24.04: 482 tests in 128.579s (serial baseline: 462.710s).
+      # Keep 20 slowest durations visible to catch future runtime regressions.
+      - name: Run backend tests (6 workers; profile slowest tests)
+        run: python manage.py test --parallel 6 --durations=20
 
   android:
     runs-on: ubuntu-24.04
