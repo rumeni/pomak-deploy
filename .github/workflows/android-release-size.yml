@@ -33,10 +33,13 @@ jobs:
       - run: npm run build
       - name: Generate Android native plugin wiring
         run: npx cap sync android
-      - name: Compile both debug and optimized unsigned release APKs
+      - name: Compile unoptimized release control, then optimized release and debug
         run: |
+          set -euo pipefail
           cd android
           chmod +x ./gradlew
+          ./gradlew assembleRelease -PpomakReleaseSizeControl=true --no-daemon
+          cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/pomak-release-unoptimized.apk"
           ./gradlew assembleDebug assembleRelease --no-daemon
       - name: Compare APK sizes
         run: |
@@ -45,22 +48,27 @@ jobs:
           release=android/app/build/outputs/apk/release/app-release-unsigned.apk
           test -s "$debug"
           test -s "$release"
+          baseline="$RUNNER_TEMP/pomak-release-unoptimized.apk"
+          test -s "$baseline"
           debug_bytes=$(stat -c '%s' "$debug")
+          baseline_bytes=$(stat -c '%s' "$baseline")
           release_bytes=$(stat -c '%s' "$release")
-          python - "$debug_bytes" "$release_bytes" <<'PY'
+          python - "$debug_bytes" "$baseline_bytes" "$release_bytes" <<'PY'
           import sys
           from pathlib import Path
 
-          debug, release = map(int, sys.argv[1:])
+          debug, baseline, release = map(int, sys.argv[1:])
+          saved = baseline - release
           summary = (
               '### Android package size audit (unsigned release)\n'
-              f'- Debug: {debug:,} bytes ({debug / 1e6:.2f} MB)\n'
-              f'- R8 release: {release:,} bytes ({release / 1e6:.2f} MB)\n'
-              f'- Difference: {(debug - release) / 1e6:.2f} MB ({(debug - release) / debug:.1%})\n'
-              '\nAn unsigned release APK passing compilation does not establish on-device compatibility.\n'
+              f'- Debug reference: {debug:,} bytes ({debug / 1e6:.2f} MB)\n'
+              f'- Unoptimized release: {baseline:,} bytes ({baseline / 1e6:.2f} MB)\n'
+              f'- Optimized R8 release: {release:,} bytes ({release / 1e6:.2f} MB)\n'
+              f'- Actual R8 savings: {saved:,} bytes ({saved / 1e6:.2f} MB, {saved / baseline:.1%})\n'
+              '\nSame code, identical release variant, minify/shrink toggled only for baseline. '
+              'An unsigned release APK passing compilation does not establish on-device compatibility.\n'
           )
           print(summary)
-          with Path(sys.argv[0]).parent.joinpath('android-size-audit.txt').open('w') as output:
-              output.write(summary)
+          Path('android-size-audit.txt').write_text(summary)
           PY
           cat android-size-audit.txt >> "$GITHUB_STEP_SUMMARY"
