@@ -5,9 +5,10 @@ import type { Exercise } from '../training/api'
 /** One input of a set row; which ones a set has depends on how the exercise is measured. */
 export type Field = { field: 'weight' | 'reps' | 'duration' | 'distance'; label: string; inputMode: 'decimal' | 'numeric' | 'text' }
 
-export function inputFields(m: Exercise['measurement'], perSide: boolean, t: TFunction): Field[] {
-  const reps: Field = { field: 'reps', label: t('routine.colReps'), inputMode: 'numeric' }
-  const time: Field = { field: 'duration', label: t('routine.colTime'), inputMode: 'text' }
+/** `unilateral`: reps and time are entered for one side ("10" means 10 + 10). */
+export function inputFields(m: Exercise['measurement'], perSide: boolean, t: TFunction, unilateral = false): Field[] {
+  const reps: Field = { field: 'reps', label: t(unilateral ? 'routine.colRepsPerSide' : 'routine.colReps'), inputMode: 'numeric' }
+  const time: Field = { field: 'duration', label: t(unilateral ? 'routine.colTimePerSide' : 'routine.colTime'), inputMode: 'text' }
   const weight = (label: string): Field => ({ field: 'weight', label, inputMode: 'decimal' })
   switch (m) {
     case 'weight_reps':

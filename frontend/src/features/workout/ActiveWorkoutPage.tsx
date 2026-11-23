@@ -8,7 +8,7 @@ import { getFormatLocale } from '../../lib/format'
 import { useNow } from '../../lib/useNow'
 import type { Exercise } from '../training/api'
 import { ExercisePicker } from '../training/ExercisePicker'
-import { formatDuration } from '../training/labels'
+import { bothSides, formatDuration } from '../training/labels'
 import { FinishWorkout } from './FinishWorkout'
 import {
   confirmSet,
@@ -300,7 +300,7 @@ function WorkoutExerciseCard({
     return [...acc, s.set_type === 'warmup' ? warmup : String(done + 1)]
   }, [])
 
-  const fields = inputFields(m, exercise.load_mode === 'per_side', t)
+  const fields = inputFields(m, exercise.load_mode === 'per_side', t, exercise.unilateral)
   const plan = planSummary(item)
   // Where the grey weight comes from, per row, when the plan prescribes RPE instead of a weight.
   const rpeRows = rpeLoadRows(workout, item)
@@ -364,7 +364,7 @@ function WorkoutExerciseCard({
   const planText = plan && [
     plan.warmups ? `${plan.warmups} ${warmup}` : null,
     ...plan.groups.map((g) =>
-      `${g.count} × ${g.km ? `${g.km} km` : ''}${g.km && g.time ? ' · ' : ''}${g.time ?? (g.km ? '' : g.reps ?? '–')}${g.weight ? ` · ${g.weight} kg` : ''}${g.rpe !== null ? ` @ ${formatRpe(g.rpe)}` : ''}`),
+      `${g.count} × ${g.km ? `${g.km} km` : ''}${g.km && g.time ? ' · ' : ''}${g.time ? bothSides(g.time, exercise) : g.km ? '' : g.reps ? bothSides(g.reps, exercise) : '–'}${g.weight ? ` · ${g.weight} kg` : ''}${g.rpe !== null ? ` @ ${formatRpe(g.rpe)}` : ''}`),
   ].filter(Boolean).join(' + ')
 
   return (
@@ -372,6 +372,7 @@ function WorkoutExerciseCard({
       <div className="flex items-start gap-1 px-1">
         <ExerciseHeading exercise={exercise} superset={superset}>
           <p className="text-xs font-semibold tabular-nums text-brand-dark">{t('workout.setsProgress', { done: doneSets, total: item.sets.length })}</p>
+          {exercise.unilateral && <p className="text-xs text-muted">{t('routine.perSideHint')}</p>}
           {nextInRound && <p className="text-xs text-muted">{t('routine.superset.noRest', { next: nextInRound })}</p>}
           {previous && (
             <p className="text-xs text-muted">

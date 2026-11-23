@@ -82,7 +82,7 @@ class ExerciseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exercise
         fields = [
-            'id', 'slug', 'name', 'aliases', 'equipment', 'measurement', 'load_mode', 'muscle',
+            'id', 'slug', 'name', 'aliases', 'equipment', 'measurement', 'load_mode', 'unilateral', 'muscle',
             'instructions', 'is_custom', 'coach_name',
         ]
         # coach_name: set only when a coach's private exercise is copied to this client.

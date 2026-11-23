@@ -95,7 +95,7 @@ def collect(user) -> dict:
         'goals': list(Goal.objects.filter(user=user).values(
             'kind', 'start_value', 'target_value', 'start_date', 'target_date', 'status', 'closed_on',
         )),
-        'custom_exercises': list(Exercise.objects.filter(owner=user).values('id', 'name', 'equipment', 'measurement', 'load_mode', 'muscle', 'archived_at', 'coach_name')),
+        'custom_exercises': list(Exercise.objects.filter(owner=user).values('id', 'name', 'equipment', 'measurement', 'load_mode', 'unilateral', 'muscle', 'archived_at', 'coach_name')),
         'routines': [
             {
                 'name': r.name, 'notes': r.notes, 'archived_at': r.archived_at,

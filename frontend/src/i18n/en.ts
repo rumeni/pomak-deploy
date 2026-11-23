@@ -1338,6 +1338,9 @@ export const en = {
     colAddedKg: '+KG',
     colAssistKg: 'ASSIST KG',
     colReps: 'REPS',
+    colRepsPerSide: 'REPS/SIDE',
+    colTimePerSide: 'TIME/SIDE',
+    perSideHint: 'Per side: enter one side (10 means 10 + 10).',
     colTime: 'TIME',
     colKm: 'KM',
     phKg: 'kg',
@@ -1667,6 +1670,8 @@ export const en = {
   },
   newExercise: {
     title: 'New exercise',
+    unilateral: 'One side at a time',
+    unilateralHint: 'One arm or leg, then the other: enter 10, it shows 10 + 10.',
     name: 'Name',
     muscle: 'Muscle group',
     equipment: 'Equipment',

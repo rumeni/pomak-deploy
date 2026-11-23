@@ -63,6 +63,9 @@ class Exercise(TimeStampedModel):
     equipment = models.CharField(max_length=20, choices=Equipment.choices)
     measurement = models.CharField(max_length=30, choices=Measurement.choices)
     load_mode = models.CharField(max_length=10, choices=LoadMode.choices, default=LoadMode.TOTAL)
+    # Done one side at a time (Bulgarian split squat, one-arm row): reps are entered per side and
+    # shown as "10 + 10", and the volume counts both sides.
+    unilateral = models.BooleanField(default=False, db_default=False)
     muscle = models.CharField(max_length=20, choices=Muscle.choices)
     instructions = models.TextField(blank=True)
     # Uputstvo na engleskom (zajednička biblioteka); prikazuje se po jeziku aplikacije kao i naziv.
@@ -87,6 +90,12 @@ class Exercise(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def volume_factor(self) -> int:
+        """Both sides count: weight entered per dumbbell, or reps entered per side (not both: a
+        one-arm row is one dumbbell, its reps per arm)."""
+        return 2 if self.load_mode == self.LoadMode.PER_SIDE or self.unilateral else 1
 
     def save(self, *args, **kwargs):
         self.search_name = normalize_search(f'{self.name} {self.name_en} {self.aliases}')

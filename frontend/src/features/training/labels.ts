@@ -24,3 +24,13 @@ export function formatDuration(seconds: number): string {
   const ss = String(s).padStart(2, '0')
   return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
 }
+
+/** "10" -> "10 + 10" for an exercise done one side at a time (the value is per side). */
+export function bothSides(text: string, exercise: { unilateral?: boolean } | undefined | null): string {
+  return exercise?.unilateral && text ? `${text} + ${text}` : text
+}
+
+/** Volume counts both sides: weight per dumbbell, or reps per side (not both, see Exercise.volume_factor). */
+export function volumeFactor(exercise: { load_mode: string; unilateral?: boolean }): number {
+  return exercise.load_mode === 'per_side' || exercise.unilateral ? 2 : 1
+}

@@ -182,6 +182,7 @@ function CreateExerciseForm({
     measurement: 'weight_reps',
     muscle: 'chest',
     load_mode: 'total',
+    unilateral: false,
   })
   const set = <K extends keyof NewExercise>(key: K, value: NewExercise[K]) => setForm((f) => ({ ...f, [key]: value }))
   const perSideRelevant = form.equipment === 'dumbbell' || form.equipment === 'kettlebell'
@@ -193,7 +194,10 @@ function CreateExerciseForm({
         className="mx-auto flex max-w-xl flex-col gap-4 p-4"
         onSubmit={(e) => {
           e.preventDefault()
-          create.mutate({ ...form, id: createId, load_mode: perSideRelevant ? form.load_mode : 'total' }, { onSuccess: onCreated })
+          create.mutate({
+            ...form, id: createId, load_mode: perSideRelevant ? form.load_mode : 'total',
+            unilateral: form.measurement !== 'distance_duration' && !!form.unilateral,
+          }, { onSuccess: onCreated })
         }}
       >
         <Field label={t('newExercise.name')} name="name" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />
@@ -223,6 +227,20 @@ function CreateExerciseForm({
             <option value="per_side">{t('newExercise.perSide')}</option>
             <option value="total">{t('newExercise.total')}</option>
           </SelectField>
+        )}
+        {form.measurement !== 'distance_duration' && (
+          <label className="flex min-h-12 items-start gap-3 rounded-xl bg-card px-3 py-2 ring-1 ring-line/70">
+            <input
+              type="checkbox"
+              checked={!!form.unilateral}
+              onChange={(e) => set('unilateral', e.target.checked)}
+              className="mt-1 size-5 shrink-0 accent-brand"
+            />
+            <span>
+              <span className="block font-semibold">{t('newExercise.unilateral')}</span>
+              <span className="block text-sm text-muted">{t('newExercise.unilateralHint')}</span>
+            </span>
+          </label>
         )}
         <FormError message={create.isError ? errorMessage(create.error) : null} />
         <Button type="submit" disabled={create.isPending || !form.name.trim()}>

@@ -33,6 +33,8 @@ export interface Exercise {
   equipment: Equipment
   measurement: MeasurementType
   load_mode: 'total' | 'per_side'
+  /** Done one side at a time: reps (or time) entered per side, shown "10 + 10". Missing before T6. */
+  unilateral?: boolean
   muscle: Muscle
   instructions: string
   is_custom: boolean
@@ -80,7 +82,7 @@ export interface RoutinePayload {
   exercises: (Omit<RoutineExercise, 'exercise'> & { exercise_id: string })[]
 }
 
-export type NewExercise = Pick<Exercise, 'name' | 'equipment' | 'measurement' | 'muscle' | 'load_mode'> & { id?: string }
+export type NewExercise = Pick<Exercise, 'name' | 'equipment' | 'measurement' | 'muscle' | 'load_mode' | 'unilateral'> & { id?: string }
 
 export function useExercises(q: string, muscle: Muscle | '') {
   return useQuery({

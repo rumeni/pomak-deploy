@@ -106,7 +106,8 @@ class ClientWorkoutView(APIView):
             'exercises': [
                 {
                     'exercise_id': str(item.exercise_id), 'name': item.exercise.name,
-                    'measurement': item.exercise.measurement, 'notes': item.notes, 'superset': item.superset,
+                    'measurement': item.exercise.measurement, 'unilateral': item.exercise.unilateral,
+                    'notes': item.notes, 'superset': item.superset,
                     'sets': [
                         {'set_type': s.set_type, 'reps': s.reps, 'weight_kg': _decimal(s.weight_kg),
                          'duration_seconds': s.duration_seconds, 'distance_m': s.distance_m, 'rpe': _decimal(s.rpe)}

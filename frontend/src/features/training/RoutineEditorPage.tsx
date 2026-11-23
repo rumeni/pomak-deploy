@@ -252,6 +252,7 @@ function ExerciseCard({
       <div className="flex items-start gap-2">
         <ExerciseHeading exercise={exercise} superset={superset}>
           {exercise.load_mode === 'per_side' && <p className="text-xs text-muted">{t('routine.perDumbbell')}</p>}
+          {exercise.unilateral && <p className="text-xs text-muted">{t('routine.perSideHint')}</p>}
         </ExerciseHeading>
         <IconButton label={t('routine.moveUp')} disabled={isFirst} onClick={() => onMove(-1)} path="M6 15l6-6 6 6" />
         <IconButton label={t('routine.moveDown')} disabled={isLast} onClick={() => onMove(1)} path="M6 9l6 6 6-6" />
@@ -323,8 +324,9 @@ type Column = { field: 'reps' | 'weight' | 'duration' | 'distance'; label: strin
 
 function setColumns(exercise: Exercise, t: T): Column[] {
   // Oznaka u praznom polju ne sme da liči na upisanu vrednost (npr. "8-10").
-  const reps: Column = { field: 'reps', label: t('routine.colReps'), placeholder: t('routine.phReps'), inputMode: 'text' }
-  const duration: Column = { field: 'duration', label: t('routine.colTime'), placeholder: '0:45', inputMode: 'text' }
+  const side = !!exercise.unilateral
+  const reps: Column = { field: 'reps', label: t(side ? 'routine.colRepsPerSide' : 'routine.colReps'), placeholder: t('routine.phReps'), inputMode: 'text' }
+  const duration: Column = { field: 'duration', label: t(side ? 'routine.colTimePerSide' : 'routine.colTime'), placeholder: '0:45', inputMode: 'text' }
   const weight = (label: string): Column => ({ field: 'weight', label, placeholder: t('routine.phKg'), inputMode: 'decimal' })
   switch (exercise.measurement) {
     case 'weight_reps':

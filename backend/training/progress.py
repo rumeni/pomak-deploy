@@ -59,14 +59,15 @@ def _record(value, session, **extra) -> dict:
     return {'value': value, 'date': timezone.localdate(session.started_at), 'session_id': session.id, **extra}
 
 
-def analyze(measurement: str, session_exercises, *, load_mode: str = Exercise.LoadMode.TOTAL) -> dict:
+def analyze(measurement: str, session_exercises, *, load_mode: str = Exercise.LoadMode.TOTAL, unilateral: bool = False) -> dict:
     """`session_exercises`: SessionExercise sa učitanim session i sets, od najstarijeg ka najnovijem."""
     records: dict[str, dict] = {}
     points = []
     e1rm_points = []  # best estimated 1RM per workout, for the 1RM-over-time chart
     # API stores kilograms per dumbbell/side, whereas volume is a total for
     # both sides (matching the finished-workout screen).
-    volume_factor = 2 if load_mode == Exercise.LoadMode.PER_SIDE else 1
+    # Reps entered per side (unilateral) count both sides too, never twice.
+    volume_factor = 2 if load_mode == Exercise.LoadMode.PER_SIDE or unilateral else 1
 
     def better(key, value, session, **extra):
         # Pri istoj vrednosti ostaje raniji rekord (datum kad je prvi put postignut).

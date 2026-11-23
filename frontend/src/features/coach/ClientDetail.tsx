@@ -242,7 +242,7 @@ function WorkoutSummary({ workout }: { workout: CoachClientDetails['recent_worko
       {workout.exercises.map((item, index) => (
         <div key={`${item.name}-${index}`} className="mt-1 text-sm">
           <span><SupersetBadge label={supersets[index]} />{item.name}: </span>
-          <span className="text-muted">{item.sets.map((set) => formatCoachSet(set, `${t('routine.warmupShort')}:`, t('coach.reps'))).join(', ')}</span>
+          <span className="text-muted">{item.sets.map((set) => formatCoachSet(set, `${t('routine.warmupShort')}:`, t('coach.reps'), item.unilateral)).join(', ')}</span>
         </div>
       ))}
       {workout.notes && <p className="mt-1 whitespace-pre-wrap text-sm">{workout.notes}</p>}

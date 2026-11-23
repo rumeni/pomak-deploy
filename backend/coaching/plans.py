@@ -94,7 +94,7 @@ def client_exercise(exercise: Exercise, client, coach) -> Exercise:
     return Exercise.objects.create(
         owner=client, source_exercise=exercise, coach_name=coach_label(coach),
         name=exercise.name, aliases=exercise.aliases, equipment=exercise.equipment,
-        measurement=exercise.measurement, load_mode=exercise.load_mode, muscle=exercise.muscle,
+        measurement=exercise.measurement, load_mode=exercise.load_mode, unilateral=exercise.unilateral, muscle=exercise.muscle,
         instructions=exercise.instructions,
     )
 

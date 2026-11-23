@@ -1,7 +1,7 @@
 import { formatDecimal, parseDecimal } from '../../lib/format'
 import { uuid } from '../../lib/uuid'
 import type { Exercise, Routine, SetType } from '../training/api'
-import { formatDuration } from '../training/labels'
+import { bothSides, formatDuration, volumeFactor } from '../training/labels'
 import { blockOf, moveItem, removeItem } from '../training/supersets'
 import { estimated1rm, formatRpe, hasReadiness, parseRpe, weightForTarget, type Readiness } from './rpe'
 
@@ -229,15 +229,17 @@ export function describeLogged(set: LoggedSet | null, exercise: Exercise, repsUn
 
 function describeValues(set: LoggedSet, exercise: Exercise, repsUnit: string): string {
   const w = set.weight_kg === null ? null : formatDecimal(Number(set.weight_kg))
+  // Per side: "60 × 10 + 10", "12 + 12 pon.", "0:30 + 0:30".
+  const reps = set.reps === null ? null : bothSides(String(set.reps), exercise)
   switch (exercise.measurement) {
     case 'weight_reps':
     case 'weighted_bodyweight':
     case 'assisted_bodyweight':
-      return w !== null && set.reps !== null ? `${w} × ${set.reps}` : set.reps !== null ? `${set.reps} ${repsUnit}` : '–'
+      return w !== null && reps !== null ? `${w} × ${reps}` : reps !== null ? `${reps} ${repsUnit}` : '–'
     case 'bodyweight_reps':
-      return set.reps !== null ? `${set.reps} ${repsUnit}` : '–'
+      return reps !== null ? `${reps} ${repsUnit}` : '–'
     case 'duration':
-      return set.duration_seconds ? formatDuration(set.duration_seconds) : '–'
+      return set.duration_seconds ? bothSides(formatDuration(set.duration_seconds), exercise) : '–'
     case 'distance_duration': {
       const km = set.distance_m ? `${formatDecimal(set.distance_m / 1000)} km` : ''
       const time = set.duration_seconds ? formatDuration(set.duration_seconds) : ''
@@ -545,7 +547,7 @@ export function summarize(workout: ActiveWorkout, now: Date): WorkoutSummary {
     if (done.length) exercisesWithSets += 1
     doneSets += done.length
     if (item.exercise.measurement !== 'weight_reps') continue
-    const perSide = item.exercise.load_mode === 'per_side' ? 2 : 1
+    const perSide = volumeFactor(item.exercise)
     for (const s of done) {
       if (s.set_type !== 'working') continue
       // Old persisted workouts may contain a now-invalid number. Never crash

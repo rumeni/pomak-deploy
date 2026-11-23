@@ -6,6 +6,7 @@ import { Card, LoadingScreen, ScreenHeader } from '../../components/ui'
 import { LineChart } from '../../components/LineChart'
 import { formatDecimal, formatShortDate, toISODate } from '../../lib/format'
 import { describeLogged } from '../workout/model'
+import { bothSides } from '../training/labels'
 import { formatRpe, parseRpe } from '../workout/rpe'
 import { useExerciseProgress, type RecordKey } from './api'
 import { formatRecordValue } from './format'
@@ -62,6 +63,7 @@ export function ExerciseProgressPage() {
           </details>
         )}
         {exercise.load_mode === 'per_side' && <p className="text-sm text-muted">{t('progress.perSideNote')}</p>}
+        {exercise.unilateral && <p className="text-sm text-muted">{t('routine.perSideHint')}</p>}
 
         {recordKeys.length > 0 && (
           <section className="flex flex-col gap-2">
@@ -75,8 +77,8 @@ export function ExerciseProgressPage() {
                     <dd className="text-xl font-bold tabular-nums">{formatRecordValue(key, r.value, repsUnit)}</dd>
                     <dd className="text-xs text-muted tabular-nums">
                       {r.weight !== undefined && r.reps !== undefined && key !== 'heaviest'
-                        && `${formatDecimal(Number(r.weight))} × ${r.reps}${parseRpe(r.rpe) !== null ? ` @ ${formatRpe(parseRpe(r.rpe)!)}` : ''} · `}
-                      {key === 'heaviest' && r.reps !== undefined && `× ${r.reps} · `}
+                        && `${formatDecimal(Number(r.weight))} × ${bothSides(String(r.reps), exercise)}${parseRpe(r.rpe) !== null ? ` @ ${formatRpe(parseRpe(r.rpe)!)}` : ''} · `}
+                      {key === 'heaviest' && r.reps !== undefined && `× ${bothSides(String(r.reps), exercise)} · `}
                       {formatShortDate(r.date)}
                     </dd>
                   </div>

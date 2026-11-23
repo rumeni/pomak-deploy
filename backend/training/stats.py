@@ -62,7 +62,7 @@ class _Totals:
     def add_session(self, session):
         self.sessions += 1
         for item in session.exercises.all():
-            factor = 2 if item.exercise.load_mode == Exercise.LoadMode.PER_SIDE else 1
+            factor = item.exercise.volume_factor
             for s in item.sets.all():
                 if s.set_type != RoutineSet.SetType.WORKING:
                     continue

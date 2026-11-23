@@ -14,6 +14,14 @@ DIST = 'distance_duration'
 TOTAL = 'total'
 SIDE = 'per_side'
 
+# Done one side at a time: reps per side ("10 + 10"). Set by migration 0017 and kept by later updates.
+UNILATERAL = {
+    'bulgarian-split-squat', 'split-squat', 'dumbbell-lunge', 'walking-lunge', 'reverse-lunge', 'lateral-lunge',
+    'step-up', 'dumbbell-row', 'single-arm-cable-row', 'concentration-curl', 'dumbbell-kickback',
+    'cable-kickback', 'cable-lateral-raise', 'landmine-press', 'donkey-kick', 'fire-hydrant',
+    'single-leg-glute-bridge', 'side-plank', 'pallof-press', 'turkish-get-up',
+}
+
 EXERCISES = [
     # Grudi
     ('bench-press', 'Potisak sa ravne klupe (šipka)', 'bench press, benč, bench', 'barbell', W, 'chest', TOTAL),
