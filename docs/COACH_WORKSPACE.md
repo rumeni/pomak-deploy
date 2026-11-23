@@ -709,3 +709,17 @@ klijenta iz T1.
   - `scheduling.0001_scheduling`, koja uključuje proširenje `btree_gist` (Neon ga podržava);
   - `notifications.0003_worker_wakeup`.
 - Za tačne podsetnike i push podesiti `PUSH_WORKER_URL` (QStash), kao u T3.
+
+## T7: plan ishrane od trenera
+
+- **Šta:** dnevni plan po obrocima (doručak, ručak, večera, užina), sa namirnicama iz zajedničke baze i
+  količinom. Važi za svaki dan dok traje saradnja.
+- **Dozvola:** ista kao za kalorijski cilj (`coach_sets_nutrition`). Bez nje trener ne vidi i ne menja plan,
+  a klijent ga ne vidi. Svaki upis nosi ID saradnje (409 `collaboration_changed` za staru saradnju).
+- **Namirnice:** samo zajedničke (USDA i potvrđene zajedničke), nikad trenerove lične ili recepti, jer ih
+  klijent ne vidi.
+- **Klijent:** u dnevniku, u kartici obroka, vidi „Plan trenera …“ i dugme „Upiši iz plana“. Upis radi kao
+  sačuvani obrok: vrednosti namirnice u trenutku upisa se snimaju (AC-04), radi i bez interneta, a kasnija
+  izmena plana ne menja upisano.
+- **API:** `GET/PUT /api/coach/clients/<id>/meal-plan/` (trener, PUT zamenjuje ceo plan, najviše 40
+  namirnica) i `GET /api/coach/meal-plan/` (klijent). Plan je deo izvoza podataka.

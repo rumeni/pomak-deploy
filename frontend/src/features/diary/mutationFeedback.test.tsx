@@ -68,6 +68,7 @@ vi.mock('../coach/api', () => ({
 }))
 vi.mock('../coach/CoachMessages', () => ({ CoachMessages: () => null }))
 vi.mock('../coach/MyPlanCard', () => ({ MyPlanCard: () => null }))
+vi.mock('./CoachPlanRow', () => ({ CoachPlanRow: () => null }))
 vi.mock('../schedule/MyBookingsCard', () => ({ MyBookingsCard: () => null }))
 
 import { DiaryPage } from './DiaryPage'

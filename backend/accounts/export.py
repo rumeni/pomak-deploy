@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from nutrition.models import Food, MealEntry, NutritionDay, NutritionTarget, SavedMeal
 from scheduling.models import Booking, SessionPackage
-from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile, ExerciseInstruction
+from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile, ExerciseInstruction, MealPlanItem
 from progress.models import Goal, Measurement, WeeklyCheckIn
 from training.models import Exercise, Routine, SessionExercise, WorkoutSession
 
@@ -81,6 +81,10 @@ def collect(user) -> dict:
             # Written for the client, or by the coach.
             'exercise_instructions': list(ExerciseInstruction.objects.filter(connection__in=connections).order_by('created_at').values(
                 'exercise__name', 'text', 'created_at', 'updated_at',
+            )),
+            # The coach's daily meal plan (T7), for the client or by the coach.
+            'meal_plan_items': list(MealPlanItem.objects.filter(connection__in=connections).order_by('connection_id', 'position').values(
+                'meal', 'food__name', 'grams', 'portion_name', 'created_at',
             )),
         },
         'account': {'email': user.email, 'date_joined': user.date_joined, 'profile': {f: getattr(profile, f) for f in PROFILE_FIELDS}},

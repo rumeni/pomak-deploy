@@ -21,6 +21,7 @@ import { InstructionsPanel } from './Instructions'
 import { PlanPanel } from './PlanPanel'
 import { PackagesPanel } from '../schedule/PackagesPanel'
 import { ClientStats, ClientTargetPanel, WorkoutLinks } from './ClientTabs'
+import { MealPlanPanel } from './MealPlanPanel'
 import { coachRoutineAvailability } from './routineEligibility'
 import { readinessReasons } from './workspace'
 
@@ -129,6 +130,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
       {tab === 'nutrition' && (
         <>
           <ClientTargetPanel clientId={clientId} />
+          <MealPlanPanel clientId={clientId} />
           <Card title={t('coach.nutrition')}>
             {data.nutrition_days === null ? <p className="text-muted">{t('coach.notShared')}</p>
               : data.nutrition_days.length === 0 ? <p className="text-muted">{t('coach.noNutrition')}</p>

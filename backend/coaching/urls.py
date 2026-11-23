@@ -37,4 +37,6 @@ urlpatterns = [
     path('clients/<uuid:client_id>/stats/', review_views.ClientStatsView.as_view(), name='coach-client-stats'),
     path('clients/<uuid:client_id>/weeks/<str:day>/', review_views.ClientWeekView.as_view(), name='coach-client-week'),
     path('clients/<uuid:client_id>/nutrition-target/', review_views.ClientNutritionTargetView.as_view(), name='coach-client-nutrition-target'),
+    path('clients/<uuid:client_id>/meal-plan/', review_views.ClientMealPlanView.as_view(), name='coach-client-meal-plan'),
+    path('meal-plan/', review_views.MyMealPlanView.as_view(), name='coach-my-meal-plan'),
 ]
