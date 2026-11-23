@@ -20,7 +20,7 @@ Detalji: [`docs/STATUS.md`](docs/STATUS.md) · plan i model podataka: [`docs/PLA
 - Trening se čuva na telefonu (preživi gašenje aplikacije) i šalje se sam kad se internet vrati, bez duplikata
 
 **Ishrana**
-- Baza od 122 namirnice iz USDA FoodData Central (svaka vrednost ima USDA ID) + lične namirnice sa deklaracije
+- Baza od 195 namirnica iz USDA FoodData Central (svaka vrednost ima USDA ID) + lične namirnice sa deklaracije i zajedničke namirnice korisnika (admin ih potvrđuje). Domaća složena jela (burek, sarma…) nemaju pouzdan javni izvor: unose se kao recept ili čekaju stručnu proveru
 - Dnevnik po obrocima, zbir i status dana; nepoznata vrednost ostaje „?“, nikad 0
 - Sačuvani obroci, „Kopiraj od juče“, recepti (vrednosti se računaju iz sastojaka i mase gotovog jela)
 - Kalorijski cilj: predlog sa objašnjenjem proračuna ili sopstveni cilj ([metod](docs/KALORIJSKI_METOD.md) čeka stručnu proveru)
