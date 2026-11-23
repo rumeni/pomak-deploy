@@ -4,6 +4,7 @@ import type { DayStatus, DiaryDay, DiaryEntry, EntryWrite } from '../features/di
 import type { Food } from '../features/nutrition/api'
 import type { Exercise } from '../features/training/api'
 import type { ActiveWorkout, SessionPayload } from '../features/workout/model'
+import type { WorkoutSession } from '../features/workout/api'
 
 /** At most one unfinished workout per account, keyed by its owner ID. */
 export interface ActiveWorkoutRow {
@@ -70,6 +71,15 @@ export interface FoodCacheRow {
   usedAt: string
 }
 
+/** The account's latest finished workouts from the server, for the history without internet. */
+export interface HistoryCacheRow {
+  /** The owner's ID: one row per account. */
+  key: string
+  ownerId: string
+  sessions: WorkoutSession[]
+  savedAt: string
+}
+
 /** Lokalna baza u pregledaču/telefonu (IndexedDB). Opstaje kad se aplikacija zatvori. */
 export const db = new Dexie('pomak') as Dexie & {
   activeWorkout: EntityTable<ActiveWorkoutRow, 'slot'>
@@ -78,6 +88,7 @@ export const db = new Dexie('pomak') as Dexie & {
   diaryOps: EntityTable<DiaryOpRow, 'id'>
   foodCache: EntityTable<FoodCacheRow, 'key'>
   diarySyncLeases: EntityTable<DiarySyncLeaseRow, 'key'>
+  historyCache: EntityTable<HistoryCacheRow, 'key'>
 }
 
 db.version(1).stores({
@@ -122,4 +133,9 @@ db.version(4).stores({
 /** Add-only store: upgrading a device must never clear its existing offline diary. */
 db.version(5).stores({
   diarySyncLeases: 'key',
+})
+
+/** Add-only store: the latest workouts for the history without internet (T6). */
+db.version(6).stores({
+  historyCache: 'key, ownerId',
 })

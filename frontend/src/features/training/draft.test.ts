@@ -123,3 +123,21 @@ describe('draftToPayload', () => {
     expect(draftToPayload(draft).exercises[0].sets[0]).toMatchObject({ set_type: 'warmup', reps_min: 8, reps_max: 10, weight_kg: '62.5' })
   })
 })
+
+describe('supersets in the editor', () => {
+  it('a saved superset comes back the same, and a new exercise is on its own', () => {
+    const set = { set_type: 'working' as const, reps_min: 10, reps_max: 10, weight_kg: null, duration_seconds: null, distance_m: null }
+    const routine: Routine = {
+      id: 'r', name: 'A', notes: '', created_at: '', updated_at: 'u',
+      exercises: [
+        { exercise: bench, rest_seconds: 0, notes: '', superset: 1, sets: [set] },
+        { exercise: { ...bench, id: 'e3' }, rest_seconds: 90, notes: '', superset: 1, sets: [set] },
+        // Saved before supersets existed: no field at all.
+        { exercise: { ...bench, id: 'e4' }, rest_seconds: 90, notes: '', sets: [set] },
+      ],
+    }
+    const draft = routineToDraft(routine)
+    draft.exercises.push(newDraftExercise(bench))
+    expect(draftToPayload(draft).exercises.map((e) => e.superset)).toEqual([1, 1, null, null])
+  })
+})

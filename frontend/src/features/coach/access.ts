@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import type { CoachClientDetails } from './api'
 import type { CoachTask } from './tasks'
+import { forgetClientPhotos } from '../progress/photos'
 import type { WeekReview } from '../progress/weekApi'
 
 /**
@@ -272,6 +273,7 @@ export function visibleTaskList(tasks: CoachTask[], dashboard: DashboardAccess |
 
 /** Forget everything cached about a client the coach lost access to, and refresh the lists. */
 export function purgeClient(qc: QueryClient, clientId: string): Promise<unknown> {
+  forgetClientPhotos(qc, clientId)
   for (const key of ['coach-client', 'coach-messages', 'coach-client-plan', 'coach-client-workout', 'coach-client-stats',
     'coach-client-targets', 'coach-client-week', 'coach-client-instructions', 'schedule-packages']) {
     qc.removeQueries({ queryKey: [key, clientId] })

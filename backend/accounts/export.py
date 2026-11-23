@@ -15,8 +15,8 @@ from django.utils import timezone
 from nutrition.models import Food, MealEntry, NutritionDay, NutritionTarget, SavedMeal
 from scheduling.models import Booking, SessionPackage
 from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile, ExerciseInstruction, MealPlanItem
-from progress.models import Goal, Measurement, WeeklyCheckIn
-from training.models import Exercise, Routine, SessionExercise, WorkoutSession
+from progress.models import Goal, Measurement, ProgressPhoto, WeeklyCheckIn
+from training.models import Exercise, Routine, ScheduleDay, SessionExercise, WorkoutSession
 
 PROFILE_FIELDS = [
     'display_name', 'language', 'is_coach', 'tracks_training', 'tracks_nutrition', 'training_experience',
@@ -89,19 +89,29 @@ def collect(user) -> dict:
         },
         'account': {'email': user.email, 'date_joined': user.date_joined, 'profile': {f: getattr(profile, f) for f in PROFILE_FIELDS}},
         'measurements': list(Measurement.objects.filter(user=user).order_by('measured_on').values('kind', 'value', 'measured_on', 'note')),
+        # The pictures themselves are files in the ZIP (slike_napretka/).
+        'progress_photos': [
+            {'file': _photo_file(p), 'taken_on': p.taken_on, 'pose': p.pose, 'note': p.note}
+            for p in ProgressPhoto.objects.filter(user=user).defer('data').order_by('taken_on', 'created_at')
+        ],
         'weekly_checkins': list(WeeklyCheckIn.objects.filter(user=user).order_by('week_start').values(
             'week_start', 'energy', 'progress', 'nutrition', 'satisfaction', 'hardest', 'notes',
         )),
         'goals': list(Goal.objects.filter(user=user).values(
             'kind', 'start_value', 'target_value', 'start_date', 'target_date', 'status', 'closed_on',
         )),
-        'custom_exercises': list(Exercise.objects.filter(owner=user).values('id', 'name', 'equipment', 'measurement', 'load_mode', 'muscle', 'archived_at', 'coach_name')),
+        'custom_exercises': list(Exercise.objects.filter(owner=user).values('id', 'name', 'equipment', 'measurement', 'load_mode', 'unilateral', 'muscle', 'archived_at', 'coach_name')),
+        'schedule': [
+            {'weekday': d.weekday, 'routine': d.routine.name}
+            for d in ScheduleDay.objects.filter(owner=user).select_related('routine')
+        ],
         'routines': [
             {
                 'name': r.name, 'notes': r.notes, 'archived_at': r.archived_at,
                 'exercises': [
                     {
                         'exercise': e.exercise.name, 'rest_seconds': e.rest_seconds, 'notes': e.notes,
+                        'superset': e.superset,
                         'sets': _sets(e.sets.all(), ['set_type', 'reps_min', 'reps_max', 'weight_kg', 'duration_seconds', 'distance_m', 'rpe']),
                     }
                     for e in r.exercises.all()
@@ -115,7 +125,8 @@ def collect(user) -> dict:
                 'readiness': {f: getattr(s, f) for f in READINESS_EXPORT},
                 'edited_at': s.edited_at,
                 'exercises': [
-                    {'exercise': e.exercise.name, 'notes': e.notes, 'sets': _sets(e.sets.all(), SET_FIELDS)} for e in s.exercises.all()
+                    {'exercise': e.exercise.name, 'notes': e.notes, 'superset': e.superset, 'sets': _sets(e.sets.all(), SET_FIELDS)}
+                    for e in s.exercises.all()
                 ],
             }
             for s in sessions
@@ -198,4 +209,11 @@ def build_zip(user) -> bytes:
             ['datum', 'vrsta', 'vrednost', 'napomena'],
             [[m['measured_on'], m['kind'], m['value'], m['note']] for m in data['measurements']],
         ))
+        # One picture at a time, so a large collection never sits in memory twice.
+        for photo in ProgressPhoto.objects.filter(user=user).only('id', 'taken_on', 'pose').iterator():
+            z.writestr(_photo_file(photo), bytes(ProgressPhoto.objects.values_list('data', flat=True).get(pk=photo.pk)))
     return buffer.getvalue()
+
+
+def _photo_file(photo) -> str:
+    return f'slike_napretka/{photo.taken_on}-{photo.pose}-{str(photo.id)[:8]}.jpg'

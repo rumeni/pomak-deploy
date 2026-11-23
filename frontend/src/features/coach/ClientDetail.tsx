@@ -24,6 +24,10 @@ import { ClientStats, ClientTargetPanel, WorkoutLinks } from './ClientTabs'
 import { MealPlanPanel } from './MealPlanPanel'
 import { coachRoutineAvailability } from './routineEligibility'
 import { readinessReasons } from './workspace'
+import { SupersetBadge } from '../training/SupersetFrame'
+import { supersetLabels } from '../training/supersets'
+import { ProgressPhotos } from '../progress/ProgressPhotos'
+import { forgetClientPhotos } from '../progress/photos'
 
 const TABS = ['overview', 'plan', 'progress', 'nutrition', 'notes'] as const
 type Tab = (typeof TABS)[number]
@@ -63,6 +67,8 @@ export function ClientDetail({ clientId }: { clientId: string }) {
     }
     if (redactWith) {
       qc.setQueryData<CoachClientDetails>(['coach-client', clientId], (old) => (old ? redactCached(old, redactWith) : old))
+      // Progress photos need the measurements consent: none of them may stay on this device.
+      if (!redactWith.share_measurements) forgetClientPhotos(qc, clientId)
     }
     if (view.refresh) void refreshCoachLists(qc, clientId)
   }, [view.purge, view.refresh, redactWith, qc, clientId])
@@ -228,6 +234,7 @@ function OverviewTab({ data }: { data: CoachClientDetails }) {
 
 function WorkoutSummary({ workout }: { workout: CoachClientDetails['recent_workouts'][number] }) {
   const { t } = useTranslation()
+  const supersets = supersetLabels(workout.exercises)
   return (
     <div>
       <p className="font-semibold">{workout.name}</p>
@@ -238,8 +245,8 @@ function WorkoutSummary({ workout }: { workout: CoachClientDetails['recent_worko
       </p>
       {workout.exercises.map((item, index) => (
         <div key={`${item.name}-${index}`} className="mt-1 text-sm">
-          <span>{item.name}: </span>
-          <span className="text-muted">{item.sets.map((set) => formatCoachSet(set, `${t('routine.warmupShort')}:`, t('coach.reps'))).join(', ')}</span>
+          <span><SupersetBadge label={supersets[index]} />{item.name}: </span>
+          <span className="text-muted">{item.sets.map((set) => formatCoachSet(set, `${t('routine.warmupShort')}:`, t('coach.reps'), item.unilateral)).join(', ')}</span>
         </div>
       ))}
       {workout.notes && <p className="mt-1 whitespace-pre-wrap text-sm">{workout.notes}</p>}
@@ -253,6 +260,18 @@ function ProgressTab({ clientId, data }: { clientId: string; data: CoachClientDe
     <>
       <WorkoutLinks clientId={clientId} workouts={data.recent_workouts} />
       <ClientStats clientId={clientId} />
+      {/* Only under the current measurements consent (null here once it is withdrawn or stale). */}
+      {data.measurements === null ? (
+        <Card title={t('photos.title')}><p className="text-muted">{t('coach.notShared')}</p></Card>
+      ) : (
+        <ProgressPhotos
+          source={{ kind: 'client', clientId, accessVersion: data.connection.access_version ?? 0 }}
+          weightOn={(date) => {
+            const m = data.measurements?.find((x) => x.kind === 'weight' && x.measured_on === date)
+            return m ? `${formatDecimal(Number(m.value))} kg` : null
+          }}
+        />
+      )}
       <Card title={t('coach.measurements')}>
         {data.measurements === null ? <p className="text-muted">{t('coach.notShared')}</p> : (
           data.measurements.length === 0 ? <p className="text-muted">{t('coach.noMeasurements')}</p> :

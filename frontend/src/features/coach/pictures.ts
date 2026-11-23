@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 
 import { api } from '../../lib/api'
 import { getCurrentUserId } from '../../lib/currentUser'
@@ -65,12 +65,38 @@ export function usePicture(path: string | null) {
   })
 }
 
+// One object URL per fetched picture, shared by everything showing it and released a moment after
+// the last one stops (so a component that React mounts twice never loses its URL).
+const objectUrls = new WeakMap<Blob, { url: string; users: number }>()
+
+function objectUrl(blob: Blob): { url: string; users: number } {
+  let entry = objectUrls.get(blob)
+  if (!entry) {
+    entry = { url: URL.createObjectURL(blob), users: 0 }
+    objectUrls.set(blob, entry)
+  }
+  return entry
+}
+
 /** The object URL of a fetched picture, released when no longer shown. */
 export function usePictureUrl(path: string | null): { url: string | null; failed: boolean } {
   const picture = usePicture(path)
-  const url = useMemo(() => (picture.data ? URL.createObjectURL(picture.data) : null), [picture.data])
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
-  return { url, failed: picture.isError }
+  const blob = picture.data
+  useEffect(() => {
+    if (!blob) return
+    const entry = objectUrl(blob)
+    entry.users += 1
+    return () => {
+      entry.users -= 1
+      setTimeout(() => {
+        if (entry.users === 0 && objectUrls.get(blob) === entry) {
+          URL.revokeObjectURL(entry.url)
+          objectUrls.delete(blob)
+        }
+      }, 0)
+    }
+  }, [blob])
+  return { url: blob ? objectUrl(blob).url : null, failed: picture.isError }
 }
 
 /** The coach's picture path for his card (versioned, so a new picture is fetched again). */

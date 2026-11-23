@@ -262,7 +262,7 @@ function ExerciseEditor({ item, onChange }: { item: ActiveExercise; onChange: (c
   const { exercise } = item
   const m = exercise.measurement
   const showRpe = m !== 'duration' && m !== 'distance_duration'
-  const fields = inputFields(m, exercise.load_mode === 'per_side', t)
+  const fields = inputFields(m, exercise.load_mode === 'per_side', t, exercise.unilateral)
   const warmup = t('routine.warmupShort')
   const labels = item.sets.reduce<string[]>((acc, s) => {
     const done = acc.filter((l) => l !== warmup).length

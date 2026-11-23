@@ -63,6 +63,9 @@ class Exercise(TimeStampedModel):
     equipment = models.CharField(max_length=20, choices=Equipment.choices)
     measurement = models.CharField(max_length=30, choices=Measurement.choices)
     load_mode = models.CharField(max_length=10, choices=LoadMode.choices, default=LoadMode.TOTAL)
+    # Done one side at a time (Bulgarian split squat, one-arm row): reps are entered per side and
+    # shown as "10 + 10", and the volume counts both sides.
+    unilateral = models.BooleanField(default=False, db_default=False)
     muscle = models.CharField(max_length=20, choices=Muscle.choices)
     instructions = models.TextField(blank=True)
     # Uputstvo na engleskom (zajednička biblioteka); prikazuje se po jeziku aplikacije kao i naziv.
@@ -87,6 +90,12 @@ class Exercise(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def volume_factor(self) -> int:
+        """Both sides count: weight entered per dumbbell, or reps entered per side (not both: a
+        one-arm row is one dumbbell, its reps per arm)."""
+        return 2 if self.load_mode == self.LoadMode.PER_SIDE or self.unilateral else 1
 
     def save(self, *args, **kwargs):
         self.search_name = normalize_search(f'{self.name} {self.name_en} {self.aliases}')
@@ -120,6 +129,9 @@ class RoutineExercise(TimeStampedModel):
     position = models.PositiveSmallIntegerField()
     rest_seconds = models.PositiveSmallIntegerField(null=True, blank=True)
     notes = models.CharField(max_length=300, blank=True)
+    # Superset / tri-set: exercises next to each other with the same number are done back to back
+    # (A1 -> A2 -> rest). Numbered 1, 2 ... in routine order; empty for an exercise on its own.
+    superset = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ['position']
@@ -191,6 +203,8 @@ class SessionExercise(TimeStampedModel):
     exercise = models.ForeignKey(Exercise, on_delete=models.RESTRICT, related_name='+')
     position = models.PositiveSmallIntegerField()
     notes = models.CharField(max_length=300, blank=True)
+    # The superset this exercise was done in (same meaning as RoutineExercise.superset).
+    superset = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ['position']
@@ -214,3 +228,19 @@ class SetLog(TimeStampedModel):
 
     class Meta:
         ordering = ['position']
+
+
+class ScheduleDay(TimeStampedModel):
+    """The athlete's own week: which of his routines he trains on a weekday (0 = Monday).
+
+    For athletes without a coach; a coach's plan takes over while there is one. Days without a
+    row are rest days. A routine deleted later simply leaves its day empty.
+    """
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='schedule_days')
+    weekday = models.PositiveSmallIntegerField(validators=[MaxValueValidator(6)])
+    routine = models.ForeignKey(Routine, on_delete=models.CASCADE, related_name='+')
+
+    class Meta:
+        ordering = ['weekday']
+        constraints = [models.UniqueConstraint(fields=['owner', 'weekday'], name='schedule_one_routine_per_day')]

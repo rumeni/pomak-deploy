@@ -94,7 +94,7 @@ def client_exercise(exercise: Exercise, client, coach) -> Exercise:
     return Exercise.objects.create(
         owner=client, source_exercise=exercise, coach_name=coach_label(coach),
         name=exercise.name, aliases=exercise.aliases, equipment=exercise.equipment,
-        measurement=exercise.measurement, load_mode=exercise.load_mode, muscle=exercise.muscle,
+        measurement=exercise.measurement, load_mode=exercise.load_mode, unilateral=exercise.unilateral, muscle=exercise.muscle,
         instructions=exercise.instructions,
     )
 
@@ -108,7 +108,7 @@ def copy_routine(source: Routine, owner) -> Routine:
             copies[item.exercise_id] = client_exercise(item.exercise, owner, source.owner)
         exercise = RoutineExercise.objects.create(
             routine=clone, exercise=copies[item.exercise_id], position=item.position,
-            rest_seconds=item.rest_seconds, notes=item.notes,
+            rest_seconds=item.rest_seconds, notes=item.notes, superset=item.superset,
         )
         RoutineSet.objects.bulk_create([
             RoutineSet(
@@ -235,7 +235,7 @@ def prescription_of(routine) -> dict:
             {
                 'exercise_id': str(item.exercise_id), 'name': item.exercise.name,
                 'name_en': getattr(item.exercise, 'name_en', '') or '', 'measurement': item.exercise.measurement,
-                'rest_seconds': item.rest_seconds, 'notes': item.notes,
+                'rest_seconds': item.rest_seconds, 'notes': item.notes, 'superset': item.superset,
                 'sets': [
                     {'set_type': s.set_type, 'reps_min': s.reps_min, 'reps_max': s.reps_max,
                      'weight_kg': str(s.weight_kg) if s.weight_kg is not None else None,

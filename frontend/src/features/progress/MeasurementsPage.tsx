@@ -9,6 +9,7 @@ import { formatDecimal, formatShortDate, parseDecimal, toISODate } from '../../l
 import { uuid } from '../../lib/uuid'
 import { MEASUREMENT_KINDS, useAddMeasurement, useDeleteMeasurement, useMeasurements, type MeasurementKind } from './api'
 import { measurementPoints } from './format'
+import { ProgressPhotos } from './ProgressPhotos'
 
 /** Telesna težina i obimi: unos, grafikon i lista. Vrsta je u adresi (?vrsta=waist). */
 export function MeasurementsPage() {
@@ -21,6 +22,12 @@ export function MeasurementsPage() {
   const remove = useDeleteMeasurement()
   const points = data ? measurementPoints(data) : []
   const fmt = (v: number) => `${formatDecimal(Math.round(v * 10) / 10)} ${unit}`
+  // Body weight measured on a photo's day, shown under it when two photos are compared.
+  const weights = useMeasurements('weight').data
+  const weightOn = (date: string) => {
+    const m = weights?.find((x) => x.measured_on === date)
+    return m ? `${formatDecimal(Number(m.value))} kg` : null
+  }
 
   return (
     <div className="min-h-full pb-10">
@@ -78,6 +85,8 @@ export function MeasurementsPage() {
           </ul>
         )}
         <FormError message={remove.isError ? errorMessage(remove.error) : null} />
+
+        <ProgressPhotos source={{ kind: 'own' }} weightOn={weightOn} />
       </div>
     </div>
   )

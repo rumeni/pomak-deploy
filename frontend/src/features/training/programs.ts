@@ -1,4 +1,5 @@
 import type { Routine, RoutineExercise, RoutinePayload } from './api'
+import { bothSides } from './labels'
 
 export type ProgramLevel = 'beginner' | 'intermediate' | 'advanced'
 
@@ -91,7 +92,7 @@ export function describePrescription(item: RoutineExercise, secondsUnit: string)
     ? `${s.duration_seconds} ${secondsUnit}`
     : s.reps_min === s.reps_max ? String(s.reps_min) : `${s.reps_min}–${s.reps_max}`
   const rpe = s.rpe ? ` @ ${String(Number(s.rpe)).replace('.', ',')}` : ''
-  return `${count} × ${amount}${rpe}`
+  return `${count} × ${bothSides(amount, item.exercise)}${rpe}`
 }
 
 /**

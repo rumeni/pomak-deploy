@@ -9,10 +9,16 @@ import { HistoryList } from '../workout/HistoryList'
 import { useStartWorkout } from '../workout/useStartWorkout'
 import { useRoutines, type Routine } from './api'
 import { ProgramsSection } from './ProgramsSection'
+import { ScheduleCard } from './ScheduleCard'
+import { useMyPlan } from '../coach/plansApi'
+import { useAuth } from '../../lib/auth'
 
 export function TrainingPage() {
   const { t } = useTranslation()
   const { data: routines, isLoading, isError } = useRoutines()
+  const { me } = useAuth()
+  // A coach's plan decides the week while there is one; otherwise the athlete plans it here.
+  const plan = useMyPlan(!!me && !me.profile.is_coach)
   const start = useStartWorkout()
   const [starting, setStarting] = useState<string | null>(null)
 
@@ -62,6 +68,8 @@ export function TrainingPage() {
         <Button variant="secondary" onClick={() => void onStart(null)} disabled={starting !== null}>
           {t('workout.startEmpty')}
         </Button>
+
+        <ScheduleCard routines={routines} coachPlan={!!plan.data?.current_version_id || (!!me && !me.profile.is_coach && !plan.isFetched)} />
 
         <ProgramsSection routines={routines} />
 

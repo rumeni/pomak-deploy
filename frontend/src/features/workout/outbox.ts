@@ -6,6 +6,7 @@ import { getCurrentUserId } from '../../lib/currentUser'
 import { StaleWorkoutError } from './store'
 import type { Exercise } from '../training/api'
 import { uuid } from '../../lib/uuid'
+import { renumber } from '../training/supersets'
 import { loggedToActiveSet, prepareSessionPayload, uploadSafePlanSnapshot, type ActiveWorkout, type PreviousPerformance, type SessionPayload } from './model'
 
 /**
@@ -81,7 +82,8 @@ export async function restoreRejectedWorkout(ownerId: string, id: string): Promi
     if (await db.activeWorkout.get(ownerId)) throw new Error('ACTIVE_WORKOUT_EXISTS')
 
     const exercisesById = new Map(row.exercises.map((e) => [e.id, e]))
-    const exercises = row.payload.exercises.filter((e) => e.sets.length).map((item) => {
+    // A superset left with one exercise (the others had no confirmed sets) is a single exercise again.
+    const exercises = renumber(row.payload.exercises.filter((e) => e.sets.length).map((item) => {
       const exercise = exercisesById.get(item.exercise_id)
       if (!exercise) throw new Error('MISSING_EXERCISE')
       return {
@@ -89,9 +91,10 @@ export async function restoreRejectedWorkout(ownerId: string, id: string): Promi
         exercise,
         restSeconds: 0,
         notes: item.notes,
+        superset: item.superset ?? null,
         sets: item.sets.map(loggedToActiveSet),
       }
-    })
+    }))
 
     const workout: ActiveWorkout = {
       id: row.payload.id,

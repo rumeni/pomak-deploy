@@ -639,7 +639,7 @@ class CoachClientView(APIView):
                  'feeling': x.feeling, 'notes': x.notes, 'edited_at': x.edited_at,
                  'readiness': readiness_summary(x) if connection.share_readiness else None,
                  'exercises': [
-                     {'name': item.exercise.name, 'sets': [
+                     {'name': item.exercise.name, 'superset': item.superset, 'unilateral': item.exercise.unilateral, 'sets': [
                          {'set_type': setlog.set_type, 'reps': setlog.reps, 'weight_kg': str(setlog.weight_kg) if setlog.weight_kg is not None else None,
                           'duration_seconds': setlog.duration_seconds, 'distance_m': setlog.distance_m,
                           'rpe': str(setlog.rpe) if setlog.rpe is not None else None}

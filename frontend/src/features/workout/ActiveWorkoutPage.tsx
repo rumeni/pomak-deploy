@@ -8,7 +8,7 @@ import { getFormatLocale } from '../../lib/format'
 import { useNow } from '../../lib/useNow'
 import type { Exercise } from '../training/api'
 import { ExercisePicker } from '../training/ExercisePicker'
-import { formatDuration } from '../training/labels'
+import { bothSides, formatDuration } from '../training/labels'
 import { FinishWorkout } from './FinishWorkout'
 import {
   confirmSet,
@@ -17,6 +17,7 @@ import {
   MAX_EXERCISE_NOTES,
   moveExercise,
   newActiveExercise,
+  nextInSuperset,
   planSummary,
   previousSet,
   removeExercise,
@@ -50,6 +51,8 @@ import { formatRpe, parseRpe } from './rpe'
 import { formatDecimal } from '../../lib/format'
 import { RpeSheet } from './RpeSheet'
 import { inputFields, type Field } from './fields'
+import { SupersetFrame } from '../training/SupersetFrame'
+import { blocks, supersetLabels } from '../training/supersets'
 
 // Match backend WorkoutSessionSerializer boundaries so a finished offline
 // workout is never rejected merely for having too many items.
@@ -177,6 +180,7 @@ export function ActiveWorkoutPage() {
     if (Object.keys(previous).length) update((w) => ({ ...w, previous: { ...w.previous, ...previous } }))
   }
 
+  const labels = supersetLabels(workout.exercises)
   const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(workout.startedAt).getTime()) / 1000))
   const progress = setProgress(workout)
 
@@ -201,19 +205,29 @@ export function ActiveWorkoutPage() {
         <ConfirmSetsHint ownerId={row.ownerId} />
         <ReadinessRow readiness={workout.readiness} onOpen={() => setEditingCheckIn(true)} />
         {workout.exercises.length === 0 && <p className="py-6 text-center text-muted">{t('workout.noExercises')}</p>}
-        {workout.exercises.map((item, index) => (
-          <WorkoutExerciseCard
-            key={item.key}
-            workout={workout}
-            item={item}
-            isFirst={index === 0}
-            isLast={index === workout.exercises.length - 1}
-            // The how-to line under the sets is the same on every card; show it once.
-            showHint={index === 0}
-            update={update}
-            onReplace={() => setReplaceFor(item.key)}
-          />
-        ))}
+        {blocks(workout.exercises).map((block) => {
+          const cards = block.items.map((item, offset) => {
+            const index = block.start + offset
+            return (
+              <WorkoutExerciseCard
+                key={item.key}
+                workout={workout}
+                item={item}
+                superset={labels[index]}
+                nextInRound={offset < block.items.length - 1 ? labels[index + 1] : null}
+                isFirst={index === 0}
+                isLast={index === workout.exercises.length - 1}
+                // The how-to line under the sets is the same on every card; show it once.
+                showHint={index === 0}
+                update={update}
+                onReplace={() => setReplaceFor(item.key)}
+              />
+            )
+          })
+          return block.items.length > 1
+            ? <SupersetFrame key={block.items[0].key} labels={labels.slice(block.start, block.start + block.items.length) as string[]}>{cards}</SupersetFrame>
+            : cards
+        })}
         <Button variant="secondary" onClick={() => setPickerOpen(true)}>
           {t('workout.addExercise')}
         </Button>
@@ -245,6 +259,8 @@ export function ActiveWorkoutPage() {
 function WorkoutExerciseCard({
   workout,
   item,
+  superset,
+  nextInRound,
   isFirst,
   isLast,
   showHint,
@@ -253,6 +269,10 @@ function WorkoutExerciseCard({
 }: {
   workout: ActiveWorkout
   item: ActiveExercise
+  /** "A1" in a superset, null for an exercise on its own. */
+  superset: string | null
+  /** The next exercise of the round ("A2"), null for the last one of a superset or a single exercise. */
+  nextInRound: string | null
   isFirst: boolean
   isLast: boolean
   showHint: boolean
@@ -280,7 +300,7 @@ function WorkoutExerciseCard({
     return [...acc, s.set_type === 'warmup' ? warmup : String(done + 1)]
   }, [])
 
-  const fields = inputFields(m, exercise.load_mode === 'per_side', t)
+  const fields = inputFields(m, exercise.load_mode === 'per_side', t, exercise.unilateral)
   const plan = planSummary(item)
   // Where the grey weight comes from, per row, when the plan prescribes RPE instead of a weight.
   const rpeRows = rpeLoadRows(workout, item)
@@ -295,8 +315,11 @@ function WorkoutExerciseCard({
     if (set.done) return update((w) => unconfirmSet(w, item.key, set.key))
     try {
       // Provera pre upisa: greška se prikazuje, a trening ostaje nepromenjen.
-      confirmSet(workout, item.key, set.key, new Date())
+      const after = confirmSet(workout, item.key, set.key, new Date())
       update((w) => confirmSet(w, item.key, set.key, new Date()))
+      // A superset goes on with the next exercise of the round, without a rest: bring it into view.
+      const next = nextInSuperset(after, item.key, item.sets.findIndex((s) => s.key === set.key))
+      if (next) requestAnimationFrame(() => document.getElementById(`exercise-${next.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
     } catch (e) {
       if (e instanceof SetInputError) setError(t(e.message))
       else throw e
@@ -341,14 +364,16 @@ function WorkoutExerciseCard({
   const planText = plan && [
     plan.warmups ? `${plan.warmups} ${warmup}` : null,
     ...plan.groups.map((g) =>
-      `${g.count} × ${g.km ? `${g.km} km` : ''}${g.km && g.time ? ' · ' : ''}${g.time ?? (g.km ? '' : g.reps ?? '–')}${g.weight ? ` · ${g.weight} kg` : ''}${g.rpe !== null ? ` @ ${formatRpe(g.rpe)}` : ''}`),
+      `${g.count} × ${g.km ? `${g.km} km` : ''}${g.km && g.time ? ' · ' : ''}${g.time ? bothSides(g.time, exercise) : g.km ? '' : g.reps ? bothSides(g.reps, exercise) : '–'}${g.weight ? ` · ${g.weight} kg` : ''}${g.rpe !== null ? ` @ ${formatRpe(g.rpe)}` : ''}`),
   ].filter(Boolean).join(' + ')
 
   return (
-    <section className="rounded-2xl bg-card p-3 shadow-sm ring-1 ring-line/60">
+    <section id={`exercise-${item.key}`} className="scroll-mt-20 rounded-2xl bg-card p-3 shadow-sm ring-1 ring-line/60">
       <div className="flex items-start gap-1 px-1">
-        <ExerciseHeading exercise={exercise}>
+        <ExerciseHeading exercise={exercise} superset={superset}>
           <p className="text-xs font-semibold tabular-nums text-brand-dark">{t('workout.setsProgress', { done: doneSets, total: item.sets.length })}</p>
+          {exercise.unilateral && <p className="text-xs text-muted">{t('routine.perSideHint')}</p>}
+          {nextInRound && <p className="text-xs text-muted">{t('routine.superset.noRest', { next: nextInRound })}</p>}
           {previous && (
             <p className="text-xs text-muted">
               {t('workout.lastTime', { date: new Date(previous.started_at).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'long' }) })}

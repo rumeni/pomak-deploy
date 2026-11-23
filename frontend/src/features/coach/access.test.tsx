@@ -24,6 +24,7 @@ vi.mock('../../lib/api', () => ({ errorMessage: (error: unknown) => String(error
 vi.mock('./ClientTabs', () => ({ ClientStats: () => null, ClientTargetPanel: () => null, WorkoutLinks: () => null }))
 vi.mock('./PlanPanel', () => ({ PlanPanel: () => null }))
 vi.mock('./MealPlanPanel', () => ({ MealPlanPanel: () => null }))
+vi.mock('../progress/ProgressPhotos', () => ({ ProgressPhotos: () => 'PROGRESS-PHOTOS' }))
 vi.mock('../schedule/PackagesPanel', () => ({ PackagesPanel: () => null }))
 vi.mock('./Instructions', () => ({ InstructionsPanel: () => null }))
 vi.mock('./pictures', () => ({ usePictureUrl: () => ({ url: null, failed: false }) }))
@@ -137,6 +138,24 @@ describe('coach access follows the highest server version seen from any source',
     const html = render('progress')
     expect(html).not.toContain('74.2')
     expect(html).not.toContain('Spremnost')
+    // Progress photos need the measurements consent too: not even mounted (no fetch, no cache).
+    expect(html).not.toContain('PROGRESS-PHOTOS')
+    expect(html).toContain('photos.title')
+  })
+
+  it('progress photos show while measurements are shared, and are forgotten once the consent is withdrawn', () => {
+    show({ data: detail({ version: 1 }) }, dashboardData([row()]))
+    expect(render('progress')).toContain('PROGRESS-PHOTOS')
+
+    state.qc.setQueryData(['progress-photos', 'coach-1', 'client-1', 1], [{ id: 'p1' }])
+    state.qc.setQueryData(['coach-picture', 'coach-1', '/coach/clients/client-1/photos/p1/image/?v=1'], new Blob(['secret']))
+    // A newer version without the measurements consent arrives (here from the client data itself).
+    show({ data: detail({ version: 2, measurements: false }) }, dashboardData([row()]))
+    expect(render('progress')).not.toContain('PROGRESS-PHOTOS')
+    // Once the coach loses access entirely, nothing of the client's photos stays cached.
+    void purgeClient(state.qc, 'client-1')
+    expect(state.qc.getQueryData(['progress-photos', 'coach-1', 'client-1', 1])).toBeUndefined()
+    expect(state.qc.getQueryData(['coach-picture', 'coach-1', '/coach/clients/client-1/photos/p1/image/?v=1'])).toBeUndefined()
   })
 
   it('consent given again does not unmask old cached data when the fresh fetch fails', () => {

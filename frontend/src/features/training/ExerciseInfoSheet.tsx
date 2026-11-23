@@ -23,6 +23,7 @@ export function ExerciseInfoSheet({ exercise, onClose }: { exercise: Exercise; o
   }, [onClose])
 
   const chips = [t(`muscle.${exercise.muscle}`), t(`equipment.${exercise.equipment}`), t(`measurement.${exercise.measurement}`)]
+  if (exercise.unilateral) chips.push(t('newExercise.unilateral'))
   if (exercise.coach_name) chips.push(t('picker.fromCoach', { name: exercise.coach_name }))
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose} role="presentation">

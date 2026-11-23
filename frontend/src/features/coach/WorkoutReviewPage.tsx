@@ -13,6 +13,9 @@ import { useClientGuard } from './guard'
 import { useClientWorkout, useMarkReviewed, type ClientWorkout, type ReviewSet } from './reviewApi'
 import { describePlannedSets } from './review'
 import { readinessReasons } from './workspace'
+import { SupersetBadge } from '../training/SupersetFrame'
+import { bothSides } from '../training/labels'
+import { supersetLabels } from '../training/supersets'
 
 /** One workout of a client: what was planned and what was done, then review and comment. */
 export function WorkoutReviewPage() {
@@ -85,11 +88,12 @@ export function WorkoutReviewPage() {
   )
 }
 
-function doneSet(set: ReviewSet, t: (key: string) => string): string {
+function doneSet(set: ReviewSet, t: (key: string) => string, unilateral = false): string {
   const parts: string[] = []
+  const side = { unilateral }
   if (set.weight_kg != null) parts.push(`${formatDecimal(Number(set.weight_kg))} kg`)
-  if (set.reps != null) parts.push(`× ${set.reps}`)
-  if (set.duration_seconds != null) parts.push(`${Math.round(set.duration_seconds / 60 * 10) / 10} min`)
+  if (set.reps != null) parts.push(`× ${bothSides(String(set.reps), side)}`)
+  if (set.duration_seconds != null) parts.push(`${bothSides(String(Math.round(set.duration_seconds / 60 * 10) / 10), side)} min`)
   if (set.distance_m != null) parts.push(`${formatDecimal(set.distance_m / 1000)} km`)
   if (set.rpe != null) parts.push(`@ ${formatDecimal(Number(set.rpe))}`)
   return `${set.set_type === 'warmup' ? `${t('routine.warmupShort')}: ` : ''}${parts.join(' ')}`
@@ -100,21 +104,22 @@ function PlannedVsDone({ workout, clientId, instructions }: { workout: ClientWor
   const { t } = useTranslation()
   const planned = workout.plan?.exercises ?? []
   const doneIds = new Set(workout.exercises.map((e) => e.exercise_id))
+  const supersets = supersetLabels(workout.exercises)
   const skipped = planned.filter((p) => p.exercise?.id && !doneIds.has(p.exercise.id))
   const current = (exerciseId: string) => instructions?.find((x) => x.exercise_id === exerciseId)?.text ?? ''
   return (
     <Card title={t('coachSpace.review.plannedVsDone')}>
       {!workout.plan && <p className="mb-2 text-sm text-muted">{t('coachSpace.review.noPlan')}</p>}
       <ul className="flex flex-col divide-y divide-line">
-        {workout.exercises.map((exercise) => {
+        {workout.exercises.map((exercise, index) => {
           const plan = planned.find((p) => p.exercise?.id === exercise.exercise_id)
           return (
             <li key={exercise.exercise_id} className="py-2">
-              <p className="font-semibold">{exercise.name}</p>
+              <p className="font-semibold"><SupersetBadge label={supersets[index]} />{exercise.name}</p>
               {workout.plan && (
                 <p className="text-sm text-muted">{t('coachSpace.review.planned')}: {plan ? describePlannedSets(plan.sets ?? [], t) : t('coachSpace.review.extra')}</p>
               )}
-              <p className="text-sm">{t('coachSpace.review.done')}: {exercise.sets.map((s) => doneSet(s, t)).join(', ')}</p>
+              <p className="text-sm">{t('coachSpace.review.done')}: {exercise.sets.map((s) => doneSet(s, t, exercise.unilateral)).join(', ')}</p>
               {exercise.notes && <p className="text-xs text-muted">„{exercise.notes}“</p>}
               {instructions && (
                 <InstructionEditor

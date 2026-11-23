@@ -21,6 +21,8 @@ export interface DraftExercise {
   exercise: Exercise
   rest_seconds: number | null
   notes: string
+  /** Superset number (supersets.ts); null for an exercise on its own. */
+  superset: number | null
   sets: DraftSet[]
 }
 
@@ -89,6 +91,7 @@ export function newDraftExercise(exercise: Exercise): DraftExercise {
     exercise,
     rest_seconds: isCardio ? 0 : 90,
     notes: '',
+    superset: null,
     sets: isCardio ? [emptySet()] : [emptySet(), emptySet(), emptySet()],
   }
 }
@@ -122,6 +125,7 @@ export function routineToDraft(routine: Routine): RoutineDraft {
       exercise: e.exercise,
       rest_seconds: e.rest_seconds,
       notes: e.notes,
+      superset: e.superset ?? null,
       sets: e.sets.map(setToDraft),
     })),
   }
@@ -152,6 +156,7 @@ export function draftToPayload(draft: RoutineDraft): RoutinePayload {
         exercise_id: e.exercise.id,
         rest_seconds: e.rest_seconds,
         notes: e.notes,
+        superset: e.superset,
         sets: e.sets.map((s) => {
           const [reps_min, reps_max] = usesReps ? parseRepRange(s.reps) : [null, null]
           const weight = usesWeight ? parseOptionalDecimal(s.weight, e.exercise.name) : null

@@ -7,6 +7,7 @@ import type { LoggedSet, PreviousPerformance, SessionPayload } from './model'
 import type { SessionEditPayload } from './edit'
 import type { Readiness } from './rpe'
 import { workoutQueriesAfterSync } from './syncQueries'
+import { forgetCachedSession } from './historyCache'
 
 export interface WorkoutSession {
   id: string
@@ -21,7 +22,8 @@ export interface WorkoutSession {
   /** Revision for corrections; set when the athlete corrected the workout after finishing it. */
   updated_at?: string
   edited_at?: string | null
-  exercises: { exercise: Exercise; notes: string; sets: LoggedSet[] }[]
+  /** `superset`: missing from servers and workouts older than supersets. */
+  exercises: { exercise: Exercise; notes: string; superset?: number | null; sets: LoggedSet[] }[]
 }
 
 /** Poslednji rezultat po vežbi. Bez interneta vraća prazno: trening može da počne i tada. */
@@ -117,7 +119,11 @@ export function useEditSession() {
 export function useDeleteSession() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string) => api.delete(`/training/sessions/${id}/`),
+    mutationFn: async (id: string) => {
+      const response = await api.delete(`/training/sessions/${id}/`)
+      await forgetCachedSession(id)
+      return response
+    },
     onSuccess: () => Promise.all(
       workoutQueriesAfterSync({ sent: 0, rejected: 0, deleted: 1 }).map((queryKey) => queryClient.invalidateQueries({ queryKey })),
     ),
