@@ -1657,6 +1657,9 @@ export const sr = {
     settingText: 'Prikazuj gotove programe na stranici Trening.',
   },
   history: {
+    offlineCopy_one: 'Bez interneta: prikazan je {{count}} poslednji trening sačuvan na telefonu.',
+    offlineCopy_few: 'Bez interneta: prikazana su {{count}} poslednja treninga sačuvana na telefonu.',
+    offlineCopy_other: 'Bez interneta: prikazano je {{count}} poslednjih treninga sačuvanih na telefonu.',
     underMinute: '< 1 min',
     minutes: '{{m}} min',
     hours: '{{h}} h',

@@ -19,6 +19,7 @@ import { discardOutboxItem, restoreRejectedWorkout } from './outbox'
 import { requestSync } from './sync'
 import { ExerciseHeading } from '../training/ExerciseHeading'
 import { supersetLabels } from '../training/supersets'
+import { useCachedHistory } from './historyCache'
 
 /** Detalj treninga iz istorije: sa servera ili, dok nije poslat, sa telefona. */
 export function SessionDetailPage() {
@@ -32,16 +33,19 @@ export function SessionDetailPage() {
     return row && row.ownerId === me?.id ? row : null
   }, [id, me?.id])
   const remote = useSession(id, local === null)
+  // Without internet, a workout from the copy kept on the phone (the latest 30).
+  const cached = useCachedHistory(me?.id)?.find((s) => s.id === id) ?? null
+  const serverCopy = remote.data ?? (remote.isError || remote.fetchStatus === 'paused' ? cached : null)
   const remove = useDeleteSession()
   const [restoring, setRestoring] = useState(false)
   const [restoreError, setRestoreError] = useState<string | null>(null)
   const [discarding, setDiscarding] = useState(false)
   const [discardError, setDiscardError] = useState<string | null>(null)
 
-  const session: SessionView | null = local ? fromOutbox(local) : remote.data ? fromServer(remote.data) : null
+  const session: SessionView | null = local ? fromOutbox(local) : serverCopy ? fromServer(serverCopy) : null
   const back = () => navigate('/trening')
 
-  if (local === undefined || (local === null && remote.isLoading)) {
+  if (local === undefined || (local === null && remote.isLoading && !serverCopy && remote.fetchStatus !== 'paused')) {
     return <LoadingScreen />
   }
   if (!session) {
@@ -49,7 +53,7 @@ export function SessionDetailPage() {
       <>
         <ScreenHeader title={t('history.title')} onBack={back} />
         <p className="p-6 text-center text-danger">
-          {axios.isAxiosError(remote.error) && !remote.error.response ? t('errors.noConnection') : t('history.notFound')}
+          {remote.fetchStatus === 'paused' || (axios.isAxiosError(remote.error) && !remote.error.response) ? t('errors.noConnection') : t('history.notFound')}
         </p>
       </>
     )

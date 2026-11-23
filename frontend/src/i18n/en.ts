@@ -1606,6 +1606,8 @@ export const en = {
     settingText: 'Show ready-made programs on the Training screen.',
   },
   history: {
+    offlineCopy_one: 'No internet: showing the latest workout saved on this phone.',
+    offlineCopy_other: 'No internet: showing the latest {{count}} workouts saved on this phone.',
     underMinute: '< 1 min',
     minutes: '{{m}} min',
     hours: '{{h}} h',

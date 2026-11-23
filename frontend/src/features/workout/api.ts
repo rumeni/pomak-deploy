@@ -7,6 +7,7 @@ import type { LoggedSet, PreviousPerformance, SessionPayload } from './model'
 import type { SessionEditPayload } from './edit'
 import type { Readiness } from './rpe'
 import { workoutQueriesAfterSync } from './syncQueries'
+import { forgetCachedSession } from './historyCache'
 
 export interface WorkoutSession {
   id: string
@@ -118,7 +119,11 @@ export function useEditSession() {
 export function useDeleteSession() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string) => api.delete(`/training/sessions/${id}/`),
+    mutationFn: async (id: string) => {
+      const response = await api.delete(`/training/sessions/${id}/`)
+      await forgetCachedSession(id)
+      return response
+    },
     onSuccess: () => Promise.all(
       workoutQueriesAfterSync({ sent: 0, rejected: 0, deleted: 1 }).map((queryKey) => queryClient.invalidateQueries({ queryKey })),
     ),

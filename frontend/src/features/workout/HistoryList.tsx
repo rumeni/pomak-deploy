@@ -6,22 +6,39 @@ import { getFormatLocale } from '../../lib/format'
 import { useSessions } from './api'
 import { combineHistory, durationSeconds, formatWorkoutDuration, fromOutbox, fromServer, setCount, type SessionView } from './history'
 import { usePendingSessions } from './outbox'
+import { saveHistory, useCachedHistory } from './historyCache'
+import { useEffect } from 'react'
 
 export function HistoryList() {
   const { t } = useTranslation()
   const { me } = useAuth()
-  const { data, isLoading, isError, hasNextPage, isFetchingNextPage, fetchNextPage } = useSessions(me?.id)
+  const { data, isLoading, isError, fetchStatus, hasNextPage, isFetchingNextPage, fetchNextPage } = useSessions(me?.id)
   const pending = usePendingSessions(me?.id)
+  const cached = useCachedHistory(me?.id)
 
+  // Every successful load refreshes the copy kept on the phone (the latest 30).
+  const firstPage = data?.pages[0]
+  useEffect(() => {
+    if (me?.id && firstPage) void saveHistory(me.id, firstPage)
+  }, [me?.id, firstPage])
+
+  // No answer from the server (no internet, or an error): the copy on the phone instead.
+  const offline = !data && !!cached && (isError || fetchStatus === 'paused')
   // All fetched pages plus unsent local workouts; no duplicates after a sync.
-  const sessions = data?.pages.flat() ?? []
+  const sessions = data?.pages.flat() ?? (offline ? cached : [])
   const items = combineHistory(sessions.map(fromServer), (pending ?? []).map(fromOutbox))
 
   return (
     <section className="flex flex-col gap-2">
       <h2 className="mt-4 text-lg font-semibold">{t('history.title')}</h2>
-      {isLoading && <p className="py-4 text-center text-muted">{t('common.loading')}</p>}
-      {isError && <p className="py-2 text-center text-danger">{t('errors.loadFailed')}</p>}
+      {offline ? (
+        <p role="status" className="rounded-xl bg-surface px-3 py-2 text-sm text-muted">{t('history.offlineCopy', { count: cached.length })}</p>
+      ) : (
+        <>
+          {isLoading && fetchStatus !== 'paused' && <p className="py-4 text-center text-muted">{t('common.loading')}</p>}
+          {isError && <p className="py-2 text-center text-danger">{t('errors.loadFailed')}</p>}
+        </>
+      )}
       {!isLoading && !isError && items.length === 0 && <p className="py-2 text-muted">{t('history.empty')}</p>}
       {items.map((s) => (
         <HistoryItem key={s.id} session={s} />

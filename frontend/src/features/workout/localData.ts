@@ -14,7 +14,7 @@ export async function unsentSummary(ownerId: string): Promise<{ active: boolean;
 
 /** Briše lokalne podatke naloga sa telefona (pri odjavi, posle potvrde korisnika). */
 export async function clearLocalData(ownerId: string, accountDeleted = false): Promise<void> {
-  await db.transaction('rw', [db.activeWorkout, db.outbox, db.diaryOps, db.diaryDays, db.foodCache], async () => {
+  await db.transaction('rw', [db.activeWorkout, db.outbox, db.diaryOps, db.diaryDays, db.foodCache, db.historyCache], async () => {
     const row = await db.activeWorkout.get(ownerId)
     if (row?.ownerId === ownerId) await db.activeWorkout.delete(ownerId)
     // Logout retains only minimal remote-delete tombstones so a later login
@@ -26,6 +26,7 @@ export async function clearLocalData(ownerId: string, accountDeleted = false): P
     await db.diaryOps.where('ownerId').equals(ownerId).delete()
     await db.diaryDays.where('ownerId').equals(ownerId).delete()
     await db.foodCache.where('ownerId').equals(ownerId).delete()
+    await db.historyCache.where('ownerId').equals(ownerId).delete()
   })
   // Unsaved workout corrections and unfinished program imports are this account's data too.
   clearUserEditDrafts(ownerId)
