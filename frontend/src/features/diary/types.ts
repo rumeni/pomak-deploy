@@ -49,6 +49,8 @@ export interface DayTarget {
   protein_g: number | null
   carbs_g: number | null
   fat_g: number | null
+  /** The coach's name when mode is 'coach'; absent from older servers. */
+  set_by_name?: string | null
 }
 
 /** Telo PUT /nutrition/entries/<id>/ */

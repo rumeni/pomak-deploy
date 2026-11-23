@@ -622,9 +622,18 @@ class RecipeSerializer(serializers.ModelSerializer):
 
 
 class NutritionTargetSerializer(serializers.ModelSerializer):
+    # "Do cilja koji je postavio trener …": the coach's name, only for a target the coach set.
+    set_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = NutritionTarget
-        fields = ['valid_from', 'mode', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'method', 'inputs', 'explanation', 'created_at']
+        fields = ['valid_from', 'mode', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'method', 'inputs', 'explanation', 'created_at',
+                  'set_by_name']
+
+    def get_set_by_name(self, obj) -> str | None:
+        if obj.mode != NutritionTarget.Mode.COACH or obj.set_by is None:
+            return None
+        return obj.set_by.profile.display_name.strip() or obj.set_by.email.split('@')[0]
 
 
 class EstimateSerializer(serializers.Serializer):
