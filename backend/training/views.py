@@ -13,6 +13,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import User
 from core.search import search_and_order
 from core.views import IdempotentCreateMixin, SharedLibraryMixin, require_object_body
 
@@ -313,6 +314,9 @@ class ScheduleView(APIView):
     def put(self, request):
         serializer = ScheduleSerializer(data=require_object_body(request), context={'request': request})
         serializer.is_valid(raise_exception=True)
+        # One week replacement of this person at a time: two devices saving at once both succeed,
+        # one after the other (the later one wins), instead of colliding on the same weekday.
+        User.objects.select_for_update().filter(pk=request.user.pk).first()
         ScheduleDay.objects.filter(owner=request.user).delete()
         ScheduleDay.objects.bulk_create([
             ScheduleDay(owner=request.user, weekday=day['weekday'], routine=day['routine_id'])

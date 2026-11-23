@@ -27,6 +27,7 @@ import { readinessReasons } from './workspace'
 import { SupersetBadge } from '../training/SupersetFrame'
 import { supersetLabels } from '../training/supersets'
 import { ProgressPhotos } from '../progress/ProgressPhotos'
+import { forgetClientPhotos } from '../progress/photos'
 
 const TABS = ['overview', 'plan', 'progress', 'nutrition', 'notes'] as const
 type Tab = (typeof TABS)[number]
@@ -66,6 +67,8 @@ export function ClientDetail({ clientId }: { clientId: string }) {
     }
     if (redactWith) {
       qc.setQueryData<CoachClientDetails>(['coach-client', clientId], (old) => (old ? redactCached(old, redactWith) : old))
+      // Progress photos need the measurements consent: none of them may stay on this device.
+      if (!redactWith.share_measurements) forgetClientPhotos(qc, clientId)
     }
     if (view.refresh) void refreshCoachLists(qc, clientId)
   }, [view.purge, view.refresh, redactWith, qc, clientId])
@@ -257,13 +260,18 @@ function ProgressTab({ clientId, data }: { clientId: string; data: CoachClientDe
     <>
       <WorkoutLinks clientId={clientId} workouts={data.recent_workouts} />
       <ClientStats clientId={clientId} />
-      <ProgressPhotos
-        source={{ kind: 'client', clientId }}
-        weightOn={(date) => {
-          const m = data.measurements?.find((x) => x.kind === 'weight' && x.measured_on === date)
-          return m ? `${formatDecimal(Number(m.value))} kg` : null
-        }}
-      />
+      {/* Only under the current measurements consent (null here once it is withdrawn or stale). */}
+      {data.measurements === null ? (
+        <Card title={t('photos.title')}><p className="text-muted">{t('coach.notShared')}</p></Card>
+      ) : (
+        <ProgressPhotos
+          source={{ kind: 'client', clientId, accessVersion: data.connection.access_version ?? 0 }}
+          weightOn={(date) => {
+            const m = data.measurements?.find((x) => x.kind === 'weight' && x.measured_on === date)
+            return m ? `${formatDecimal(Number(m.value))} kg` : null
+          }}
+        />
+      )}
       <Card title={t('coach.measurements')}>
         {data.measurements === null ? <p className="text-muted">{t('coach.notShared')}</p> : (
           data.measurements.length === 0 ? <p className="text-muted">{t('coach.noMeasurements')}</p> :

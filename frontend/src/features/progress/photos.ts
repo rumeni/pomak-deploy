@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import { getCurrentUserId } from '../../lib/currentUser'
@@ -16,18 +16,23 @@ export interface ProgressPhoto {
   height: number
 }
 
-/** Where the photos come from: the athlete's own, or a client's for his coach. */
-export type PhotoSource = { kind: 'own' } | { kind: 'client'; clientId: string }
+/**
+ * Where the photos come from: the athlete's own, or a client's for his coach. A client's photos
+ * are cached per access version: what was loaded under an earlier consent is never reused.
+ */
+export type PhotoSource = { kind: 'own' } | { kind: 'client'; clientId: string; accessVersion: number }
 
 export function photosPath(source: PhotoSource): string {
   return source.kind === 'own' ? '/progress/photos/' : `/coach/clients/${source.clientId}/photos/`
 }
 
 export function imagePath(source: PhotoSource, id: string): string {
-  return `${photosPath(source)}${id}/image/`
+  const path = `${photosPath(source)}${id}/image/`
+  return source.kind === 'own' ? path : `${path}?v=${source.accessVersion}`
 }
 
-const photosKey = (source: PhotoSource) => ['progress-photos', getCurrentUserId(), source.kind === 'own' ? 'own' : source.clientId]
+const photosKey = (source: PhotoSource) =>
+  ['progress-photos', getCurrentUserId(), ...(source.kind === 'own' ? ['own'] : [source.clientId, source.accessVersion])]
 
 /** Newest first; null for a coach while the client does not share measurements. */
 export function useProgressPhotos(source: PhotoSource) {
@@ -35,6 +40,17 @@ export function useProgressPhotos(source: PhotoSource) {
     queryKey: photosKey(source),
     queryFn: async () => (await api.get<ProgressPhoto[] | null>(photosPath(source))).data,
   })
+}
+
+/**
+ * Forgets a client's photos on this device: the list and every fetched picture. For when the
+ * coach loses access or the client stops sharing measurements.
+ */
+export function forgetClientPhotos(qc: QueryClient, clientId: string): void {
+  const prefix = `/coach/clients/${clientId}/photos/`
+  qc.removeQueries({ predicate: ({ queryKey: key }) =>
+    (key[0] === 'progress-photos' && key[2] === clientId)
+    || (key[0] === 'coach-picture' && typeof key[2] === 'string' && key[2].startsWith(prefix)) })
 }
 
 export function useUploadPhoto() {

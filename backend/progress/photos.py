@@ -63,17 +63,17 @@ class ProgressPhotosView(APIView):
         meta = PhotoUploadSerializer(data=request.data)
         meta.is_valid(raise_exception=True)
         photo_id = meta.validated_data.get('id')
-        if photo_id is not None:
-            existing = ProgressPhoto.objects.defer('data').filter(pk=photo_id).first()
-            if existing is not None:
-                if existing.user_id != request.user.pk:
-                    raise ValidationError({'id': _('This ID is already taken.')})
-                return Response(photo_summary(existing), status=status.HTTP_200_OK)
+        # A retry whose first attempt is already stored: answer without decoding the picture again.
+        if (stored := self.already_stored(request, photo_id)) is not None:
+            return stored
         # The slow part (decoding) runs before taking the lock.
         data, width, height = process_image(request.FILES.get('file'), PHOTO_SIDE)
         with transaction.atomic():
-            # One upload of this person at a time, so parallel uploads cannot all pass the limits.
+            # One upload of this person at a time, so parallel uploads cannot all pass the limits,
+            # and a retry running at the same time as its first attempt finds it stored.
             User.objects.select_for_update().filter(pk=request.user.pk).first()
+            if (stored := self.already_stored(request, photo_id)) is not None:
+                return stored
             photos = ProgressPhoto.objects.filter(user=request.user)
             if photos.count() >= MAX_PHOTOS:
                 raise ValidationError({'file': _('You have too many progress photos. Delete some first.')})
@@ -85,6 +85,18 @@ class ProgressPhotosView(APIView):
                 **({'id': photo_id} if photo_id is not None else {}),
             )
         return Response(photo_summary(photo), status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def already_stored(request, photo_id):
+        """The photo with this client-made ID if this person stored it (200); another's ID is refused."""
+        if photo_id is None:
+            return None
+        existing = ProgressPhoto.objects.defer('data').filter(pk=photo_id).first()
+        if existing is None:
+            return None
+        if existing.user_id != request.user.pk:
+            raise ValidationError({'id': _('This ID is already taken.')})
+        return Response(photo_summary(existing), status=status.HTTP_200_OK)
 
 
 class ProgressPhotoView(APIView):
