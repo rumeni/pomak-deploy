@@ -35,7 +35,7 @@ describe('remaining to the daily target', () => {
   })
 
   it('shows ideas from the user\'s foods that open the entry for that food', () => {
-    // Carbohydrates nearly met (20 of 200 g left), so protein is what is missing most.
+    // 45 of 150 g protein missing (30 %): protein comes first.
     const html = renderToStaticMarkup(
       <MemoryRouter><TargetSuggestions date="2026-11-23" totals={{ ...totals, carbs: { value: 180, unknown: 0 } }} target={target} settings={[]} /></MemoryRouter>,
     )

@@ -24,9 +24,16 @@ describe('what is left to the daily target', () => {
     expect(remainingToTarget(totals(2150, 160, 210, 80), target).kcal).toBe(-150)
   })
 
-  it('focuses on the macro furthest from its goal, never one that is nearly met', () => {
+  it('puts protein first while a quarter of it is missing, even if fat is further behind', () => {
+    // Protein 146 of 165 g missing (89 %), fat 64 of 70 g (91 %): suggest protein, not fat.
+    expect(focusMacro(remainingToTarget(totals(735, 18.6, 152, 6.3), { ...target, protein_g: 165, carbs_g: 230 }),
+      { ...target, protein_g: 165, carbs_g: 230 })).toBe('protein')
     expect(focusMacro(remainingToTarget(totals(1000, 50, 180, 60), target), target)).toBe('protein')
+  })
+
+  it('otherwise focuses on the macro furthest from its goal, never one that is nearly met', () => {
     expect(focusMacro(remainingToTarget(totals(1000, 140, 60, 65), target), target)).toBe('carbs')
+    expect(focusMacro(remainingToTarget(totals(1000, 120, 190, 20), target), target)).toBe('fat')
     expect(focusMacro(remainingToTarget(totals(1900, 145, 195, 68), target), target)).toBeNull()
     expect(focusMacro(remainingToTarget(totals(1000, 0, 0, 0), { ...target, protein_g: null, carbs_g: null, fat_g: null }),
       { ...target, protein_g: null, carbs_g: null, fat_g: null })).toBeNull()

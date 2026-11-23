@@ -24,16 +24,21 @@ export function remainingToTarget(tot: DayTotals, target: DayTarget): Remaining 
   return { kcal: round1(target.kcal - tot.kcal), protein: left('protein'), carbs: left('carbs'), fat: left('fat') }
 }
 
-/** The macro furthest from its goal (by share of the goal), protein first on ties; null when none is behind. */
+/** Protein while at least a quarter of its goal is missing (what people training chase, and carbs or
+ * fat fill up anyway); otherwise the macro furthest from its goal, by share. Null when none is behind. */
 export function focusMacro(rem: Remaining, target: DayTarget): MacroKey | null {
+  const shareLeft = (macro: MacroKey) => {
+    const goal = target[GOAL[macro]]
+    const left = rem[macro]
+    return goal === null || goal <= 0 || left === null ? null : left / goal
+  }
+  const protein = shareLeft('protein')
+  if (protein !== null && protein >= 0.25) return 'protein'
   let best: MacroKey | null = null
   let bestShare = 0.1 // less than 10 % behind is close enough
   for (const macro of MACROS) {
-    const goal = target[GOAL[macro]]
-    const left = rem[macro]
-    if (goal === null || goal <= 0 || left === null) continue
-    const share = left / goal
-    if (share > bestShare) {
+    const share = shareLeft(macro)
+    if (share !== null && share > bestShare) {
       best = macro
       bestShare = share
     }
