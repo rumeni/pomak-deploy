@@ -292,4 +292,7 @@ SR = {
     'Used sessions must stay between 0 and the package total.': 'Broj iskorišćenih treninga mora biti između 0 i ukupnog broja u paketu.',
     'This shared food is used in another user\'s recipe or saved meal. Report an error instead.': 'Ova deljena namirnica se koristi u tuđem receptu ili sačuvanom obroku. Umesto izmene prijavi grešku.',
     'The proposal has changed. Check the new one.': 'Predlog se promenio. Pogledaj novi.',
+    'At most %(count)d foods in the meal plan.': 'Najviše %(count)d namirnica u planu ishrane.',
+    'Choose foods from the shared food database.': 'Izaberi namirnice iz zajedničke baze.',
+    'The client has not let you guide his nutrition.': 'Klijent ti nije dozvolio da vodiš njegovu ishranu.',
 }

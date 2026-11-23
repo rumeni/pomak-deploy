@@ -315,3 +315,26 @@ class PlanRequest(TimeStampedModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['connection', 'request_id'], name='plan_request_once')]
+
+
+class MealPlanItem(TimeStampedModel):
+    """One food of the coach's daily meal plan for a client (T7): which meal, which shared food, how much.
+
+    The plan is the set of items of one collaboration and applies to every day. It is shown to the
+    client (and can be changed by the coach) only while the client lets the coach guide nutrition
+    (`coach_sets_nutrition`). The client logs a meal of the plan with one tap; the diary then keeps
+    its own snapshot of the values, so later plan changes never rewrite what was eaten.
+    """
+
+    MAX_ITEMS = 40
+
+    connection = models.ForeignKey(CoachConnection, on_delete=models.CASCADE, related_name='meal_plan_items')
+    meal = models.CharField(max_length=20)  # nutrition.models.Meal
+    position = models.PositiveSmallIntegerField()
+    # Shared foods only (the client cannot see the coach's own foods); foods are archived, never deleted.
+    food = models.ForeignKey('nutrition.Food', on_delete=models.PROTECT, related_name='+')
+    grams = models.DecimalField(max_digits=7, decimal_places=1)
+    portion_name = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        ordering = ['position']

@@ -10,6 +10,7 @@ import { addDays, formatDecimal, formatLongDate, fromISODate, toISODate } from '
 import { uuid } from '../../lib/uuid'
 import { fmtValue } from '../nutrition/macroFormat'
 import { useCreateSavedMeal } from './api'
+import { CoachPlanRow } from './CoachPlanRow'
 import { mealLabel, mealSettings, visibleMeals } from './meals'
 import { MAX_SAVED_MEAL_ITEMS, MAX_SAVED_MEAL_NAME_LENGTH, savedMealConflict, savedMealDraftIssue, withRetryMealId } from './savedMealValidation'
 import { copyEntry, savedItemFromEntry, totals, type DayTotals, type DisplayDay, type MacroTotal } from './model'
@@ -251,6 +252,7 @@ function MealCard({
       <div className="px-4">
         <FormError message={saveError ?? (createSaved.error ? errorMessage(createSaved.error) : null)} />
       </div>
+      <CoachPlanRow date={date} meal={meal} onNotice={onNotice} />
       <ul className="px-4">
         {entries.length === 0 && <li className="py-2 text-sm text-muted">{t('diary.emptyMeal')}</li>}
         {entries.map((entry) => (

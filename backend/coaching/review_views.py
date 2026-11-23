@@ -14,16 +14,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.views import require_object_body
-from nutrition.models import NutritionTarget
+from nutrition.models import Food, Meal, NutritionTarget
+from nutrition.serializers import FoodSerializer
 from training.models import Exercise, WorkoutSession
 from training.stats import PERIODS, training_stats
 
-from .models import CoachMessage, CoachTask, ExerciseInstruction
+from .models import CoachConnection, CoachMessage, CoachTask, ExerciseInstruction, MealPlanItem
 from .plan_views import active_connection_for
 from notifications.push import notify
 
 from .errors import workout_not_found
-from .views import access_facts, instruction_summary, message_summary, readiness_summary
+from .views import access_facts, display_name, instruction_summary, message_summary, readiness_summary
 
 
 def _workout(connection, workout_id):
@@ -237,6 +238,84 @@ class ClientNutritionTargetView(APIView):
             NutritionTarget.objects.filter(owner=connection.client, valid_from=data['valid_from']).update(**values)
         return Response({'allowed': True, 'can_set': True, **client_targets(connection), 'access': access_facts(connection)},
                         status=status.HTTP_201_CREATED)
+
+
+class MealPlanItemSerializer(serializers.Serializer):
+    meal = serializers.ChoiceField(choices=Meal.choices)
+    food_id = serializers.UUIDField()
+    grams = serializers.DecimalField(max_digits=7, decimal_places=1, min_value=1, max_value=5000)
+    portion_name = serializers.CharField(max_length=80, required=False, allow_blank=True, default='')
+
+
+class CoachMealPlanSerializer(BoundSerializer):
+    items = MealPlanItemSerializer(many=True, allow_empty=True)
+
+    def validate_items(self, items):
+        if len(items) > MealPlanItem.MAX_ITEMS:
+            raise serializers.ValidationError(_('At most %(count)d foods in the meal plan.') % {'count': MealPlanItem.MAX_ITEMS})
+        ids = {item['food_id'] for item in items}
+        # Only shared foods: the client cannot see the coach's own foods or recipes.
+        foods = {f.pk: f for f in Food.objects.filter(pk__in=ids, owner__isnull=True, archived_at__isnull=True)}
+        if len(foods) != len(ids):
+            raise serializers.ValidationError(_('Choose foods from the shared food database.'))
+        for item in items:
+            item['food'] = foods[item['food_id']]
+        return items
+
+
+def meal_plan(connection, request):
+    """The plan in the shape of a saved meal's items, so the app logs it the same way (offline too)."""
+    rows = list(connection.meal_plan_items.select_related('food').prefetch_related('food__portions'))
+    context = {'request': request}
+    return {
+        'updated_at': max((row.created_at for row in rows), default=None),
+        'items': [{
+            'meal': row.meal, 'grams': str(row.grams), 'portion_name': row.portion_name,
+            'food': FoodSerializer(row.food, context=context).data,
+            # Never a manual item: values always come from the food at the time of logging.
+            'name': '', 'kcal': None, 'protein_g': None, 'carbs_g': None, 'fat_g': None, 'fiber_g': None,
+        } for row in rows],
+    }
+
+
+class ClientMealPlanView(APIView):
+    """The coach's daily meal plan for a client: read and replaced only while the client lets him
+    guide nutrition (the same consent as setting the target)."""
+
+    def get(self, request, client_id):
+        connection = active_connection_for(request, client_id)
+        allowed = connection.coach_sets_nutrition
+        return Response({'allowed': allowed, **(meal_plan(connection, request) if allowed else {'updated_at': None, 'items': []}),
+                         'access': access_facts(connection)})
+
+    @transaction.atomic
+    def put(self, request, client_id):
+        require_object_body(request)
+        serializer = CoachMealPlanSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        connection = active_connection_for(request, client_id, lock=True, expected=serializer.validated_data['connection_id'])
+        if not connection.coach_sets_nutrition:
+            raise ValidationError({'detail': _('The client has not let you guide his nutrition.')})
+        connection.meal_plan_items.all().delete()
+        MealPlanItem.objects.bulk_create([
+            MealPlanItem(connection=connection, meal=item['meal'], position=i, food=item['food'],
+                         grams=item['grams'], portion_name=item['portion_name'])
+            for i, item in enumerate(serializer.validated_data['items'])
+        ])
+        return Response({'allowed': True, **meal_plan(connection, request), 'access': access_facts(connection)})
+
+
+class MyMealPlanView(APIView):
+    """The client's meal plan from his current coach, or null (no coach, or not allowed to guide nutrition)."""
+
+    def get(self, request):
+        connection = CoachConnection.objects.filter(
+            client=request.user, ended_at__isnull=True, coach_sets_nutrition=True,
+        ).select_related('coach__profile').first()
+        if connection is None:
+            return Response(None)
+        plan = meal_plan(connection, request)
+        return Response({'coach_name': display_name(connection.coach), **plan} if plan['items'] else None)
 
 
 class ClientWeekView(APIView):

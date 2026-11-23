@@ -1029,3 +1029,13 @@ msgstr "Ova deljena namirnica se koristi u tuđem receptu ili sačuvanom obroku.
 
 msgid "The proposal has changed. Check the new one."
 msgstr "Predlog se promenio. Pogledaj novi."
+
+#, python-format
+msgid "At most %(count)d foods in the meal plan."
+msgstr "Najviše %(count)d namirnica u planu ishrane."
+
+msgid "Choose foods from the shared food database."
+msgstr "Izaberi namirnice iz zajedničke baze."
+
+msgid "The client has not let you guide his nutrition."
+msgstr "Klijent ti nije dozvolio da vodiš njegovu ishranu."

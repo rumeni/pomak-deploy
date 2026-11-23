@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { CoachTask } from './tasks'
@@ -225,13 +225,18 @@ export function useRevokeCoachInvite() {
   })
 }
 
+/** The client's cached meal plan belongs to one collaboration and its consent: forget it when either changes. */
+export function forgetMyMealPlan(qc: QueryClient) {
+  return qc.resetQueries({ queryKey: ['my-meal-plan'] })
+}
+
 export function useConnectCoach() {
   const qc = useQueryClient()
   return useMutation({
     networkMode: 'always',
     mutationFn: async (data: { code: string } & Sharing) =>
       (await api.post<Connection>('/coach/connect/', data)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: DASHBOARD }),
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: DASHBOARD }), forgetMyMealPlan(qc)]),
   })
 }
 
@@ -241,7 +246,7 @@ export function useUpdateCoachSharing() {
     networkMode: 'always',
     mutationFn: async (data: Sharing) =>
       (await api.patch<Connection>('/coach/connection/', data)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: DASHBOARD }),
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: DASHBOARD }), forgetMyMealPlan(qc)]),
   })
 }
 
@@ -257,6 +262,7 @@ export function useDisconnectCoach() {
         qc.invalidateQueries({ queryKey: ['coach-messages'] }),
         qc.invalidateQueries({ queryKey: CONVERSATIONS }),
         qc.invalidateQueries({ queryKey: TASKS }),
+        forgetMyMealPlan(qc),
       ])
     },
   })
