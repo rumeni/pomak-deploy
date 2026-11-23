@@ -35,6 +35,8 @@ export function useClientMealPlan(clientId: string) {
     queryKey: ['coach-client-meal-plan', clientId, i18n.language],
     queryFn: async () => (await api.get<ClientMealPlan>(`/coach/clients/${clientId}/meal-plan/`)).data,
     retry: false,
+    // Like the target: a consent change by the client shows up while the tab stays open.
+    refetchInterval: 30_000,
   })
 }
 
@@ -55,6 +57,8 @@ export function useMyMealPlan(enabled: boolean) {
     queryFn: async () => (await api.get<MyMealPlan | null>('/coach/meal-plan/')).data,
     enabled,
     retry: false,
-    staleTime: 5 * 60_000,
+    // Short: a consent change made on another device must not leave an old plan loggable for long.
+    // On this device the coach mutations reset it at once (coach/api.ts).
+    staleTime: 30_000,
   })
 }

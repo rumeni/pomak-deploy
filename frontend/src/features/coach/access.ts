@@ -285,6 +285,10 @@ export function refreshCoachLists(qc: QueryClient, clientId?: string): Promise<u
     qc.invalidateQueries({ queryKey: ['coach-dashboard'] }),
     qc.invalidateQueries({ queryKey: ['coach-tasks'] }),
     qc.invalidateQueries({ queryKey: ['coach-conversations'] }),
-    ...(clientId ? [qc.invalidateQueries({ queryKey: ['coach-client', clientId] })] : []),
+    ...(clientId ? [
+      qc.invalidateQueries({ queryKey: ['coach-client', clientId] }),
+      // The meal plan needs the nutrition consent: reload it so the panel shows the new access.
+      qc.invalidateQueries({ queryKey: ['coach-client-meal-plan', clientId] }),
+    ] : []),
   ])
 }
