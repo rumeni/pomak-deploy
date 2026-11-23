@@ -452,3 +452,25 @@ class WorkoutSessionEditSerializer(serializers.ModelSerializer):
         SetLog.objects.bulk_create(logs)
         return session
 
+
+
+class ScheduleDaySerializer(serializers.Serializer):
+    weekday = serializers.IntegerField(min_value=0, max_value=6)
+    routine_id = serializers.PrimaryKeyRelatedField(queryset=Routine.objects.all())
+
+    def validate_routine_id(self, routine):
+        if routine.owner_id != self.context['request'].user.pk or routine.archived_at is not None:
+            raise serializers.ValidationError(_('This workout is not available.'))
+        return routine
+
+
+class ScheduleSerializer(serializers.Serializer):
+    """The whole week at once; days that are not listed are rest days."""
+
+    days = ScheduleDaySerializer(many=True, max_length=7)
+
+    def validate_days(self, value):
+        weekdays = [day['weekday'] for day in value]
+        if len(weekdays) != len(set(weekdays)):
+            raise serializers.ValidationError(_('One workout per day.'))
+        return value

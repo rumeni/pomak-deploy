@@ -228,3 +228,19 @@ class SetLog(TimeStampedModel):
 
     class Meta:
         ordering = ['position']
+
+
+class ScheduleDay(TimeStampedModel):
+    """The athlete's own week: which of his routines he trains on a weekday (0 = Monday).
+
+    For athletes without a coach; a coach's plan takes over while there is one. Days without a
+    row are rest days. A routine deleted later simply leaves its day empty.
+    """
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='schedule_days')
+    weekday = models.PositiveSmallIntegerField(validators=[MaxValueValidator(6)])
+    routine = models.ForeignKey(Routine, on_delete=models.CASCADE, related_name='+')
+
+    class Meta:
+        ordering = ['weekday']
+        constraints = [models.UniqueConstraint(fields=['owner', 'weekday'], name='schedule_one_routine_per_day')]

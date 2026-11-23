@@ -1331,6 +1331,15 @@ export const sr = {
     deleting: 'Brišem…',
     confirm: 'Poslednja provera: trajno obrisati nalog i sve podatke?',
   },
+  mySchedule: {
+    title: 'Moj raspored',
+    intro: 'Tvoja nedelja: koji trening koji dan. Na Danas te čeka trening za taj dan.',
+    empty: 'Rasporedi svoje treninge po danima, pa te na Danas čeka trening za taj dan.',
+    create: 'Napravi',
+    edit: 'Uredi',
+    cancel: 'Otkaži',
+    dayAria: { 0: 'Ponedeljak', 1: 'Utorak', 2: 'Sreda', 3: 'Četvrtak', 4: 'Petak', 5: 'Subota', 6: 'Nedelja' },
+  },
   training: {
     title: 'Trening',
     myRoutines: 'Moji treninzi',

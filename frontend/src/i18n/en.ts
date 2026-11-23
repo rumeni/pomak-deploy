@@ -1295,6 +1295,15 @@ export const en = {
     deleting: 'Deleting…',
     confirm: 'Final check: permanently delete your account and all data?',
   },
+  mySchedule: {
+    title: 'My week',
+    intro: 'Your week: which workout on which day. Today shows the workout for the day.',
+    empty: 'Plan your workouts by day, and Today shows the workout for that day.',
+    create: 'Plan',
+    edit: 'Edit',
+    cancel: 'Cancel',
+    dayAria: { 0: 'Monday', 1: 'Tuesday', 2: 'Wednesday', 3: 'Thursday', 4: 'Friday', 5: 'Saturday', 6: 'Sunday' },
+  },
   training: {
     title: 'Training',
     myRoutines: 'My workouts',

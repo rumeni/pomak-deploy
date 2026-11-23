@@ -17,9 +17,10 @@ from core.search import search_and_order
 from core.views import IdempotentCreateMixin, SharedLibraryMixin, require_object_body
 
 from . import programs, progress, stats
-from .models import Exercise, Routine, RoutineExercise, SessionExercise, WorkoutSession
+from .models import Exercise, Routine, RoutineExercise, ScheduleDay, SessionExercise, WorkoutSession
 from .serializers import (
-    ExerciseSerializer, RoutineSerializer, SetLogSerializer, WorkoutSessionEditSerializer, WorkoutSessionSerializer,
+    ExerciseSerializer, RoutineSerializer, ScheduleSerializer, SetLogSerializer, WorkoutSessionEditSerializer,
+    WorkoutSessionSerializer,
 )
 
 MAX_PREVIOUS_LOOKUP = 50
@@ -291,3 +292,30 @@ class ExerciseProgressView(APIView):
                 for se in reversed(done[-self.HISTORY_LIMIT:])
             ],
         })
+
+
+class ScheduleView(APIView):
+    """The athlete's own week (weekday -> one of his routines); PUT replaces the whole week.
+
+    Replacing the whole week makes a repeated request harmless. A deleted routine's day is left
+    out: it is a rest day until the athlete picks another routine.
+    """
+
+    @staticmethod
+    def week(user):
+        days = ScheduleDay.objects.filter(owner=user, routine__archived_at__isnull=True).select_related('routine')
+        return {'days': [{'weekday': d.weekday, 'routine_id': str(d.routine_id), 'name': d.routine.name} for d in days]}
+
+    def get(self, request):
+        return Response(self.week(request.user))
+
+    @transaction.atomic
+    def put(self, request):
+        serializer = ScheduleSerializer(data=require_object_body(request), context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        ScheduleDay.objects.filter(owner=request.user).delete()
+        ScheduleDay.objects.bulk_create([
+            ScheduleDay(owner=request.user, weekday=day['weekday'], routine=day['routine_id'])
+            for day in serializer.validated_data['days']
+        ])
+        return Response(self.week(request.user))

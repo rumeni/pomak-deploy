@@ -25,6 +25,8 @@ import { useStartWorkout } from '../workout/useStartWorkout'
 import { nextRoutine, sessionsWithPending } from './next'
 import { progressDate, weekActivity, workoutCountWithPending } from './week'
 import { useMyPlan } from '../coach/plansApi'
+import { weekdayOf } from '../coach/plans'
+import { scheduledToday, useSchedule } from '../training/schedule'
 import { SpaceSwitch } from '../coach/SpaceSwitch'
 import { LanguageMenu } from '../../components/LanguageMenu'
 
@@ -154,7 +156,13 @@ function TrainingCard() {
   // A coach's plan decides today's workout; without one (or once trained today) the usual next routine.
   const plan = useMyPlan(!!me && !me.profile.is_coach)
   const planToday = plan.data?.today ?? null
-  const plannedId = planToday?.routine?.id ?? null
+  // Without a coach's plan, the athlete's own week (Training tab) says what today is.
+  const coachPlan = !!plan.data?.current_version_id
+  // Asked once the coach's plan is known (a coach has none: he is never a client).
+  const own = useSchedule(!!me && (me.profile.is_coach || plan.isFetched) && !coachPlan)
+  const ownToday = coachPlan ? undefined : scheduledToday(own.data, weekdayOf(new Date()))
+  const plannedId = coachPlan ? planToday?.routine?.id ?? null : ownToday ?? null
+  const restDay = coachPlan ? !!planToday && !planToday.routine : ownToday === null
   const plannedDone = !!plannedId && doneToday.some((s) => s.routine_id === plannedId)
   const planned = plannedId && !plannedDone ? routines?.find((r) => r.id === plannedId) ?? null : null
   const next = planned ?? (routines ? nextRoutine(routines, recent) : null)
@@ -196,7 +204,7 @@ function TrainingCard() {
       {isLoading && <p className="py-2 text-muted">{t('common.loading')}</p>}
       {next ? (
         <>
-          {planToday && !planToday.routine && doneToday.length === 0 && <p className="mt-4 text-sm text-muted">{t('today.planRestDay')}</p>}
+          {restDay && doneToday.length === 0 && <p className="mt-4 text-sm text-muted">{t('today.planRestDay')}</p>}
           <p className="mt-5 text-xs font-bold uppercase tracking-widest text-muted">{planned ? t('today.plannedWorkout') : t('today.nextWorkout')}</p>
           <p className="mt-1 text-xl font-bold tracking-tight">{next.name}</p>
           <p className="truncate text-sm text-muted">{next.exercises.map((e) => e.exercise.name).join(' · ')}</p>

@@ -16,7 +16,7 @@ from nutrition.models import Food, MealEntry, NutritionDay, NutritionTarget, Sav
 from scheduling.models import Booking, SessionPackage
 from coaching.models import CoachAssignment, CoachConnection, CoachMessage, CoachNote, CoachProfile, ExerciseInstruction, MealPlanItem
 from progress.models import Goal, Measurement, WeeklyCheckIn
-from training.models import Exercise, Routine, SessionExercise, WorkoutSession
+from training.models import Exercise, Routine, ScheduleDay, SessionExercise, WorkoutSession
 
 PROFILE_FIELDS = [
     'display_name', 'language', 'is_coach', 'tracks_training', 'tracks_nutrition', 'training_experience',
@@ -96,6 +96,10 @@ def collect(user) -> dict:
             'kind', 'start_value', 'target_value', 'start_date', 'target_date', 'status', 'closed_on',
         )),
         'custom_exercises': list(Exercise.objects.filter(owner=user).values('id', 'name', 'equipment', 'measurement', 'load_mode', 'unilateral', 'muscle', 'archived_at', 'coach_name')),
+        'schedule': [
+            {'weekday': d.weekday, 'routine': d.routine.name}
+            for d in ScheduleDay.objects.filter(owner=user).select_related('routine')
+        ],
         'routines': [
             {
                 'name': r.name, 'notes': r.notes, 'archived_at': r.archived_at,
