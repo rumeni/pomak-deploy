@@ -28,6 +28,32 @@ class FoodDatabaseTests(APITestCase):
         self.assertEqual((egg.source_ref, float(egg.kcal), float(egg.protein_g)), ('171287', 143.0, 12.56))
         self.assertEqual([(p.name, float(p.grams)) for p in egg.portions.all()], [('1 jaje (veliko)', 50.0), ('1 jaje (srednje)', 44.0)])
 
+    def test_common_foods_come_from_usda_with_unknown_values_kept_unknown(self):
+        beans = Food.objects.get(slug='red-beans-cooked')
+        self.assertEqual((beans.source, beans.source_ref, float(beans.kcal)), ('usda', '175194', 127.0))
+        self.assertIn('Crveni pasulj, kuvani', self.names('crveni pasulj'))
+        self.assertIn('Džem/pekmez', self.names('pekmez'))
+        self.assertIn('Žestoko piće 40% (rakija, vodka…)', self.names('rakija'))
+        # Every value is from the USDA file; a value USDA does not have stays null, never 0.
+        data = {f['slug']: f for f in json.loads(DATA.read_text(encoding='utf-8'))['foods']}
+        for food in Food.objects.filter(source='usda'):
+            for field in ('protein_g', 'carbs_g', 'fat_g', 'fiber_g'):
+                expected = data[food.slug][field]
+                value = getattr(food, field)
+                self.assertEqual(None if value is None else float(value), expected, (food.slug, field))
+
+    def test_migration_adds_only_missing_foods_and_never_changes_existing_ones(self):
+        import importlib
+        from django.apps import apps
+        add_missing = importlib.import_module('nutrition.migrations.0010_more_usda_foods').add_missing
+        Food.objects.filter(slug='quince').delete()
+        Food.objects.filter(slug='egg-raw').update(name='Jaje (izmenio admin)')
+        add_missing(apps, None)
+        add_missing(apps, None)  # running again adds nothing twice
+        self.assertEqual(Food.objects.filter(slug='quince').count(), 1)
+        self.assertEqual(Food.objects.get(slug='egg-raw').name, 'Jaje (izmenio admin)')
+        self.assertEqual(Food.objects.filter(source='usda').count(), len(json.loads(DATA.read_text(encoding='utf-8'))['foods']))
+
     def test_search_without_diacritics_by_alias_and_in_english(self):
         self.assertIn('Piletina, belo meso (sirovo)', self.names('piletina'))
         self.assertIn('Piletina, belo meso (sirovo)', self.names('пилетина'))
