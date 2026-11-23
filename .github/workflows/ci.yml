@@ -127,14 +127,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      # Cache Gradle dependencies and task outputs without using a third-party cache service.
-      # Fork PRs cannot write to the cache. Do not store main's build-cache outputs:
-      # trusted main builds can embed the Firebase client config into generated resources.
+      # Only repository-owned feature PRs can write Gradle task caches.
+      # Production/main and fork PRs are read-only, avoiding Firebase resources in caches
+      # subsequently readable by untrusted PRs. The basic provider has no path exclusions.
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-provider: basic
-          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-          gradle-home-cache-excludes: ${{ github.ref == 'refs/heads/main' && 'caches/build-cache-*' || '' }}
+          cache-read-only: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
       - run: npm ci
       # Never expose repository secrets to PR code. The trusted main build
       # installs Firebase client config at build time, while PR builds remain
@@ -167,7 +166,11 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --build-cache
+          if [ "$GITHUB_REF" = 'refs/heads/main' ]; then
+            ./gradlew assembleDebug --no-daemon --no-build-cache
+          else
+            ./gradlew assembleDebug --no-daemon --build-cache
+          fi
       - name: Report Android debug APK size
         run: |
           apk=android/app/build/outputs/apk/debug/app-debug.apk
