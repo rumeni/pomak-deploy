@@ -127,6 +127,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      # Only repository-owned feature PRs can write Gradle task caches.
+      # Production/main and fork PRs are read-only, avoiding Firebase resources in caches
+      # subsequently readable by untrusted PRs. The basic provider has no path exclusions.
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+          # Never restore prior main-branch Gradle state into an untrusted fork PR.
+          cache-disabled: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          cache-read-only: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
       - run: npm ci
       # Never expose repository secrets to PR code. The trusted main build
       # installs Firebase client config at build time, while PR builds remain
@@ -159,7 +168,17 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
+          if [ "$GITHUB_REF" = 'refs/heads/main' ]; then
+            ./gradlew assembleDebug --no-daemon --no-build-cache
+          else
+            ./gradlew assembleDebug --no-daemon --build-cache
+          fi
+      - name: Report Android debug APK size
+        run: |
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          bytes=$(stat -c '%s' "$apk")
+          echo "Android debug APK: $bytes bytes"
+          printf '### Android debug APK\nSize: %.2f MB (%s bytes)\n' "$(awk -v b="$bytes" 'BEGIN { printf "%.2f", b / 1000000 }')" "$bytes" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Android debug APK for device testing
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6 (Node 24)
         with:
