@@ -95,3 +95,29 @@ class WeeklyCheckIn(TimeStampedModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['user', 'week_start'], name='one_checkin_per_week')]
+
+
+class ProgressPhoto(TimeStampedModel):
+    """A progress picture (front, side or back) on a day, next to that day's measurements.
+
+    Re-encoded on upload (no metadata) and stored in the database, like message pictures. Only
+    the owner sees it, and a coach only while the client shares measurements with him.
+    """
+
+    class Pose(models.TextChoices):
+        FRONT = 'front', _('From the front')
+        SIDE = 'side', _('From the side')
+        BACK = 'back', _('From behind')
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='progress_photos')
+    taken_on = models.DateField()
+    pose = models.CharField(max_length=10, choices=Pose.choices, default=Pose.FRONT)
+    note = models.CharField(max_length=200, blank=True)
+    data = models.BinaryField()
+    width = models.PositiveIntegerField()
+    height = models.PositiveIntegerField()
+    size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['-taken_on', '-created_at']
+        indexes = [models.Index(fields=['user', '-taken_on'], name='progress_photo_user_day_idx')]

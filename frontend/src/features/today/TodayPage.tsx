@@ -204,8 +204,8 @@ function TrainingCard() {
       {isLoading && <p className="py-2 text-muted">{t('common.loading')}</p>}
       {next ? (
         <>
-          {restDay && doneToday.length === 0 && <p className="mt-4 text-sm text-muted">{t('today.planRestDay')}</p>}
-          <p className="mt-5 text-xs font-bold uppercase tracking-widest text-muted">{planned ? t('today.plannedWorkout') : t('today.nextWorkout')}</p>
+          {restDay && doneToday.length === 0 && <p className="mt-4 text-sm text-muted">{t(coachPlan ? 'today.planRestDay' : 'today.scheduleRestDay')}</p>}
+          <p className="mt-5 text-xs font-bold uppercase tracking-widest text-muted">{planned ? t(coachPlan ? 'today.plannedWorkout' : 'today.scheduledWorkout') : t('today.nextWorkout')}</p>
           <p className="mt-1 text-xl font-bold tracking-tight">{next.name}</p>
           <p className="truncate text-sm text-muted">{next.exercises.map((e) => e.exercise.name).join(' · ')}</p>
           <Button className="mt-3 w-full" onClick={() => void onStart(next)} disabled={starting}>

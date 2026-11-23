@@ -24,6 +24,7 @@ vi.mock('../../lib/api', () => ({ errorMessage: (error: unknown) => String(error
 vi.mock('./ClientTabs', () => ({ ClientStats: () => null, ClientTargetPanel: () => null, WorkoutLinks: () => null }))
 vi.mock('./PlanPanel', () => ({ PlanPanel: () => null }))
 vi.mock('./MealPlanPanel', () => ({ MealPlanPanel: () => null }))
+vi.mock('../progress/ProgressPhotos', () => ({ ProgressPhotos: () => null }))
 vi.mock('../schedule/PackagesPanel', () => ({ PackagesPanel: () => null }))
 vi.mock('./Instructions', () => ({ InstructionsPanel: () => null }))
 vi.mock('./pictures', () => ({ usePictureUrl: () => ({ url: null, failed: false }) }))

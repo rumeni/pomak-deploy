@@ -1,5 +1,7 @@
 from django.urls import path
 
+from progress import photos as progress_photos
+
 from . import plan_views, review_views, views
 
 urlpatterns = [
@@ -11,6 +13,8 @@ urlpatterns = [
     path('connect/', views.ConnectView.as_view(), name='coach-connect'),
     path('connection/', views.ConnectionView.as_view(), name='coach-connection'),
     path('clients/<uuid:client_id>/', views.CoachClientView.as_view(), name='coach-client'),
+    path('clients/<uuid:client_id>/photos/', progress_photos.CoachClientPhotosView.as_view(), name='coach-client-photos'),
+    path('clients/<uuid:client_id>/photos/<uuid:pk>/image/', progress_photos.CoachClientPhotoImageView.as_view(), name='coach-client-photo'),
     path('clients/<uuid:client_id>/assign/', views.AssignRoutineView.as_view(), name='coach-assign-routine'),
     path('connections/<uuid:connection_id>/notes/', views.NotesView.as_view(), name='coach-notes'),
     path('notes/<uuid:pk>/', views.NoteView.as_view(), name='coach-note'),

@@ -26,6 +26,7 @@ import { coachRoutineAvailability } from './routineEligibility'
 import { readinessReasons } from './workspace'
 import { SupersetBadge } from '../training/SupersetFrame'
 import { supersetLabels } from '../training/supersets'
+import { ProgressPhotos } from '../progress/ProgressPhotos'
 
 const TABS = ['overview', 'plan', 'progress', 'nutrition', 'notes'] as const
 type Tab = (typeof TABS)[number]
@@ -256,6 +257,13 @@ function ProgressTab({ clientId, data }: { clientId: string; data: CoachClientDe
     <>
       <WorkoutLinks clientId={clientId} workouts={data.recent_workouts} />
       <ClientStats clientId={clientId} />
+      <ProgressPhotos
+        source={{ kind: 'client', clientId }}
+        weightOn={(date) => {
+          const m = data.measurements?.find((x) => x.kind === 'weight' && x.measured_on === date)
+          return m ? `${formatDecimal(Number(m.value))} kg` : null
+        }}
+      />
       <Card title={t('coach.measurements')}>
         {data.measurements === null ? <p className="text-muted">{t('coach.notShared')}</p> : (
           data.measurements.length === 0 ? <p className="text-muted">{t('coach.noMeasurements')}</p> :

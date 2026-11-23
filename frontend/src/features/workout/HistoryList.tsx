@@ -23,7 +23,7 @@ export function HistoryList() {
   }, [me?.id, firstPage])
 
   // No answer from the server (no internet, or an error): the copy on the phone instead.
-  const offline = !data && !!cached && (isError || fetchStatus === 'paused')
+  const offline = !data && !!cached?.length && (isError || fetchStatus === 'paused')
   // All fetched pages plus unsent local workouts; no duplicates after a sync.
   const sessions = data?.pages.flat() ?? (offline ? cached : [])
   const items = combineHistory(sessions.map(fromServer), (pending ?? []).map(fromOutbox))
