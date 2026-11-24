@@ -30,7 +30,7 @@ describe('coach nutrition view does not understate unknown macro totals', () => 
     expect(html).toContain('25 g')
     expect(html).toContain('8 g')
     expect(html).toContain('nutrition.carbs')
-    expect(html).toContain('—')
+    expect(html).toContain('–')
     expect(html).toContain('1 without data')
     expect(html).toContain('2 without data')
     expect(html.match(/Only known values are summed/g)).toHaveLength(1)

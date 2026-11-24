@@ -7,6 +7,24 @@ import { build as viteBuild } from 'vite'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromium } from 'playwright'
 
+/** WCAG contrast of a text colour on the dock glass composited over the page colour. */
+function dockContrast(text, glass, page) {
+  const rgb = (value) => {
+    if (value.startsWith('#')) return { c: [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16)), a: 1 }
+    const parts = value.match(/[\d.]+/g).map(Number)
+    return { c: parts.slice(0, 3), a: parts[3] ?? 1 }
+  }
+  const g = rgb(glass)
+  const p = rgb(page).c
+  const background = g.c.map((v, i) => v * g.a + p[i] * (1 - g.a))
+  const luminance = (c) => {
+    const [r, gr, b] = c.map((v) => { const s = v / 255; return s <= .03928 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4 })
+    return .2126 * r + .7152 * gr + .0722 * b
+  }
+  const [hi, lo] = [luminance(rgb(text).c), luminance(background)].sort((x, y) => y - x)
+  return (hi + .05) / (lo + .05)
+}
+
 const port = 4173
 const url = 'http://127.0.0.1:' + port
 const preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
@@ -62,6 +80,37 @@ try {
   page.on('console', message => { if (message.type() === 'error') console.error('PAGE CONSOLE:', message.text()) })
   await page.goto(url, { waitUntil: 'domcontentloaded' })
 
+  // Phone login: the headline and the form fit one screen as it is, and with
+  // extra content (an error, a challenge, larger system text) the page scrolls
+  // instead of cutting anything off, so the submit button stays reachable.
+  await page.waitForSelector('.auth-stage--fit form button[type=submit]', { timeout: 15000 })
+  for (const [width, height] of [[360, 640], [390, 844]]) {
+    await page.setViewportSize({ width, height })
+    const plain = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)
+    assert.ok(plain <= 0, 'Login no longer fits one ' + width + 'x' + height + ' screen: ' + plain + 'px to scroll')
+  }
+  await page.setViewportSize({ width: 360, height: 640 })
+  const crowded = await page.evaluate(() => {
+    const form = document.querySelector('.auth-stage--fit form')
+    const extra = document.createElement('div')
+    extra.style.height = '260px'
+    extra.textContent = 'challenge / error probe'
+    form.prepend(extra)
+    document.documentElement.style.fontSize = '130%'
+    const submit = form.querySelector('button[type=submit]')
+    // Jump, not the page's smooth scroll: the button is measured where it ends up.
+    submit.scrollIntoView({ block: 'center', behavior: 'instant' })
+    const rect = submit.getBoundingClientRect()
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    const result = { scrolls: document.documentElement.scrollHeight > innerHeight, reachable: !!hit && submit.contains(hit) }
+    extra.remove()
+    document.documentElement.style.fontSize = ''
+    window.scrollTo({ top: 0, behavior: 'instant' })
+    return result
+  })
+  assert.ok(crowded.scrolls && crowded.reachable, 'Crowded phone login cut off the submit button: ' + JSON.stringify(crowded))
+  console.log('Phone login fits one screen and stays reachable with extra content')
+
   // Photo-header language menus must remain reachable beyond the header
   // on narrow phones (regression for an overflow:hidden clipping bug).
   for (const width of [320, 390]) {
@@ -88,7 +137,8 @@ try {
   }
   // Real compiled CSS on narrow phone viewports: all five tab targets
   // must remain distinct, aligned and tappable in BOTH appearance modes.
-  // The dock itself must not change appearance when the system mode flips.
+  // Dark keeps the light glass; on the light page the glass is denser so the
+  // inactive tab names stay readable (checked as a contrast ratio below).
   for (const width of [320, 390, 430]) {
     await page.setViewportSize({ width, height: 700 })
     const navResult = await page.evaluate(() => {
@@ -120,6 +170,9 @@ try {
           mode, navBackground: dockStyle.backgroundColor,
           navAlpha: Number(dockStyle.backgroundColor.split(',').at(-1)?.replace(')', '').trim() ?? 1),
           activeColor: getComputedStyle(links[4]).color,
+          inactiveColor: getComputedStyle(links[0]).color,
+          // The lightest page the dock floats over (cards), for the worst-case contrast.
+          pageColor: getComputedStyle(document.documentElement).getPropertyValue('--color-card').trim(),
           gliderBorder: gliderStyle.borderTopWidth,
           gliderShadow: gliderStyle.boxShadow,
           gliderAlpha: Number(gliderStyle.backgroundColor.split(',').at(-1)?.replace(')', '').trim() ?? 1),
@@ -139,10 +192,19 @@ try {
       assert.equal(state.activeColor, 'rgb(255, 90, 31)', 'Selected tab lost Pomak orange')
       assert.equal(state.gliderBorder, '0px', 'Active tab acquired a second outline')
       assert.equal(state.gliderShadow, 'none', 'Active tab acquired a second shadow')
-      assert.ok(state.navAlpha < .6, 'Dock became too opaque: ' + state.navAlpha)
       assert.ok(state.gliderAlpha < .35, 'Active tab became too opaque: ' + state.gliderAlpha)
+      if (state.mode === 'dark') {
+        assert.ok(state.navAlpha < .6, 'Dark dock became too opaque: ' + state.navAlpha)
+      } else {
+        // Still glass (not an opaque bar), but dense enough to read the tab names.
+        assert.ok(state.navAlpha >= .7 && state.navAlpha < .9, 'Light dock glass out of range: ' + state.navAlpha)
+        const contrast = dockContrast(state.inactiveColor, state.navBackground, state.pageColor)
+        assert.ok(contrast >= 4.5, 'Inactive tab names unreadable on the light page: ' + contrast.toFixed(2) + ':1')
+      }
     }
-    assert.equal(navResult[0].navBackground, navResult[1].navBackground, 'Switching theme must not change dock colour')
+    const [light, dark] = navResult
+    assert.equal(dark.navBackground, 'rgba(25, 26, 28, 0.46)', 'Dark dock glass changed: ' + dark.navBackground)
+    assert.notEqual(light.navBackground, dark.navBackground, 'Light page needs its denser dock glass')
     assert.equal(navResult[1].cardColor, '#212223', 'Dark cards should stay neutral charcoal, not blue')
   }
   console.log('Mobile dock tabs fit and stay tappable at 320px/390px/430px in Light and Dark')

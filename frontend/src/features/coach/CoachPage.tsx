@@ -47,20 +47,20 @@ function SharingOptions({ values, onChange }: { values: Sharing; onChange: (valu
   return (
     <fieldset className="flex flex-col gap-3 rounded-xl border border-line p-3">
       <legend className="px-1 text-sm font-semibold">{t('coach.sharingTitle')}</legend>
-      <label className="flex items-center gap-3 text-sm">
-        <input type="checkbox" checked={values.share_measurements} onChange={(e) => onChange({ ...values, share_measurements: e.target.checked })} className="size-5 accent-brand" />
+      <label className="flex items-start gap-3 text-sm">
+        <input type="checkbox" checked={values.share_measurements} onChange={(e) => onChange({ ...values, share_measurements: e.target.checked })} className="mt-0.5 size-5 shrink-0 accent-brand" />
         {t('coach.shareMeasurements')}
       </label>
-      <label className="flex items-center gap-3 text-sm">
-        <input type="checkbox" checked={values.share_nutrition} onChange={(e) => onChange({ ...values, share_nutrition: e.target.checked })} className="size-5 accent-brand" />
+      <label className="flex items-start gap-3 text-sm">
+        <input type="checkbox" checked={values.share_nutrition} onChange={(e) => onChange({ ...values, share_nutrition: e.target.checked })} className="mt-0.5 size-5 shrink-0 accent-brand" />
         {t('coach.shareNutrition')}
       </label>
-      <label className="flex items-center gap-3 text-sm">
-        <input type="checkbox" checked={values.share_readiness} onChange={(e) => onChange({ ...values, share_readiness: e.target.checked })} className="size-5 accent-brand" />
+      <label className="flex items-start gap-3 text-sm">
+        <input type="checkbox" checked={values.share_readiness} onChange={(e) => onChange({ ...values, share_readiness: e.target.checked })} className="mt-0.5 size-5 shrink-0 accent-brand" />
         {t('coach.shareReadiness')}
       </label>
-      <label className="flex items-center gap-3 text-sm">
-        <input type="checkbox" checked={values.coach_sets_nutrition} onChange={(e) => onChange({ ...values, coach_sets_nutrition: e.target.checked })} className="size-5 accent-brand" />
+      <label className="flex items-start gap-3 text-sm">
+        <input type="checkbox" checked={values.coach_sets_nutrition} onChange={(e) => onChange({ ...values, coach_sets_nutrition: e.target.checked })} className="mt-0.5 size-5 shrink-0 accent-brand" />
         {t('coach.coachSetsNutrition')}
       </label>
       <p className="text-xs text-muted">{t('coach.shareTrainingNotice')}</p>

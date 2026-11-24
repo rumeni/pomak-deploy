@@ -25,10 +25,18 @@ afterEach(() => {
 })
 
 describe('mobile appearance', () => {
-  it('defaults to System and follows the device without reopening the application', () => {
-    expect(validTheme(null)).toBe('system')
-    expect(currentTheme()).toBe('system')
+  it('defaults to Light, also on a phone set to dark', () => {
+    expect(validTheme(null)).toBe('light')
+    expect(currentTheme()).toBe('light')
     expect(document.documentElement.dataset.pomakMode).toBe('light')
+    isDark = true
+    handlers.forEach((notify) => notify())
+    expect(currentTheme()).toBe('light')
+    expect(document.documentElement.dataset.pomakMode).toBe('light')
+  })
+
+  it('System, once chosen, follows the device without reopening the application', () => {
+    setTheme('system')
     isDark = true
     handlers.forEach((notify) => notify())
     expect(currentTheme()).toBe('system')
@@ -54,15 +62,15 @@ describe('mobile appearance', () => {
     expect(document.documentElement.dataset.pomakMode).toBe('dark')
   })
 
-  it('migrates old Original selection to Light and old Blue to System', () => {
+  it('migrates old Original and Blue selections to Light', () => {
     expect(validTheme('original')).toBe('light')
-    expect(validTheme('blue')).toBe('system')
+    expect(validTheme('blue')).toBe('light')
     localStorage.setItem(THEME_STORAGE_KEY, 'original')
     initializeTheme()
     expect(currentTheme()).toBe('light')
     localStorage.setItem(THEME_STORAGE_KEY, 'blue')
     initializeTheme()
-    expect(currentTheme()).toBe('system')
+    expect(currentTheme()).toBe('light')
   })
 
   it('updates on cross-tab preferences and ignores unrelated storage events', () => {

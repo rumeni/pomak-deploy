@@ -10,6 +10,7 @@ import { Button, Field, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { AuthLayout } from './AuthLayout'
+import { PasswordField } from './PasswordField'
 import { LoginChallenge } from './LoginChallenge'
 
 export function LoginPage() {
@@ -50,10 +51,10 @@ export function LoginPage() {
   })
 
   return (
-    <AuthLayout title={t('auth.loginTitle')} compact>
+    <AuthLayout title={t('auth.loginTitle')} fit>
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-        <Field label={t('auth.email')} type="email" autoComplete="email" inputMode="email" {...register('email')} error={formState.errors.email?.message} />
-        <Field label={t('auth.password')} type="password" autoComplete="current-password" {...register('password')} error={formState.errors.password?.message} />
+        <Field label={t('auth.email')} type="email" autoComplete="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="next" {...register('email')} error={formState.errors.email?.message} />
+        <PasswordField label={t('auth.password')} autoComplete="current-password" enterKeyHint="go" {...register('password')} error={formState.errors.password?.message} />
         <FormError message={error} />
         {verificationRequired && sitekey && (
           <LoginChallenge key={challengeEpoch} sitekey={sitekey} onToken={setVerificationToken} />

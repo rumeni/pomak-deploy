@@ -29,21 +29,25 @@ export function Button({
 
 export const Field = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }
->(function Field({ label, error, id, ...props }, ref) {
+  InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; trailing?: ReactNode }
+>(function Field({ label, error, id, trailing, ...props }, ref) {
   const inputId = id ?? props.name
+  const input = (
+    <input
+      ref={ref}
+      id={inputId}
+      aria-invalid={!!error}
+      className={`app-input min-h-12 w-full rounded-2xl border border-line bg-card px-4 text-base outline-none focus:border-brand aria-[invalid=true]:border-danger ${trailing ? 'pr-14' : ''}`}
+      {...props}
+    />
+  )
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={inputId} className="text-sm font-medium">
         {label}
       </label>
-      <input
-        ref={ref}
-        id={inputId}
-        aria-invalid={!!error}
-        className="app-input min-h-12 w-full rounded-2xl border border-line bg-card px-4 text-base outline-none focus:border-brand aria-[invalid=true]:border-danger"
-        {...props}
-      />
+      {/* `trailing`: a button inside the field on the right (e.g. show the password). */}
+      {trailing ? <div className="relative">{input}<div className="absolute inset-y-0 right-1 flex items-center">{trailing}</div></div> : input}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   )

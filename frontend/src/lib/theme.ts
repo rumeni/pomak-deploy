@@ -3,18 +3,18 @@ export const THEMES = ['light', 'dark', 'system'] as const
 export type Theme = typeof THEMES[number]
 export type ResolvedTheme = Exclude<Theme, 'system'>
 
-let selectedTheme: Theme = 'system'
+// Light unless the person picks Dark (or System, to follow the phone) in the profile.
+let selectedTheme: Theme = 'light'
 let removeListeners: (() => void) | null = null
 
-/** Preserve an old "original" choice as Light; retire the experimental Blue palette. */
+/** A saved choice, Light when none (or an old "original" / retired Blue palette). */
 export function validTheme(value: string | null | undefined): Theme {
-  if (value === 'original') return 'light'
-  if (value === 'light' || value === 'dark') return value
-  return 'system'
+  if (value === 'dark' || value === 'system') return value
+  return 'light'
 }
 
 function readSavedTheme(): Theme {
-  try { return validTheme(localStorage.getItem(THEME_STORAGE_KEY)) } catch { return 'system' }
+  try { return validTheme(localStorage.getItem(THEME_STORAGE_KEY)) } catch { return 'light' }
 }
 
 function systemIsDark(): boolean {

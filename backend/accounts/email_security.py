@@ -36,7 +36,7 @@ def verification_link(user):
 
 def send_reset_email(user):
     return send_mail(
-        subject='POMAK — resetovanje lozinke',
+        subject='POMAK: resetovanje lozinke',
         message=(
             'Ako si zatražio/la resetovanje lozinke, otvori ovaj link (važi 30 minuta):\n\n'
             f'{password_reset_link(user)}\n\n'
@@ -50,7 +50,7 @@ def send_reset_email(user):
 
 def send_verification_email(user):
     return send_mail(
-        subject='POMAK — potvrdi email adresu',
+        subject='POMAK: potvrdi email adresu',
         message=(
             'Za potvrdu email adrese otvori ovaj link (važi 24 sata):\n\n'
             f'{verification_link(user)}\n\n'
