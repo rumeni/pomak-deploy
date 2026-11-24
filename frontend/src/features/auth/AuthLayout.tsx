@@ -17,8 +17,9 @@ export function AuthLayout({ title, compact = false, fit = false, children }: { 
         <p className="auth-aside-title">
           {t('common.tagline')
             .split(/(?<=\.)\s+/)
+            // A headline, not sentences: no full stop at the end of each line.
             .map((line) => (
-              <span key={line} className="block">{line}</span>
+              <span key={line} className="block">{line.replace(/\.$/, '')}</span>
             ))}
         </p>
         <p className="auth-aside-text">{t('common.authIntro')}</p>

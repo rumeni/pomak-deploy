@@ -25,7 +25,7 @@ export function CoachNutritionDays({ days }: { days: NutritionDay[] }) {
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted">
               {macros.map(([valueKey, unknownKey, label]) => (
                 <span key={valueKey}>
-                  {t(`nutrition.${label}`)}: {day[valueKey] === null ? '—' : `${formatDecimal(Number(day[valueKey]))} g`}
+                  {t(`nutrition.${label}`)}: {day[valueKey] === null ? '–' : `${formatDecimal(Number(day[valueKey]))} g`}
                   {(day[unknownKey] ?? 0) > 0 && (
                     <span className="ml-1">· {t('diary.unknownMacro', { count: day[unknownKey] })}</span>
                   )}

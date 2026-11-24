@@ -9,6 +9,7 @@ import { Button, ChoiceCards, Field, FormError } from '../../components/ui'
 import { errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { AuthLayout } from './AuthLayout'
+import { PasswordField } from './PasswordField'
 
 export function RegisterPage() {
   const { t } = useTranslation()
@@ -55,8 +56,8 @@ export function RegisterPage() {
           )}
         />
         <Field label={t('auth.nameOptional')} autoComplete="given-name" {...register('displayName')} error={formState.errors.displayName?.message} />
-        <Field label={t('auth.email')} type="email" autoComplete="email" inputMode="email" {...register('email')} error={formState.errors.email?.message} />
-        <Field label={t('auth.password')} type="password" autoComplete="new-password" {...register('password')} error={formState.errors.password?.message} />
+        <Field label={t('auth.email')} type="email" autoComplete="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="next" {...register('email')} error={formState.errors.email?.message} />
+        <PasswordField label={t('auth.password')} autoComplete="new-password" enterKeyHint="go" {...register('password')} error={formState.errors.password?.message} />
         <FormError message={error} />
         <Button type="submit" disabled={formState.isSubmitting}>
           {formState.isSubmitting ? t('auth.registering') : t('auth.register')}
