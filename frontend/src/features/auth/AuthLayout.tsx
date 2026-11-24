@@ -3,11 +3,14 @@ import { useTranslation } from 'react-i18next'
 
 import { LanguageMenu } from '../../components/LanguageMenu'
 
-/** `compact`: on phones skip the big headline so a long form (registration) starts at the top. */
-export function AuthLayout({ title, compact = false, children }: { title: string; compact?: boolean; children: ReactNode }) {
+/**
+ * `compact`: on phones skip the big headline so a long form (registration) starts at the top.
+ * `fit`: on phones keep the headline but size everything to one screen (login, the start screen).
+ */
+export function AuthLayout({ title, compact = false, fit = false, children }: { title: string; compact?: boolean; fit?: boolean; children: ReactNode }) {
   const { t } = useTranslation()
   return (
-    <div className={`auth-stage pt-safe pb-safe ${compact ? 'auth-stage--compact' : ''}`}>
+    <div className={`auth-stage pt-safe pb-safe ${compact ? 'auth-stage--compact' : ''} ${fit ? 'auth-stage--fit' : ''}`}>
       <div className="topo-layer" aria-hidden />
       <aside className="auth-aside">
         <span className="brand-wordmark">POMAK</span>

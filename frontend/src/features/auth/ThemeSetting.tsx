@@ -6,7 +6,7 @@ import { currentTheme, setTheme, subscribeTheme, THEMES } from '../../lib/theme'
 /** Native-style appearance preference: follows iOS/Android while System is selected. */
 export function ThemeSetting() {
   const { t } = useTranslation()
-  const selected = useSyncExternalStore(subscribeTheme, currentTheme, () => 'system')
+  const selected = useSyncExternalStore(subscribeTheme, currentTheme, () => 'light')
   const labels = {
     light: t('profile.themeLight'),
     dark: t('profile.themeDark'),

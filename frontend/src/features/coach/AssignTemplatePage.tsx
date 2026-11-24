@@ -102,7 +102,7 @@ export function AssignTemplatePage() {
               {clients.map((c) => (
                 <label key={c.client.id} className="flex min-h-12 items-center gap-3 rounded-2xl border border-line bg-card px-3">
                   <input
-                    type="checkbox" className="size-5 accent-brand" checked={selected.includes(c.id)}
+                    type="checkbox" className="size-5 shrink-0 accent-brand" checked={selected.includes(c.id)}
                     onChange={(e) => setSelected((ids) => (e.target.checked ? [...ids, c.id] : ids.filter((x) => x !== c.id)))}
                   />
                   <span className="flex-1 font-semibold">{c.client.name}</span>
