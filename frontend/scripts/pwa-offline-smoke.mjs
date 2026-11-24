@@ -98,13 +98,14 @@ try {
     form.prepend(extra)
     document.documentElement.style.fontSize = '130%'
     const submit = form.querySelector('button[type=submit]')
-    submit.scrollIntoView({ block: 'center' })
+    // Jump, not the page's smooth scroll: the button is measured where it ends up.
+    submit.scrollIntoView({ block: 'center', behavior: 'instant' })
     const rect = submit.getBoundingClientRect()
     const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
     const result = { scrolls: document.documentElement.scrollHeight > innerHeight, reachable: !!hit && submit.contains(hit) }
     extra.remove()
     document.documentElement.style.fontSize = ''
-    window.scrollTo(0, 0)
+    window.scrollTo({ top: 0, behavior: 'instant' })
     return result
   })
   assert.ok(crowded.scrolls && crowded.reachable, 'Crowded phone login cut off the submit button: ' + JSON.stringify(crowded))
